@@ -1350,6 +1350,12 @@
       });
     }
 
+// Email whitelist check
+const allowedEmails = Array.isArray(CONFIG.allowedEmails) ? CONFIG.allowedEmails.map(normalizeEmail) : [];
+if (allowedEmails.length > 0 && !allowedEmails.includes(candidate.email)) {
+  showDuplicateStatus("error", "Your email address is not registered to take this quiz. Please contact the administrator.");
+  return;
+}
     function showDuplicateStatus(type, message) {
       els.duplicateStatus.className = `notice ${type}`;
       els.duplicateStatus.textContent = message;
