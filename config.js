@@ -4,7 +4,9 @@ const QUIZ_CONFIG = {
   passMark: 70,
   adminPassword: "admin123",
   logo: "./logo.png",
-  sheetsWebAppUrl: "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec",
+  sheetsWebAppUrl: "https://script.google.com/macros/s/AKfycbxPRFsKC8-FBvnjXAGSyXyP9pq95faOhVfiOCTVQTtGeHAl7_isMm0Bnf3uD5e-eai-/exec",
+  sheetUrl: "https://docs.google.com/spreadsheets/d/1vkdOHo9Rrid2CnQOXHPYIRPSE_B84VRM-CA7yw5OAxk/edit?usp=sharing",
+
 
   questions: [
     {
