@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quiz Results Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="./config.js"></script>
+  </head>
+  <body class="min-h-screen bg-white text-zinc-950">
+    <section id="loginPanel" class="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center px-4">
+      <div class="rounded border border-zinc-200 bg-white p-5 shadow-sm">
+        <p class="text-sm font-semibold uppercase tracking-wide text-zinc-500">Admin</p>
+        <h1 class="mt-1 text-2xl font-semibold text-zinc-950">Results Dashboard</h1>
+        <form id="loginForm" class="mt-5 space-y-4">
+          <label class="block">
+            <span class="text-sm font-medium text-zinc-700">Password</span>
+            <input
+              id="adminPasswordInput"
+              class="mt-1 w-full rounded border border-zinc-300 px-3 py-2 text-base outline-none focus:border-blue-950 focus:ring-2 focus:ring-blue-100"
+              type="password"
+              autocomplete="current-password"
+              required
+            />
+          </label>
+          <button
+            class="w-full rounded bg-blue-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            type="submit"
+          >
+            Sign in
+          </button>
+          <p id="loginError" class="hidden text-sm text-rose-700">Incorrect password.</p>
+        </form>
+      </div>
+    </section>
+
+    <main id="dashboardPanel" class="mx-auto hidden w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <header class="flex flex-col gap-4 border-b border-zinc-200 pb-5 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p class="text-sm font-semibold uppercase tracking-wide text-zinc-500">Admin</p>
+          <h1 class="mt-1 text-3xl font-semibold text-zinc-950">Quiz Results Dashboard</h1>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button
+            id="refreshButton"
+            class="rounded bg-blue-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            type="button"
+          >
+            Refresh
+          </button>
+          <button
+            id="exportCsvButton"
+            class="rounded border border-zinc-300 px-4 py-2.5 text-sm font-semibold text-blue-950 hover:bg-zinc-50"
+            type="button"
+          >
+            Export CSV
+          </button>
+          <a
+            id="sheetLink"
+            class="hidden rounded border border-zinc-300 px-4 py-2.5 text-sm font-semibold text-blue-950 hover:bg-zinc-50"
+            target="_blank"
+            rel="noopener"
+          >
+            Open sheet
+          </a>
+        </div>
+      </header>
+
+      <section class="mt-5 grid gap-3 sm:grid-cols-4">
+        <div class="rounded border border-zinc-200 bg-white p-4">
+          <div id="totalCount" class="text-2xl font-semibold text-zinc-950">0</div>
+          <div class="text-sm text-zinc-500">Submissions</div>
+        </div>
+        <div class="rounded border border-zinc-200 bg-white p-4">
+          <div id="passCount" class="text-2xl font-semibold text-zinc-950">0</div>
+          <div class="text-sm text-zinc-500">Passed</div>
+        </div>
+        <div class="rounded border border-zinc-200 bg-white p-4">
+          <div id="failCount" class="text-2xl font-semibold text-zinc-950">0</div>
+          <div class="text-sm text-zinc-500">Failed</div>
+        </div>
+        <div class="rounded border border-zinc-200 bg-white p-4">
+          <div id="averageScore" class="text-2xl font-semibold text-zinc-950">0%</div>
+          <div class="text-sm text-zinc-500">Average score</div>
+        </div>
+      </section>
+
+      <p id="statusMessage" class="mt-5 rounded border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+        Loading results...
+      </p>
+
+      <section class="mt-4 overflow-hidden rounded border border-zinc-200">
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-zinc-200 text-left text-sm">
+            <thead class="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500">
+              <tr>
+                <th class="px-3 py-3 font-semibold">Full Name</th>
+                <th class="px-3 py-3 font-semibold">Email</th>
+                <th class="px-3 py-3 font-semibold">Score</th>
+                <th class="px-3 py-3 font-semibold">Date</th>
+                <th class="px-3 py-3 font-semibold">Pass/Fail</th>
+              </tr>
+            </thead>
+            <tbody id="resultsBody" class="divide-y divide-zinc-200 bg-white"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const appConfig = window.QUIZ_CONFIG || {};
+      const GOOGLE_SCRIPT_URL = appConfig.sheetsWebAppUrl || appConfig.googleScriptUrl || "";
+      const GOOGLE_SHEET_URL = appConfig.sheetUrl || appConfig.googleSheetUrl || "";
+      const ADMIN_PASSWORD = appConfig.adminPassword || "change-me";
+      const ADMIN_AUTH_KEY = "corporateQuiz.adminAuthed";
+
+      const loginPanel = document.getElementById("loginPanel");
+      const dashboardPanel = document.getElementById("dashboardPanel");
+      const loginForm = document.getElementById("loginForm");
+      const adminPasswordInput = document.getElementById("adminPasswordInput");
+      const loginError = document.getElementById("loginError");
+      const statusMessage = document.getElementById("statusMessage");
+      const resultsBody = document.getElementById("resultsBody");
+      const refreshButton = document.getElementById("refreshButton");
+      const exportCsvButton = document.getElementById("exportCsvButton");
+      const sheetLink = document.getElementById("sheetLink");
+      let currentResults = [];
+
+      if (GOOGLE_SHEET_URL && !GOOGLE_SHEET_URL.includes("PASTE_YOUR")) {
+        sheetLink.href = GOOGLE_SHEET_URL;
+        sheetLink.classList.remove("hidden");
+      }
+
+      function isPlaceholderUrl(url) {
+        return !url || url.includes("PASTE_YOUR") || url.includes("YOUR_SCRIPT_ID");
+      }
+
+      function showDashboard() {
+        loginPanel.classList.add("hidden");
+        dashboardPanel.classList.remove("hidden");
+        loadResults();
+      }
+
+      function setStatus(type, message) {
+        const classes = {
+          pending: "mt-5 rounded border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800",
+          success: "mt-5 rounded border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800",
+          error: "mt-5 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800"
+        };
+        statusMessage.className = classes[type];
+        statusMessage.textContent = message;
+      }
+
+      function jsonp(url) {
+        return new Promise((resolve, reject) => {
+          const callbackName = `quizResultsCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+          const script = document.createElement("script");
+          const separator = url.includes("?") ? "&" : "?";
+
+          window[callbackName] = (data) => {
+            delete window[callbackName];
+            script.remove();
+            resolve(data);
+          };
+
+          script.onerror = () => {
+            delete window[callbackName];
+            script.remove();
+            reject(new Error("Could not fetch results from Apps Script."));
+          };
+
+          script.src = `${url}${separator}callback=${encodeURIComponent(callbackName)}`;
+          document.body.appendChild(script);
+        });
+      }
+
+      function readValue(record, key) {
+        return record[key] === undefined || record[key] === null ? "" : String(record[key]);
+      }
+
+      function formatDate(value) {
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+      }
+
+      function renderSummary(results) {
+        const total = results.length;
+        const passed = results.filter((row) => readValue(row, "Pass/Fail").toLowerCase() === "pass").length;
+        const failed = results.filter((row) => readValue(row, "Pass/Fail").toLowerCase() === "fail").length;
+        const scoreSum = results.reduce((sum, row) => sum + Number(row["Score (%)"] || 0), 0);
+
+        document.getElementById("totalCount").textContent = String(total);
+        document.getElementById("passCount").textContent = String(passed);
+        document.getElementById("failCount").textContent = String(failed);
+        document.getElementById("averageScore").textContent = total ? `${Math.round(scoreSum / total)}%` : "0%";
+      }
+
+      function renderRows(results) {
+        resultsBody.innerHTML = "";
+        results.forEach((row) => {
+          const tr = document.createElement("tr");
+          tr.className = "hover:bg-zinc-50";
+
+          const cells = [
+            readValue(row, "Full Name"),
+            readValue(row, "Email"),
+            `${readValue(row, "Score (fraction)")} ${readValue(row, "Score (%)")}%`,
+            formatDate(readValue(row, "Timestamp")),
+            readValue(row, "Pass/Fail")
+          ];
+
+          cells.forEach((value) => {
+            const td = document.createElement("td");
+            td.className = "whitespace-nowrap px-3 py-3 text-zinc-700";
+            td.textContent = value;
+            tr.appendChild(td);
+          });
+
+          resultsBody.appendChild(tr);
+        });
+      }
+
+      function csvEscape(value) {
+        const text = String(value ?? "");
+        return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+      }
+
+      function exportCsv() {
+        const headers = ["Name", "Email", "Score", "Date", "Pass/Fail"];
+        const rows = currentResults.map((row) => [
+          readValue(row, "Full Name"),
+          readValue(row, "Email"),
+          `${readValue(row, "Score (fraction)")} ${readValue(row, "Score (%)")}%`,
+          formatDate(readValue(row, "Timestamp")),
+          readValue(row, "Pass/Fail")
+        ]);
+
+        const csv = [headers, ...rows]
+          .map((row) => row.map(csvEscape).join(","))
+          .join("\n");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+
+        link.href = url;
+        link.download = "quiz-results.csv";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      async function loadResults() {
+        if (isPlaceholderUrl(GOOGLE_SCRIPT_URL)) {
+          setStatus("error", "Google Apps Script Web App URL is not configured in config.js.");
+          return;
+        }
+
+        setStatus("pending", "Loading results...");
+
+        try {
+          const data = await jsonp(GOOGLE_SCRIPT_URL);
+          if (!data.success) {
+            throw new Error(data.error || "Apps Script returned an error.");
+          }
+          currentResults = data.results || [];
+          renderSummary(currentResults);
+          renderRows(currentResults);
+          setStatus("success", `Loaded ${currentResults.length} result(s).`);
+        } catch (error) {
+          setStatus("error", error.message);
+        }
+      }
+
+      refreshButton.addEventListener("click", loadResults);
+      exportCsvButton.addEventListener("click", exportCsv);
+      loginForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (adminPasswordInput.value === ADMIN_PASSWORD) {
+          window.sessionStorage.setItem(ADMIN_AUTH_KEY, "true");
+          showDashboard();
+        } else {
+          loginError.classList.remove("hidden");
+        }
+      });
+
+      if (window.sessionStorage.getItem(ADMIN_AUTH_KEY) === "true") {
+        showDashboard();
+      }
+    </script>
+  </body>
+</html>
