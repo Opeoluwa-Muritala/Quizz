@@ -3,7 +3,7 @@ const QUIZ_CONFIG = {
   description: "Complete all questions before the time runs out.",
   passMark: 70,
   adminPassword: "admin123",
-  logo: "./logo.png",
+  logo: "./logo1.png",
   sheetsWebAppUrl: "https://script.google.com/macros/s/AKfycbxPRFsKC8-FBvnjXAGSyXyP9pq95faOhVfiOCTVQTtGeHAl7_isMm0Bnf3uD5e-eai-/exec",
   sheetUrl: "https://docs.google.com/spreadsheets/d/1vkdOHo9Rrid2CnQOXHPYIRPSE_B84VRM-CA7yw5OAxk/edit?usp=sharing",
 
