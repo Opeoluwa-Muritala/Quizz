@@ -7,7 +7,10 @@ const QUIZ_CONFIG = {
   sheetsWebAppUrl: "https://script.google.com/macros/s/AKfycbxPRFsKC8-FBvnjXAGSyXyP9pq95faOhVfiOCTVQTtGeHAl7_isMm0Bnf3uD5e-eai-/exec",
   sheetUrl: "https://docs.google.com/spreadsheets/d/1vkdOHo9Rrid2CnQOXHPYIRPSE_B84VRM-CA7yw5OAxk/edit?usp=sharing",
 
-
+allowedEmails:[
+"Juchenna@mainstreetmfb.com",
+"eguuchennajohn@gmail.com"
+]
 
   questions: [
     {
