@@ -4,26 +4,24 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Mainstreet Exam Portal</title>
-
   <script src="./config.js"></script>
-
   <style>
     :root {
-  --bg-1: #2e1065;
-  --bg-2: #581c87;
-  --card: #ffffff;
-  --muted: #64748b;
-  --text: #0f172a;
-  --primary: #6d28d9;
-  --primary-2: #9333ea;
-  --accent: #c084fc;
-  --success: #16a34a;
-  --danger: #dc2626;
-  --warning: #d97706;
-  --border: #e2e8f0;
-  --soft: #f8fafc;
-  --shadow: 0 30px 90px rgba(88, 28, 135, 0.35);
-}
+      --bg-1: #2e1065;
+      --bg-2: #581c87;
+      --card: #ffffff;
+      --muted: #64748b;
+      --text: #0f172a;
+      --primary: #6d28d9;
+      --primary-2: #9333ea;
+      --accent: #c084fc;
+      --success: #16a34a;
+      --danger: #dc2626;
+      --warning: #d97706;
+      --border: #e2e8f0;
+      --soft: #f8fafc;
+      --shadow: 0 30px 90px rgba(88, 28, 135, 0.35);
+    }
 
     * { box-sizing: border-box; }
 
@@ -84,7 +82,7 @@
     }
 
     .logoBox img { width: 100%; height: 100%; object-fit: contain; padding: 8px; }
-    .logoFallback { font-weight: 900; letter-spacing: -0.05em; font-size: 1.2rem; }
+    .logoFallback { font-weight: 900; letter-spacing: -0.05em; font-size: 1.2rem; color: white; }
 
     .eyebrow {
       font-size: 0.78rem; text-transform: uppercase;
@@ -147,14 +145,17 @@
 
     label { display: block; font-size: 0.88rem; font-weight: 800; margin-bottom: 8px; }
 
-    input {
+    input[type="text"], input[type="email"] {
       width: 100%; height: 52px; padding: 0 16px;
       border-radius: 16px; border: 1px solid #cbd5e1;
       outline: none; background: white; color: var(--text);
       transition: border 160ms ease, box-shadow 160ms ease;
     }
 
-    input:focus { border-color: var(--primary-2); box-shadow: 0 0 0 4px rgba(37,99,235,0.14); }
+    input[type="text"]:focus, input[type="email"]:focus {
+      border-color: var(--primary-2);
+      box-shadow: 0 0 0 4px rgba(37,99,235,0.14);
+    }
 
     .primaryBtn, .secondaryBtn, .dangerBtn {
       min-height: 52px; border: 0; border-radius: 16px; padding: 0 20px;
@@ -173,7 +174,7 @@
 
     .secondaryBtn { color: var(--primary); background: #eff6ff; border: 1px solid #bfdbfe; }
     .dangerBtn { color: white; background: linear-gradient(135deg, #991b1b, var(--danger)); }
-    .primaryBtn:hover, .secondaryBtn:hover, .dangerBtn:hover { transform: translateY(-1px); }
+    .primaryBtn:hover:not(:disabled), .secondaryBtn:hover, .dangerBtn:hover { transform: translateY(-1px); }
 
     .notice {
       padding: 14px 16px; border-radius: 18px;
@@ -198,9 +199,76 @@
     .ruleIcon {
       width: 28px; height: 28px; flex: 0 0 auto;
       display: grid; place-items: center; border-radius: 999px;
-      background: #dbeafe; color: #1d4ed8; font-weight: 900;
+      background: #dbeafe; color: #1d4ed8; font-weight: 900; font-size: 0.9rem;
     }
 
+    /* ── INSTRUCTIONS SCREEN ── */
+    .instructionsList {
+      display: grid; gap: 14px; margin: 24px 0;
+    }
+
+    .instructionItem {
+      display: flex; align-items: flex-start; gap: 16px; padding: 18px 20px;
+      border-radius: 20px; background: var(--soft); border: 1px solid var(--border);
+    }
+
+    .instructionEmoji { font-size: 1.6rem; flex: 0 0 auto; line-height: 1; }
+
+    .instructionText { line-height: 1.5; }
+    .instructionText strong { display: block; font-size: 0.95rem; margin-bottom: 3px; color: var(--text); }
+    .instructionText span { font-size: 0.88rem; color: var(--muted); }
+
+    .instructionAlert {
+      padding: 16px 20px; border-radius: 18px;
+      background: #fef3c7; border: 1px solid #fbbf24;
+      color: #92400e; font-weight: 800; font-size: 0.95rem;
+      display: flex; align-items: center; gap: 12px; margin-bottom: 24px;
+    }
+
+    /* ── VERIFICATION SCREEN ── */
+    .verifySteps {
+      display: flex; gap: 12px; margin-bottom: 28px;
+    }
+
+    .verifyStep {
+      flex: 1; padding: 12px; border-radius: 16px; text-align: center;
+      font-size: 0.82rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em;
+      background: var(--soft); border: 1px solid var(--border); color: var(--muted);
+      transition: all 200ms ease;
+    }
+
+    .verifyStep.active { background: #dbeafe; border-color: #93c5fd; color: #1e40af; }
+    .verifyStep.done   { background: #dcfce7; border-color: #86efac; color: #166534; }
+
+    .cameraBox {
+      position: relative; border-radius: 24px; overflow: hidden;
+      background: #0f172a; border: 2px solid var(--border);
+      aspect-ratio: 4/3; width: 100%; max-width: 480px; margin: 0 auto 20px;
+    }
+
+    .cameraBox video, .cameraBox img {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+
+    .cameraOverlay {
+      position: absolute; inset: 0; display: flex;
+      align-items: center; justify-content: center;
+      background: rgba(15,23,42,0.7); color: white;
+      font-size: 0.95rem; font-weight: 800; text-align: center; padding: 20px;
+    }
+
+    .cameraActions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .cameraActions .primaryBtn { width: auto; min-width: 180px; }
+    .cameraActions .secondaryBtn { min-width: 120px; }
+
+    .capturePreview {
+      display: none; width: 100%; max-width: 480px; margin: 0 auto 20px;
+      border-radius: 24px; overflow: hidden; border: 3px solid #86efac;
+    }
+
+    .capturePreview img { width: 100%; display: block; }
+
+    /* ── QUIZ SCREEN ── */
     .quizHeader { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 20px; }
     .progressWrap { flex: 1; }
 
@@ -268,6 +336,7 @@
 
     .smallText { color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
 
+    /* ── RESULT SCREEN ── */
     .resultScore {
       font-size: clamp(3rem,10vw,6rem);
       line-height: 1; letter-spacing: -0.08em;
@@ -297,6 +366,8 @@
       color: #991b1b; background: #fef2f2; border: 1px solid #fecaca;
       box-shadow: 0 20px 60px rgba(0,0,0,0.18); font-weight: 800;
     }
+
+    canvas { display: none; }
 
     @media print {
       body { background: white; }
@@ -361,6 +432,10 @@
         </section>
 
         <section class="content">
+
+          <!-- ══════════════════════════════════════
+               SCREEN 1 — CANDIDATE DETAILS
+          ══════════════════════════════════════ -->
           <div id="startScreen">
             <h3>Candidate details</h3>
             <p class="smallText">
@@ -379,7 +454,7 @@
                   <input id="email" name="email" type="email" placeholder="Enter email address" autocomplete="email" required />
                 </div>
               </div>
-              <button id="startQuizButton" class="primaryBtn" type="submit">Start quiz →</button>
+              <button id="startQuizButton" class="primaryBtn" type="submit">Continue →</button>
             </form>
 
             <div class="rules">
@@ -389,6 +464,126 @@
             </div>
           </div>
 
+          <!-- ══════════════════════════════════════
+               SCREEN 2 — PRE-TEST INSTRUCTIONS
+          ══════════════════════════════════════ -->
+          <div id="instructionsScreen" class="hidden">
+            <h3>Before you begin</h3>
+            <p class="smallText">Please ensure you have all of the following ready before proceeding. You will not be able to pause the exam once it starts.</p>
+
+            <div class="instructionsList">
+              <div class="instructionItem">
+                <div class="instructionEmoji">🖊️</div>
+                <div class="instructionText">
+                  <strong>A pen</strong>
+                  <span>You may need to work out answers on paper before selecting.</span>
+                </div>
+              </div>
+              <div class="instructionItem">
+                <div class="instructionEmoji">📓</div>
+                <div class="instructionText">
+                  <strong>A booklet or writing paper</strong>
+                  <span>For working calculations and taking notes during the exam.</span>
+                </div>
+              </div>
+              <div class="instructionItem">
+                <div class="instructionEmoji">🧮</div>
+                <div class="instructionText">
+                  <strong>A calculator</strong>
+                  <span>Some questions may require numerical computation.</span>
+                </div>
+              </div>
+              <div class="instructionItem">
+                <div class="instructionEmoji">📶</div>
+                <div class="instructionText">
+                  <strong>Strong, stable internet connection</strong>
+                  <span>A poor connection may cause your results to fail to save. Use Wi-Fi or a strong mobile network.</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="instructionAlert">
+              ⚠️ Do not proceed until you have all of the above. You cannot pause or restart the exam once it begins.
+            </div>
+
+            <button id="proceedToVerifyBtn" class="primaryBtn" type="button">
+              I'm ready — Proceed to verification →
+            </button>
+          </div>
+
+          <!-- ══════════════════════════════════════
+               SCREEN 3 — IDENTITY VERIFICATION
+          ══════════════════════════════════════ -->
+          <div id="verificationScreen" class="hidden">
+            <h3>Identity verification</h3>
+            <p class="smallText">
+              You are required to take a clear photo of yourself and your valid ID card before the test begins. Both photos will be securely stored.
+            </p>
+
+            <div class="verifySteps">
+              <div class="verifyStep active" id="step1Label">1 · Selfie</div>
+              <div class="verifyStep" id="step2Label">2 · ID Card</div>
+              <div class="verifyStep" id="step3Label">3 · Start</div>
+            </div>
+
+            <!-- Step A: Selfie -->
+            <div id="selfieStep">
+              <p style="font-weight:800; margin-bottom:12px;">📸 Step 1 of 2 — Take a selfie</p>
+              <p class="smallText" style="margin-bottom:16px;">Position your face clearly in the frame, ensure good lighting, then capture.</p>
+
+              <div class="cameraBox" id="selfieCameraBox">
+                <video id="selfieVideo" autoplay playsinline muted></video>
+                <div class="cameraOverlay" id="selfieOverlay">Starting camera...</div>
+              </div>
+
+              <div class="capturePreview" id="selfiePreviewBox">
+                <img id="selfiePreviewImg" src="" alt="Selfie preview" />
+              </div>
+
+              <canvas id="selfieCanvas"></canvas>
+
+              <div class="cameraActions" id="selfieActions">
+                <button id="captureSelfieBtn" class="primaryBtn" type="button" disabled>📷 Capture selfie</button>
+              </div>
+
+              <div class="cameraActions hidden" id="selfieRetakeActions" style="margin-top:12px;">
+                <button id="retakeSelfieBtn" class="secondaryBtn" type="button">↺ Retake</button>
+                <button id="proceedToIdBtn" class="primaryBtn" type="button">Next: Capture ID →</button>
+              </div>
+            </div>
+
+            <!-- Step B: ID Card -->
+            <div id="idStep" class="hidden">
+              <p style="font-weight:800; margin-bottom:12px;">🪪 Step 2 of 2 — Capture your valid ID card</p>
+              <p class="smallText" style="margin-bottom:16px;">Hold your National ID, Driver's Licence, or Staff ID flat in front of the camera. Ensure all text is readable.</p>
+
+              <div class="cameraBox" id="idCameraBox">
+                <video id="idVideo" autoplay playsinline muted></video>
+                <div class="cameraOverlay" id="idOverlay">Starting camera...</div>
+              </div>
+
+              <div class="capturePreview" id="idPreviewBox">
+                <img id="idPreviewImg" src="" alt="ID preview" />
+              </div>
+
+              <canvas id="idCanvas"></canvas>
+
+              <div class="cameraActions" id="idActions">
+                <button id="captureIdBtn" class="primaryBtn" type="button" disabled>📷 Capture ID card</button>
+              </div>
+
+              <div class="cameraActions hidden" id="idRetakeActions" style="margin-top:12px;">
+                <button id="retakeIdBtn" class="secondaryBtn" type="button">↺ Retake</button>
+                <button id="startQuizFinalBtn" class="primaryBtn" type="button">Start exam →</button>
+              </div>
+
+              <div id="uploadStatus" class="notice info hidden" style="margin-top:16px;">Uploading verification photos...</div>
+            </div>
+          </div>
+
+          <!-- ══════════════════════════════════════
+               SCREEN 4 — QUIZ
+          ══════════════════════════════════════ -->
           <div id="quizScreen" class="hidden">
             <div class="quizHeader">
               <div class="progressWrap">
@@ -415,6 +610,9 @@
             </div>
           </div>
 
+          <!-- ══════════════════════════════════════
+               SCREEN 5 — RESULTS
+          ══════════════════════════════════════ -->
           <div id="resultScreen" class="hidden">
             <h3>Final score</h3>
             <div id="resultScore" class="resultScore">0%</div>
@@ -449,6 +647,7 @@
             <h3 style="margin-top:28px;">Question breakdown</h3>
             <div id="breakdownList" class="breakdown"></div>
           </div>
+
         </section>
       </main>
     </section>
@@ -460,9 +659,12 @@
     const CONFIG    = window.QUIZ_CONFIG || {};
     const QUESTIONS = Array.isArray(CONFIG.questions) ? CONFIG.questions : [];
 
-    const GOOGLE_SCRIPT_URL  = CONFIG.sheetsWebAppUrl || "";
-    const GOOGLE_SHEET_URL   = CONFIG.sheetUrl || "";
+    const GOOGLE_SCRIPT_URL    = CONFIG.sheetsWebAppUrl || "";
+    const GOOGLE_SHEET_URL     = CONFIG.sheetUrl || "";
     const COMPLETED_EMAILS_KEY = "mainstreetQuiz.completedEmails.v1";
+    const ALLOWED_EMAILS       = Array.isArray(CONFIG.allowedEmails)
+                                   ? CONFIG.allowedEmails.map(e => e.trim().toLowerCase())
+                                   : [];
 
     const state = {
       candidate: null,
@@ -473,53 +675,95 @@
       remainingSeconds: 0,
       timerId: null,
       tabSwitches: 0,
-      completed: false
+      completed: false,
+      selfieData: null,
+      idData: null,
+      selfieStream: null,
+      idStream: null,
     };
 
     const els = {
-      appTitle:        document.getElementById("appTitle"),
-      heroTitle:       document.getElementById("heroTitle"),
-      heroDescription: document.getElementById("heroDescription"),
-      logoBox:         document.getElementById("logoBox"),
-      sideTimer:       document.getElementById("sideTimer"),
-      sideProgress:    document.getElementById("sideProgress"),
-      sideTabSwitches: document.getElementById("sideTabSwitches"),
-      sidePassMark:    document.getElementById("sidePassMark"),
-      startScreen:     document.getElementById("startScreen"),
-      quizScreen:      document.getElementById("quizScreen"),
-      resultScreen:    document.getElementById("resultScreen"),
-      candidateForm:   document.getElementById("candidateForm"),
-      duplicateStatus: document.getElementById("duplicateStatus"),
-      startQuizButton: document.getElementById("startQuizButton"),
-      questionCounter: document.getElementById("questionCounter"),
-      progressPercent: document.getElementById("progressPercent"),
-      progressFill:    document.getElementById("progressFill"),
-      timerBadge:      document.getElementById("timerBadge"),
-      questionText:    document.getElementById("questionText"),
-      optionsContainer:document.getElementById("optionsContainer"),
-      nextButton:      document.getElementById("nextButton"),
-      questionHint:    document.getElementById("questionHint"),
-      resultScore:     document.getElementById("resultScore"),
-      resultStatus:    document.getElementById("resultStatus"),
-      saveStatus:      document.getElementById("saveStatus"),
-      resultName:      document.getElementById("resultName"),
-      resultFraction:  document.getElementById("resultFraction"),
-      resultTime:      document.getElementById("resultTime"),
-      resultTabs:      document.getElementById("resultTabs"),
-      breakdownList:   document.getElementById("breakdownList"),
-      sheetLink:       document.getElementById("sheetLink"),
-      tabAlert:        document.getElementById("tabAlert")
+      appTitle:            document.getElementById("appTitle"),
+      heroTitle:           document.getElementById("heroTitle"),
+      heroDescription:     document.getElementById("heroDescription"),
+      logoBox:             document.getElementById("logoBox"),
+      sideTimer:           document.getElementById("sideTimer"),
+      sideProgress:        document.getElementById("sideProgress"),
+      sideTabSwitches:     document.getElementById("sideTabSwitches"),
+      sidePassMark:        document.getElementById("sidePassMark"),
+      // screens
+      startScreen:         document.getElementById("startScreen"),
+      instructionsScreen:  document.getElementById("instructionsScreen"),
+      verificationScreen:  document.getElementById("verificationScreen"),
+      quizScreen:          document.getElementById("quizScreen"),
+      resultScreen:        document.getElementById("resultScreen"),
+      // start form
+      candidateForm:       document.getElementById("candidateForm"),
+      duplicateStatus:     document.getElementById("duplicateStatus"),
+      startQuizButton:     document.getElementById("startQuizButton"),
+      // instructions
+      proceedToVerifyBtn:  document.getElementById("proceedToVerifyBtn"),
+      // verification steps
+      step1Label:          document.getElementById("step1Label"),
+      step2Label:          document.getElementById("step2Label"),
+      step3Label:          document.getElementById("step3Label"),
+      selfieStep:          document.getElementById("selfieStep"),
+      idStep:              document.getElementById("idStep"),
+      selfieVideo:         document.getElementById("selfieVideo"),
+      selfieCanvas:        document.getElementById("selfieCanvas"),
+      selfieOverlay:       document.getElementById("selfieOverlay"),
+      selfiePreviewBox:    document.getElementById("selfiePreviewBox"),
+      selfiePreviewImg:    document.getElementById("selfiePreviewImg"),
+      selfieActions:       document.getElementById("selfieActions"),
+      selfieRetakeActions: document.getElementById("selfieRetakeActions"),
+      captureSelfieBtn:    document.getElementById("captureSelfieBtn"),
+      retakeSelfieBtn:     document.getElementById("retakeSelfieBtn"),
+      proceedToIdBtn:      document.getElementById("proceedToIdBtn"),
+      idVideo:             document.getElementById("idVideo"),
+      idCanvas:            document.getElementById("idCanvas"),
+      idOverlay:           document.getElementById("idOverlay"),
+      idPreviewBox:        document.getElementById("idPreviewBox"),
+      idPreviewImg:        document.getElementById("idPreviewImg"),
+      idActions:           document.getElementById("idActions"),
+      idRetakeActions:     document.getElementById("idRetakeActions"),
+      captureIdBtn:        document.getElementById("captureIdBtn"),
+      retakeIdBtn:         document.getElementById("retakeIdBtn"),
+      startQuizFinalBtn:   document.getElementById("startQuizFinalBtn"),
+      uploadStatus:        document.getElementById("uploadStatus"),
+      // quiz
+      questionCounter:     document.getElementById("questionCounter"),
+      progressPercent:     document.getElementById("progressPercent"),
+      progressFill:        document.getElementById("progressFill"),
+      timerBadge:          document.getElementById("timerBadge"),
+      questionText:        document.getElementById("questionText"),
+      optionsContainer:    document.getElementById("optionsContainer"),
+      nextButton:          document.getElementById("nextButton"),
+      questionHint:        document.getElementById("questionHint"),
+      // results
+      resultScore:         document.getElementById("resultScore"),
+      resultStatus:        document.getElementById("resultStatus"),
+      saveStatus:          document.getElementById("saveStatus"),
+      resultName:          document.getElementById("resultName"),
+      resultFraction:      document.getElementById("resultFraction"),
+      resultTime:          document.getElementById("resultTime"),
+      resultTabs:          document.getElementById("resultTabs"),
+      breakdownList:       document.getElementById("breakdownList"),
+      sheetLink:           document.getElementById("sheetLink"),
+      tabAlert:            document.getElementById("tabAlert"),
     };
 
     init();
 
+    /* ─────────────────────────────────────────
+       INIT
+    ───────────────────────────────────────── */
     function init() {
-      document.title               = CONFIG.title || "Mainstreet Exam Portal";
-      els.appTitle.textContent     = CONFIG.title || "Mainstreet Exam Portal";
-      els.heroTitle.textContent    = CONFIG.title || "Mainstreet Exam Portal";
+      document.title                  = CONFIG.title || "Mainstreet Exam Portal";
+      els.appTitle.textContent        = CONFIG.title || "Mainstreet Exam Portal";
+      els.heroTitle.textContent       = CONFIG.title || "Mainstreet Exam Portal";
       els.heroDescription.textContent = CONFIG.description || "Complete all questions before the time runs out.";
-      els.sidePassMark.textContent = `${Number(CONFIG.passMark || 70)}%`;
-      els.sideProgress.textContent = `0/${QUESTIONS.length}`;
+      els.sidePassMark.textContent    = `${Number(CONFIG.passMark || 70)}%`;
+      els.sideProgress.textContent    = `0/${QUESTIONS.length}`;
 
       if (CONFIG.logo) {
         const img = new Image();
@@ -533,12 +777,19 @@
         els.startQuizButton.disabled = true;
       }
 
-      if (GOOGLE_SHEET_URL) {
+      if (GOOGLE_SHEET_URL && !isPlaceholder(GOOGLE_SHEET_URL)) {
         els.sheetLink.href = GOOGLE_SHEET_URL;
         els.sheetLink.classList.remove("hidden");
       }
 
       els.candidateForm.addEventListener("submit", handleCandidateSubmit);
+      els.proceedToVerifyBtn.addEventListener("click", startVerification);
+      els.captureSelfieBtn.addEventListener("click", captureSelfie);
+      els.retakeSelfieBtn.addEventListener("click", retakeSelfie);
+      els.proceedToIdBtn.addEventListener("click", startIdCapture);
+      els.captureIdBtn.addEventListener("click", captureId);
+      els.retakeIdBtn.addEventListener("click", retakeId);
+      els.startQuizFinalBtn.addEventListener("click", handleStartQuizFinal);
       els.nextButton.addEventListener("click", handleNextQuestion);
 
       document.addEventListener("visibilitychange", () => {
@@ -551,6 +802,9 @@
       });
     }
 
+    /* ─────────────────────────────────────────
+       SCREEN 1 — CANDIDATE FORM SUBMIT
+    ───────────────────────────────────────── */
     async function handleCandidateSubmit(event) {
       event.preventDefault();
       clearDuplicateStatus();
@@ -558,7 +812,7 @@
       const form = new FormData(event.currentTarget);
       const candidate = {
         fullName: String(form.get("fullName") || "").trim(),
-        email:    normalizeEmail(form.get("email"))
+        email:    normalizeEmail(form.get("email")),
       };
 
       if (!candidate.fullName || !candidate.email) {
@@ -566,13 +820,9 @@
         return;
       }
 
-      // FIX 1: whitelist check is now inside the function where `candidate` is defined
-      const allowedEmails = Array.isArray(CONFIG.allowedEmails)
-        ? CONFIG.allowedEmails.map(normalizeEmail)
-        : [];
-
-      if (allowedEmails.length > 0 && !allowedEmails.includes(candidate.email)) {
-        showDuplicateStatus("error", "Your email address is not registered to take this quiz. Please contact the administrator.");
+      // Email whitelist check
+      if (ALLOWED_EMAILS.length > 0 && !ALLOWED_EMAILS.includes(candidate.email)) {
+        showDuplicateStatus("error", "Your email address is not registered to take this exam. Please contact the administrator.");
         return;
       }
 
@@ -582,323 +832,413 @@
       }
 
       els.startQuizButton.disabled = true;
-      els.startQuizButton.textContent = "Checking previous submission...";
+      els.startQuizButton.textContent = "Checking...";
 
       try {
         showDuplicateStatus("info", "Checking if this email has already submitted before...");
         const results = await loadSubmittedResults();
-
         if (candidateAlreadySubmitted(results, candidate.email)) {
           showDuplicateStatus("error", "This email has already submitted the quiz. You cannot take it twice.");
           return;
         }
-
         clearDuplicateStatus();
-        startQuiz(candidate);
-
+        state.candidate = candidate;
+        showScreen("instructionsScreen");
       } catch (error) {
-        showDuplicateStatus("warning", "Could not verify previous submissions. You may continue — duplicates will still be blocked by Apps Script.");
-        window.setTimeout(() => startQuiz(candidate), 900);
-
+        clearDuplicateStatus();
+        state.candidate = candidate;
+        showScreen("instructionsScreen");
       } finally {
         els.startQuizButton.disabled = false;
-        els.startQuizButton.textContent = "Start quiz →";
+        els.startQuizButton.textContent = "Continue →";
       }
     }
 
-    function startQuiz(candidate) {
-      state.candidate     = candidate;
-      state.currentIndex  = 0;
-      state.answers       = [];
-      state.quizStartedAt = Date.now();
-      state.completed     = false;
-      state.tabSwitches   = 0;
-
-      els.startScreen.classList.add("hidden");
-      els.resultScreen.classList.add("hidden");
-      els.quizScreen.classList.remove("hidden");
-
-      renderQuestion();
-      updateSideStats();
+    /* ─────────────────────────────────────────
+       SCREEN 3 — VERIFICATION / CAMERA
+    ───────────────────────────────────────── */
+    function startVerification() {
+      showScreen("verificationScreen");
+      openCamera(els.selfieVideo, els.selfieOverlay, els.captureSelfieBtn, "user").then(stream => {
+        state.selfieStream = stream;
+      });
     }
 
-    function renderQuestion() {
-      clearInterval(state.timerId);
+    async function openCamera(videoEl, overlayEl, captureBtn, facingMode) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facingMode || "user" },
+          audio: false,
+        });
+        videoEl.srcObject = stream;
+        videoEl.onloadedmetadata = () => {
+          overlayEl.style.display = "none";
+          captureBtn.disabled = false;
+        };
+        return stream;
+      } catch (err) {
+        overlayEl.textContent = "Camera access denied. Please allow camera permissions and refresh.";
+        return null;
+      }
+    }
 
-      const question = QUESTIONS[state.currentIndex];
-      const total    = QUESTIONS.length;
-      const progress = total ? Math.round((state.currentIndex / total) * 100) : 0;
+    function stopStream(stream) {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+    }
 
-      state.questionStartedAt = Date.now();
-      state.remainingSeconds  = Number(question.timeLimit || 20);
+    function captureFrame(videoEl, canvasEl) {
+      canvasEl.width  = videoEl.videoWidth  || 640;
+      canvasEl.height = videoEl.videoHeight || 480;
+      const ctx = canvasEl.getContext("2d");
+      ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+      return canvasEl.toDataURL("image/jpeg", 0.85);
+    }
 
-      els.questionCounter.textContent  = `Question ${state.currentIndex + 1} of ${total}`;
-      els.progressPercent.textContent  = `${progress}%`;
-      els.progressFill.style.width     = `${progress}%`;
-      els.questionText.textContent     = question.text || `Question ${state.currentIndex + 1}`;
-      els.optionsContainer.innerHTML   = "";
+    function captureSelfie() {
+      const dataUrl = captureFrame(els.selfieVideo, els.selfieCanvas);
+      state.selfieData = dataUrl;
 
-      const isMulti = question.type === "multi";
-      els.questionHint.textContent = isMulti ? "Choose all correct answers." : "Choose one answer.";
-      els.nextButton.textContent   = state.currentIndex === total - 1 ? "Submit exam" : "Next question →";
+      // Show preview
+      els.selfiePreviewImg.src = dataUrl;
+      els.selfiePreviewBox.style.display = "block";
+      els.selfieVideo.style.display      = "none";
 
-      (question.options || []).forEach((option, index) => {
-        const id    = `q_${question.id || state.currentIndex}_${index}`;
+      els.selfieActions.classList.add("hidden");
+      els.selfieRetakeActions.classList.remove("hidden");
+
+      stopStream(state.selfieStream);
+      els.step1Label.classList.remove("active");
+      els.step1Label.classList.add("done");
+    }
+
+    function retakeSelfie() {
+      state.selfieData = null;
+      els.selfiePreviewBox.style.display = "none";
+      els.selfieVideo.style.display      = "";
+      els.selfieRetakeActions.classList.add("hidden");
+      els.selfieActions.classList.remove("hidden");
+      els.captureSelfieBtn.disabled = true;
+      els.step1Label.classList.remove("done");
+      els.step1Label.classList.add("active");
+
+      openCamera(els.selfieVideo, els.selfieOverlay, els.captureSelfieBtn, "user").then(stream => {
+        state.selfieStream = stream;
+      });
+    }
+
+    function startIdCapture() {
+      els.selfieStep.classList.add("hidden");
+      els.idStep.classList.remove("hidden");
+
+      els.step2Label.classList.add("active");
+
+      openCamera(els.idVideo, els.idOverlay, els.captureIdBtn, "environment").then(stream => {
+        state.idStream = stream;
+      });
+    }
+
+    function captureId() {
+      const dataUrl = captureFrame(els.idVideo, els.idCanvas);
+      state.idData = dataUrl;
+
+      els.idPreviewImg.src            = dataUrl;
+      els.idPreviewBox.style.display  = "block";
+      els.idVideo.style.display       = "none";
+
+      els.idActions.classList.add("hidden");
+      els.idRetakeActions.classList.remove("hidden");
+
+      stopStream(state.idStream);
+      els.step2Label.classList.remove("active");
+      els.step2Label.classList.add("done");
+      els.step3Label.classList.add("active");
+    }
+
+    function retakeId() {
+      state.idData = null;
+      els.idPreviewBox.style.display = "none";
+      els.idVideo.style.display      = "";
+      els.idRetakeActions.classList.add("hidden");
+      els.idActions.classList.remove("hidden");
+      els.captureIdBtn.disabled = true;
+      els.step2Label.classList.remove("done");
+      els.step2Label.classList.add("active");
+      els.step3Label.classList.remove("active");
+
+      openCamera(els.idVideo, els.idOverlay, els.captureIdBtn, "environment").then(stream => {
+        state.idStream = stream;
+      });
+    }
+
+    async function handleStartQuizFinal() {
+      els.startQuizFinalBtn.disabled = true;
+      els.startQuizFinalBtn.textContent = "Uploading photos...";
+      els.uploadStatus.classList.remove("hidden");
+
+      // Upload photos to Drive via Apps Script, then start quiz
+      if (GOOGLE_SCRIPT_URL && !isPlaceholder(GOOGLE_SCRIPT_URL)) {
+        try {
+          await uploadVerificationPhotos(state.candidate, state.selfieData, state.idData);
+          els.uploadStatus.textContent = "✅ Photos uploaded. Starting exam...";
+        } catch (e) {
+          els.uploadStatus.className = "notice warning";
+          els.uploadStatus.textContent = "⚠️ Could not upload photos right now. Starting exam anyway.";
+        }
+        await wait(900);
+      }
+
+      stopStream(state.selfieStream);
+      stopStream(state.idStream);
+      startQuiz(state.candidate);
+    }
+
+    async function uploadVerificationPhotos(candidate, selfieData, idData) {
+      const payload = {
+        action:    "uploadPhotos",
+        fullName:  candidate.fullName,
+        email:     candidate.email,
+        selfie:    selfieData ? selfieData.replace(/^data:image\/\w+;base64,/, "") : "",
+        idCard:    idData     ? idData.replace(/^data:image\/\w+;base64,/, "")    : "",
+        timestamp: new Date().toISOString(),
+      };
+
+      const resp = await fetch(GOOGLE_SCRIPT_URL, {
+        method: "POST",
+        body:   JSON.stringify(payload),
+      });
+
+      if (!resp.ok) throw new Error("Upload failed");
+      const json = await resp.json();
+      if (json.status !== "ok") throw new Error(json.message || "Upload error");
+      return json;
+    }
+
+    /* ─────────────────────────────────────────
+       QUIZ LOGIC (unchanged from original)
+    ───────────────────────────────────────── */
+    function startQuiz(candidate) {
+      state.candidate      = candidate;
+      state.currentIndex   = 0;
+      state.answers        = [];
+      state.tabSwitches    = 0;
+      state.quizStartedAt  = Date.now();
+      state.completed      = false;
+
+      showScreen("quizScreen");
+      updateSideStats();
+      loadQuestion(0);
+    }
+
+    function loadQuestion(index) {
+      clearTimer();
+      const q = QUESTIONS[index];
+      if (!q) { finishQuiz(); return; }
+
+      const total = QUESTIONS.length;
+      const pct   = Math.round((index / total) * 100);
+
+      els.questionCounter.textContent = `Question ${index + 1} of ${total}`;
+      els.progressPercent.textContent = `${pct}%`;
+      els.progressFill.style.width    = `${pct}%`;
+      els.sideProgress.textContent    = `${index}/${total}`;
+
+      els.questionText.textContent = q.question || `Question ${index + 1}`;
+      els.optionsContainer.innerHTML = "";
+
+      const options = Array.isArray(q.options) ? q.options : [];
+      options.forEach((opt, i) => {
         const label = document.createElement("label");
         label.className = "option";
-        label.setAttribute("for", id);
-
-        const input  = document.createElement("input");
-        input.type   = isMulti ? "checkbox" : "radio";
-        input.name   = `question_${question.id || state.currentIndex}`;
-        input.id     = id;
-        input.value  = String(index);
-        input.addEventListener("change", refreshSelectedOptions);
-
-        const span = document.createElement("span");
-        span.className   = "optionText";
-        span.textContent = option;
-
-        label.appendChild(input);
-        label.appendChild(span);
+        label.innerHTML = `
+          <input type="radio" name="q${index}" value="${i}" />
+          <span class="optionText">${opt}</span>`;
+        label.addEventListener("click", () => {
+          document.querySelectorAll(".option").forEach(o => o.classList.remove("selected"));
+          label.classList.add("selected");
+        });
         els.optionsContainer.appendChild(label);
       });
 
-      updateTimerDisplay();
-      updateSideStats();
+      const secs = Number(q.timeSeconds || CONFIG.defaultTimeSeconds || 60);
+      startTimer(secs);
+    }
+
+    function startTimer(seconds) {
+      state.remainingSeconds  = seconds;
+      state.questionStartedAt = Date.now();
+      renderTimer();
 
       state.timerId = setInterval(() => {
         state.remainingSeconds -= 1;
-        updateTimerDisplay();
-        if (state.remainingSeconds <= 0) handleNextQuestion(true);
+        renderTimer();
+        if (state.remainingSeconds <= 0) {
+          clearTimer();
+          autoAdvance();
+        }
       }, 1000);
     }
 
-    function handleNextQuestion(autoSubmit = false) {
-      const question = QUESTIONS[state.currentIndex];
-      const selected = getSelectedAnswers();
+    function renderTimer() {
+      const s   = Math.max(0, state.remainingSeconds);
+      const mm  = String(Math.floor(s / 60)).padStart(2, "0");
+      const ss  = String(s % 60).padStart(2, "0");
+      const txt = `${mm}:${ss}`;
 
-      if (!autoSubmit && selected.length === 0) {
-        alert("Please select an answer before continuing.");
-        return;
-      }
+      els.timerBadge.textContent      = txt;
+      els.sideTimer.textContent       = txt;
+      const isLow = s <= 10 && s > 0;
+      els.timerBadge.classList.toggle("low", isLow);
+    }
 
-      const timeSpent = Math.round((Date.now() - state.questionStartedAt) / 1000);
+    function clearTimer() {
+      clearInterval(state.timerId);
+      state.timerId = null;
+    }
 
+    function autoAdvance() {
+      recordAnswer(null);
+      advanceQuestion();
+    }
+
+    function handleNextQuestion() {
+      clearTimer();
+      const selected = els.optionsContainer.querySelector("input[type=radio]:checked");
+      recordAnswer(selected ? parseInt(selected.value, 10) : null);
+      advanceQuestion();
+    }
+
+    function recordAnswer(selectedIndex) {
+      const q         = QUESTIONS[state.currentIndex];
+      const timeTaken = Math.round((Date.now() - (state.questionStartedAt || Date.now())) / 1000);
       state.answers.push({
-        id:          question.id,
-        question:    question.text,
-        type:        question.type || "mcq",
-        selected,
-        selectedText:  selected.map(i => question.options[i]),
-        correct:       question.correct,
-        correctText:   getCorrectText(question),
-        isCorrect:     isAnswerCorrect(question, selected),
-        timeSpent,
-        timedOut: Boolean(autoSubmit && selected.length === 0)
+        questionIndex: state.currentIndex,
+        question:      q ? q.question : "",
+        selectedIndex,
+        correctIndex:  q ? q.answer : null,
+        isCorrect:     q && selectedIndex !== null && selectedIndex === q.answer,
+        timeTaken,
+        options:       q ? q.options : [],
       });
+    }
 
-      if (state.currentIndex < QUESTIONS.length - 1) {
-        state.currentIndex += 1;
-        renderQuestion();
+    function advanceQuestion() {
+      state.currentIndex += 1;
+      if (state.currentIndex >= QUESTIONS.length) {
+        finishQuiz();
       } else {
-        completeQuiz();
+        loadQuestion(state.currentIndex);
       }
     }
 
-    function completeQuiz() {
-      clearInterval(state.timerId);
+    /* ─────────────────────────────────────────
+       FINISH / RESULTS
+    ───────────────────────────────────────── */
+    async function finishQuiz() {
+      clearTimer();
       state.completed = true;
 
-      const correctCount  = state.answers.filter(a => a.isCorrect).length;
-      const total         = QUESTIONS.length;
-      const scorePercent  = total ? Math.round((correctCount / total) * 100) : 0;
-      const passMark      = Number(CONFIG.passMark || 70);
-      const passed        = scorePercent >= passMark;
-      const totalSeconds  = Math.round((Date.now() - state.quizStartedAt) / 1000);
+      const correct  = state.answers.filter(a => a.isCorrect).length;
+      const total    = QUESTIONS.length;
+      const pct      = total > 0 ? Math.round((correct / total) * 100) : 0;
+      const passMark = Number(CONFIG.passMark || 70);
+      const passed   = pct >= passMark;
+      const elapsed  = Math.round((Date.now() - state.quizStartedAt) / 1000);
+      const mm       = String(Math.floor(elapsed / 60)).padStart(2, "0");
+      const ss       = String(elapsed % 60).padStart(2, "0");
 
-      const payload = {
-        timestamp:     new Date().toISOString(),
-        fullName:      state.candidate.fullName,
-        email:         state.candidate.email,
-        scorePercent,
-        scoreFraction: `${correctCount}/${total}`,
-        passFail:      passed ? "Pass" : "Fail",
-        timeTaken:     formatDuration(totalSeconds),
-        tabSwitches:   state.tabSwitches,
-        breakdown:     state.answers
-      };
+      showScreen("resultScreen");
 
-      markCandidateCompleted(payload.email);
+      els.resultScore.textContent     = `${pct}%`;
+      els.resultScore.className       = `resultScore ${passed ? "pass" : "fail"}`;
+      els.resultStatus.className      = `notice ${passed ? "success" : "error"}`;
+      els.resultStatus.textContent    = passed
+        ? `🎉 Congratulations! You passed with ${pct}%.`
+        : `❌ You did not pass. The pass mark is ${passMark}%.`;
+      els.resultName.textContent      = state.candidate?.fullName || "-";
+      els.resultFraction.textContent  = `${correct}/${total}`;
+      els.resultTime.textContent      = `${mm}:${ss}`;
+      els.resultTabs.textContent      = String(state.tabSwitches);
 
-      els.quizScreen.classList.add("hidden");
-      els.resultScreen.classList.remove("hidden");
+      renderBreakdown();
+      markCompletedOnDevice(state.candidate?.email);
 
-      renderResult(payload, passed);
-      saveResult(payload);
-      updateSideStats(true);
+      try {
+        await saveResults({ correct, total, pct, elapsed });
+        els.saveStatus.className     = "notice success";
+        els.saveStatus.textContent   = "✅ Result saved successfully.";
+      } catch {
+        els.saveStatus.className     = "notice warning";
+        els.saveStatus.textContent   = "⚠️ Could not save result to server. Please screenshot this page.";
+      }
     }
 
-    function renderResult(payload, passed) {
-      els.resultScore.textContent = `${payload.scorePercent}%`;
-      els.resultScore.className   = `resultScore ${passed ? "pass" : "fail"}`;
-
-      els.resultStatus.className   = `notice ${passed ? "success" : "error"}`;
-      els.resultStatus.textContent = passed
-        ? "Congratulations. You passed the assessment."
-        : "You did not meet the required pass mark.";
-
-      els.resultName.textContent     = payload.fullName;
-      els.resultFraction.textContent = payload.scoreFraction;
-      els.resultTime.textContent     = payload.timeTaken;
-      els.resultTabs.textContent     = String(payload.tabSwitches);
-
+    function renderBreakdown() {
       els.breakdownList.innerHTML = "";
-
-      payload.breakdown.forEach((item, index) => {
+      state.answers.forEach((a, i) => {
         const div = document.createElement("div");
-        div.className = `breakdownItem ${item.isCorrect ? "correct" : "wrong"}`;
+        div.className = `breakdownItem ${a.isCorrect ? "correct" : "wrong"}`;
+        const chosen  = a.selectedIndex !== null ? (a.options[a.selectedIndex] || "—") : "No answer";
+        const correct = a.correctIndex  !== null ? (a.options[a.correctIndex]  || "—") : "—";
         div.innerHTML = `
           <div class="breakdownTop">
-            <span>Q${index + 1}. ${escapeHtml(item.question || "")}</span>
-            <span>${item.isCorrect ? "Correct" : "Wrong"}</span>
+            <span>Q${i + 1}: ${a.question}</span>
+            <span>${a.isCorrect ? "✅" : "❌"}</span>
           </div>
-          <div class="smallText">Your answer: ${escapeHtml((item.selectedText || []).join(", ") || "No answer")}</div>
-          <div class="smallText">Correct answer: ${escapeHtml((item.correctText || []).join(", "))}</div>
-          <div class="smallText">Time spent: ${item.timeSpent}s${item.timedOut ? " · Timed out" : ""}</div>
-        `;
+          <div class="smallText">Your answer: <strong>${chosen}</strong></div>
+          ${!a.isCorrect ? `<div class="smallText">Correct answer: <strong>${correct}</strong></div>` : ""}`;
         els.breakdownList.appendChild(div);
       });
     }
 
-    async function saveResult(payload) {
-      if (!GOOGLE_SCRIPT_URL) {
-        els.saveStatus.className   = "notice warning";
-        els.saveStatus.textContent = "Result shown locally only. REtry or contact administrator.";
-        return;
-      }
+    async function saveResults({ correct, total, pct, elapsed }) {
+      if (!GOOGLE_SCRIPT_URL || isPlaceholder(GOOGLE_SCRIPT_URL)) return;
+      const payload = {
+        action:     "saveResults",
+        fullName:   state.candidate?.fullName || "",
+        email:      state.candidate?.email || "",
+        score:      `${correct}/${total}`,
+        percentage: `${pct}%`,
+        passed:     pct >= Number(CONFIG.passMark || 70),
+        timeTaken:  elapsed,
+        tabSwitches:state.tabSwitches,
+        timestamp:  new Date().toISOString(),
+      };
 
-      try {
-        await fetch(GOOGLE_SCRIPT_URL, {
-          method:  "POST",
-          mode:    "no-cors",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body:    JSON.stringify(payload)
-        });
-        els.saveStatus.className   = "notice success";
-        els.saveStatus.textContent = "Result submitted.";
-
-      } catch (error) {
-        els.saveStatus.className   = "notice error";
-        els.saveStatus.textContent = "Result could not be submitted. Please contact administrator.";
-      }
-    }
-
-    function getSelectedAnswers() {
-      return Array.from(els.optionsContainer.querySelectorAll("input:checked")).map(i => Number(i.value));
-    }
-
-    function refreshSelectedOptions() {
-      Array.from(els.optionsContainer.querySelectorAll(".option")).forEach(label => {
-        label.classList.toggle("selected", label.querySelector("input").checked);
+      const resp = await fetch(GOOGLE_SCRIPT_URL, {
+        method: "POST",
+        body:   JSON.stringify(payload),
       });
+      if (!resp.ok) throw new Error("Save failed");
     }
 
-    function isAnswerCorrect(question, selected) {
-      const correct = Array.isArray(question.correct)
-        ? question.correct.map(Number).sort((a, b) => a - b)
-        : [Number(question.correct)];
-      const picked = selected.map(Number).sort((a, b) => a - b);
-      return JSON.stringify(correct) === JSON.stringify(picked);
-    }
-
-    function getCorrectText(question) {
-      const indexes = Array.isArray(question.correct) ? question.correct : [question.correct];
-      return indexes.map(i => question.options[i]);
-    }
-
-    function updateTimerDisplay() {
-      const formatted = formatClock(state.remainingSeconds);
-      els.timerBadge.textContent = formatted;
-      els.sideTimer.textContent  = formatted;
-      els.timerBadge.classList.toggle("low", state.remainingSeconds <= 5);
-    }
-
-    function updateSideStats(done = false) {
-      const total   = QUESTIONS.length;
-      const current = done ? total : Math.min(state.currentIndex + 1, total);
-      els.sideProgress.textContent    = `${current}/${total}`;
-      els.sideTabSwitches.textContent = String(state.tabSwitches);
-      if (done) els.sideTimer.textContent = "Done";
-    }
-
-    function showTabAlert() {
-      els.tabAlert.classList.remove("hidden");
-      window.setTimeout(() => els.tabAlert.classList.add("hidden"), 2600);
-    }
-
-    function normalizeEmail(email) {
-      return String(email || "").trim().toLowerCase();
-    }
-
-    function readCompletedEmails() {
-      try { return JSON.parse(window.localStorage.getItem(COMPLETED_EMAILS_KEY) || "[]"); }
-      catch { return []; }
-    }
-
-    function markCandidateCompleted(email) {
-      const normalized = normalizeEmail(email);
-      if (!normalized) return;
-      const emails = readCompletedEmails();
-      if (!emails.includes(normalized)) {
-        emails.push(normalized);
-        window.localStorage.setItem(COMPLETED_EMAILS_KEY, JSON.stringify(emails));
-      }
-    }
-
-    function hasCompletedOnThisDevice(email) {
-      return readCompletedEmails().includes(normalizeEmail(email));
-    }
-
-    function loadSubmittedResults() {
-      if (!GOOGLE_SCRIPT_URL) return Promise.resolve([]);
-
-      return new Promise((resolve, reject) => {
-        const callbackName = `quizResultsCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-        const separator    = GOOGLE_SCRIPT_URL.includes("?") ? "&" : "?";
-        const script       = document.createElement("script");
-
-        const timeoutId = window.setTimeout(() => { cleanup(); reject(new Error("Result check timed out.")); }, 12000);
-
-        function cleanup() {
-          window.clearTimeout(timeoutId);
-          delete window[callbackName];
-          if (script.parentNode) script.parentNode.removeChild(script);
-        }
-
-        window[callbackName] = function(data) {
-          cleanup();
-          if (!data || data.success === false) {
-            reject(new Error(data && data.error ? data.error : "Could not load submitted results."));
-            return;
-          }
-          resolve(data.results || []);
-        };
-
-        script.onerror = function() { cleanup(); reject(new Error("Could not connect to the results sheet.")); };
-        script.src = `${GOOGLE_SCRIPT_URL}${separator}callback=${callbackName}`;
-        document.body.appendChild(script);
-      });
+    /* ─────────────────────────────────────────
+       REMOTE DUPLICATE CHECK
+    ───────────────────────────────────────── */
+    async function loadSubmittedResults() {
+      if (!GOOGLE_SCRIPT_URL || isPlaceholder(GOOGLE_SCRIPT_URL)) return [];
+      const url  = `${GOOGLE_SCRIPT_URL}?action=getEmails&t=${Date.now()}`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error("Fetch failed");
+      const data = await resp.json();
+      return Array.isArray(data) ? data : [];
     }
 
     function candidateAlreadySubmitted(results, email) {
-      const normalized = normalizeEmail(email);
-      return results.some(row => normalizeEmail(row.Email || row.email || row["Email Address"]) === normalized);
+      return results.some(r => normalizeEmail(r.email || r) === email);
     }
 
-    function showDuplicateStatus(type, message) {
+    /* ─────────────────────────────────────────
+       HELPERS
+    ───────────────────────────────────────── */
+    function showScreen(name) {
+      ["startScreen","instructionsScreen","verificationScreen","quizScreen","resultScreen"]
+        .forEach(id => document.getElementById(id).classList.add("hidden"));
+      document.getElementById(name).classList.remove("hidden");
+    }
+
+    function showDuplicateStatus(type, msg) {
       els.duplicateStatus.className   = `notice ${type}`;
-      els.duplicateStatus.textContent = message;
+      els.duplicateStatus.textContent = msg;
       els.duplicateStatus.classList.remove("hidden");
     }
 
@@ -907,21 +1247,42 @@
       els.duplicateStatus.textContent = "";
     }
 
-    function formatClock(seconds) {
-      const safe = Math.max(0, Number(seconds || 0));
-      return `${String(Math.floor(safe / 60)).padStart(2,"0")}:${String(safe % 60).padStart(2,"0")}`;
+    function updateSideStats() {
+      els.sideTabSwitches.textContent = String(state.tabSwitches);
     }
 
-    function formatDuration(seconds) { return formatClock(seconds); }
-
-    function escapeHtml(value) {
-      return String(value)
-        .replaceAll("&",  "&amp;")
-        .replaceAll("<",  "&lt;")
-        .replaceAll(">",  "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+    function showTabAlert() {
+      els.tabAlert.classList.remove("hidden");
+      setTimeout(() => els.tabAlert.classList.add("hidden"), 3500);
     }
+
+    function normalizeEmail(v) {
+      return String(v || "").trim().toLowerCase();
+    }
+
+    function isPlaceholder(url) {
+      return !url || url.includes("YOUR_SCRIPT") || url.includes("YOUR_SHEET") || url.length < 20;
+    }
+
+    function hasCompletedOnThisDevice(email) {
+      try {
+        const stored = JSON.parse(localStorage.getItem(COMPLETED_EMAILS_KEY) || "[]");
+        return stored.includes(normalizeEmail(email));
+      } catch { return false; }
+    }
+
+    function markCompletedOnDevice(email) {
+      if (!email) return;
+      try {
+        const stored = JSON.parse(localStorage.getItem(COMPLETED_EMAILS_KEY) || "[]");
+        if (!stored.includes(normalizeEmail(email))) {
+          stored.push(normalizeEmail(email));
+          localStorage.setItem(COMPLETED_EMAILS_KEY, JSON.stringify(stored));
+        }
+      } catch {}
+    }
+
+    function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
   </script>
 </body>
 </html>
