@@ -10,7 +10,7 @@ const QUIZ_CONFIG = {
 allowedEmails:[
 "Juchenna@mainstreetmfb.com",
 "eguuchennajohn@gmail.com"
-]
+],
 
   questions: [
     {
