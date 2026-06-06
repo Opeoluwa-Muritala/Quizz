@@ -949,57 +949,29 @@
       });
     }
 
-    async function handleCandidateSubmit(event) {
-      event.preventDefault();
+async function handleCandidateSubmit(event) {
+  event.preventDefault();
+  clearDuplicateStatus();
 
-      clearDuplicateStatus();
+  const form = new FormData(event.currentTarget);
+  const candidate = {
+    fullName: String(form.get("fullName") || "").trim(),
+    email: normalizeEmail(form.get("email"))
+  };
 
-      const form = new FormData(event.currentTarget);
+  if (!candidate.fullName || !candidate.email) {
+    showDuplicateStatus("error", "Please enter your full name and email address.");
+    return;
+  }
 
-      const candidate = {
-        fullName: String(form.get("fullName") || "").trim(),
-        email: normalizeEmail(form.get("email"))
-      };
-
-      if (!candidate.fullName || !candidate.email) {
-        showDuplicateStatus("error", "Please enter your full name and email address.");
-        return;
-      }
-
-      if (hasCompletedOnThisDevice(candidate.email)) {
-        showDuplicateStatus("error", "This email has already completed the quiz on this device.");
-        return;
-      }
-
-      els.startQuizButton.disabled = true;
-      els.startQuizButton.textContent = "Checking previous submission...";
-
-      try {
-        showDuplicateStatus("info", "Checking if this email has already submitted before...");
-
-        const results = await loadSubmittedResults();
-
-        if (candidateAlreadySubmitted(results, candidate.email)) {
-          showDuplicateStatus("error", "This email has already submitted the quiz. You cannot take it twice.");
-          return;
-        }
-
-        clearDuplicateStatus();
-        startQuiz(candidate);
-
-      } catch (error) {
-        showDuplicateStatus(
-          "warning",
-          "Could not verify previous submissions before starting. You may continue, but duplicate emails should still be blocked by Apps Script if you updated appsscript.gs."
-        );
-
-        window.setTimeout(() => startQuiz(candidate), 900);
-
-      } finally {
-        els.startQuizButton.disabled = false;
-        els.startQuizButton.textContent = "Start quiz →";
-      }
-    }
+  // ✅ Whitelist check — now in the right place
+  const allowedEmails = Array.isArray(CONFIG.allowedEmails)
+    ? CONFIG.allowedEmails.map(normalizeEmail)
+    : [];
+  if (allowedEmails.length > 0 && !allowedEmails.includes(candidate.email)) {
+    showDuplicateStatus("error", "Your email address is not registered to take this quiz. Please contact the administrator.");
+    return;
+  }
 
     function startQuiz(candidate) {
       state.candidate = candidate;
@@ -1350,12 +1322,6 @@
       });
     }
 
-// Email whitelist check
-const allowedEmails = Array.isArray(CONFIG.allowedEmails) ? CONFIG.allowedEmails.map(normalizeEmail) : [];
-if (allowedEmails.length > 0 && !allowedEmails.includes(candidate.email)) {
-  showDuplicateStatus("error", "Your email address is not registered to take this quiz. Please contact the administrator.");
-  return;
-}
     function showDuplicateStatus(type, message) {
       els.duplicateStatus.className = `notice ${type}`;
       els.duplicateStatus.textContent = message;
@@ -1368,10 +1334,7 @@ if (allowedEmails.length > 0 && !allowedEmails.includes(candidate.email)) {
     }
 
     function isPlaceholder(value) {
-      return !value ||
-        value.includes("https://script.google.com/macros/s/AKfycbxPRFsKC8-FBvnjXAGSyXyP9pq95faOhVfiOCTVQTtGeHAl7_isMm0Bnf3uD5e-eai-/exec") ||
-        value.includes("muritalaopeoluwa10@gmail.com") ||
-        value.includes("https://docs.google.com/spreadsheets/d/1vkdOHo9Rrid2CnQOXHPYIRPSE_B84VRM-CA7yw5OAxk/edit?usp=sharing");
+       return !value || value.trim() === "";
     }
 
     function formatClock(seconds) {
