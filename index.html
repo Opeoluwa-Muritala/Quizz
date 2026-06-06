@@ -774,7 +774,7 @@
     async function saveResult(payload) {
       if (!GOOGLE_SCRIPT_URL) {
         els.saveStatus.className   = "notice warning";
-        els.saveStatus.textContent = "Result shown locally only. Add your Apps Script /exec URL in config.js to save to Google Sheets.";
+        els.saveStatus.textContent = "Result shown locally only. REtry or contact administrator.";
         return;
       }
 
@@ -786,11 +786,11 @@
           body:    JSON.stringify(payload)
         });
         els.saveStatus.className   = "notice success";
-        els.saveStatus.textContent = "Result submitted. Check your Google Sheet to confirm it was saved.";
+        els.saveStatus.textContent = "Result submitted.";
 
       } catch (error) {
         els.saveStatus.className   = "notice error";
-        els.saveStatus.textContent = "Result could not be submitted. Please check the Apps Script URL and deployment permissions.";
+        els.saveStatus.textContent = "Result could not be submitted. Please contact administrator.";
       }
     }
 
