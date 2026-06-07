@@ -980,6 +980,8 @@
       completed:          false,
       selfieData:         null,
       idData:             null,
+      selfieUrl:          "",
+      idUrl:              "",
       selfieStream:       null,
       idStream:           null,
       confirmHoldTimer:   null,
@@ -1292,12 +1294,17 @@
 
       if (GOOGLE_SCRIPT_URL && !isPlaceholder(GOOGLE_SCRIPT_URL)) {
         try {
-          await uploadPhotos(state.candidate, state.selfieData, state.idData);
+          const uploadResult = await uploadPhotos(state.candidate, state.selfieData, state.idData);
+          state.selfieUrl = uploadResult.selfieUrl || "";
+          state.idUrl = uploadResult.idUrl || "";
           els.uploadStatus.className   = "notice success";
           els.uploadStatus.textContent = "✅ Photos uploaded successfully.";
-        } catch {
-          els.uploadStatus.className   = "notice warning";
-          els.uploadStatus.textContent = "⚠️ Photo upload failed. Proceeding anyway.";
+        } catch (error) {
+          els.uploadStatus.className   = "notice error";
+          els.uploadStatus.textContent = error.message || "Photo upload failed. Please try again.";
+          els.verificationContinueBtn.disabled = false;
+          els.verificationContinueBtn.textContent = "Continue to instructions";
+          return;
         }
         await wait(700);
       }
@@ -1319,7 +1326,8 @@
       const resp = await fetch(GOOGLE_SCRIPT_URL, { method: "POST", body: JSON.stringify(payload) });
       if (!resp.ok) throw new Error("Upload failed");
       const json = await resp.json();
-      if (!json.success && json.status !== "ok") throw new Error("Upload error");
+      if (!json.success && json.status !== "ok") throw new Error(json.error || json.message || "Upload error");
+      return json;
     }
 
     /* ══════════════════════════════════════════════════════════
@@ -1631,6 +1639,27 @@
     /* ══════════════════════════════════════════════════════════
        NETWORK — SAVE RESULTS
     ══════════════════════════════════════════════════════════ */
+    function buildQuestionBreakdown() {
+      return QUESTIONS.map((q, index) => {
+        const answer = state.answers[index] || {};
+        const options = Array.isArray(q.options) ? q.options : [];
+        const selectedIndex = answer.selectedIndex;
+        const correctIndex = answer.correctIndex ?? qAnswer(q);
+        return {
+          questionNumber: index + 1,
+          questionId: q.id ?? index + 1,
+          section: qSection(q),
+          question: qText(q),
+          selectedIndex,
+          selectedAnswer: selectedIndex === null || selectedIndex === undefined ? "" : String(options[selectedIndex] ?? ""),
+          correctIndex,
+          correctAnswer: correctIndex === null || correctIndex === undefined ? "" : String(options[correctIndex] ?? ""),
+          isCorrect: Boolean(answer.isCorrect),
+          timeTakenSeconds: Number(answer.timeTaken || 0),
+        };
+      });
+    }
+
     async function saveResults({ correct, total, pct, elapsed, mm, ss }) {
       if (!GOOGLE_SCRIPT_URL || isPlaceholder(GOOGLE_SCRIPT_URL)) return;
       const payload = {
@@ -1643,6 +1672,11 @@
         passFail:      pct >= Number(CONFIG.passMark || 70) ? "PASS" : "FAIL",
         timeTaken:     `${mm}:${ss}`,
         tabSwitches:   state.tabSwitches,
+        breakdown:     buildQuestionBreakdown(),
+        selfieUrl:     state.selfieUrl || "",
+        idUrl:         state.idUrl || "",
+        selfie:        !state.selfieUrl && state.selfieData ? state.selfieData.replace(/^data:image\/\w+;base64,/, "") : "",
+        idCard:        !state.idUrl && state.idData ? state.idData.replace(/^data:image\/\w+;base64,/, "") : "",
       };
       const resp = await fetch(GOOGLE_SCRIPT_URL, { method: "POST", body: JSON.stringify(payload) });
       if (!resp.ok) throw new Error("Save failed");
