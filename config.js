@@ -20,7 +20,7 @@ allowedEmails:[
       text: "A company’s revenue increased from ₦4,000,000 to ₦5,200,000. What is the percentage increase?",
       options: ["20%", "25%", "30%", "35%"],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 2,
@@ -28,7 +28,7 @@ allowedEmails:[
       text: "If ₦48,000 is invested at 10% simple interest for 2 years, what is the total amount?",
       options: ["₦52,800", "₦57,600", "₦58,000", "₦60,000"],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 3,
@@ -36,7 +36,7 @@ allowedEmails:[
       text: "Solve for x: 3x - 9 = 18",
       options: ["7", "8", "9", "10"],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 4,
@@ -44,7 +44,7 @@ allowedEmails:[
       text: "A trader bought a product for ₦25,000 and sold it for ₦31,250. Calculate the profit percentage.",
       options: ["20%", "25%", "30%", "35%"],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 5,
@@ -52,7 +52,7 @@ allowedEmails:[
       text: "If 8 workers complete a task in 15 days, how many days will 12 workers take?",
       options: ["8 days", "10 days", "12 days", "14 days"],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 6,
@@ -60,7 +60,7 @@ allowedEmails:[
       text: "Find the missing number: 5, 10, 20, 40, ___",
       options: ["60", "70", "80", "100"],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 7,
@@ -68,7 +68,7 @@ allowedEmails:[
       text: "A car travels 360 km in 6 hours. What is the average speed?",
       options: ["50 km/h", "55 km/h", "60 km/h", "65 km/h"],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 8,
@@ -76,7 +76,7 @@ allowedEmails:[
       text: "The ratio of boys to girls in a class is 2:3. If there are 30 students, how many are boys?",
       options: ["10", "12", "15", "18"],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 9,
@@ -84,7 +84,7 @@ allowedEmails:[
       text: "What is 15% of ₦80,000?",
       options: ["₦10,000", "₦12,000", "₦14,000", "₦16,000"],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 10,
@@ -100,7 +100,7 @@ allowedEmails:[
       text: "A business spent ₦120,000 on salaries and ₦80,000 on logistics. What percentage was spent on logistics?",
       options: ["35%", "40%", "45%", "50%"],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 12,
@@ -108,7 +108,7 @@ allowedEmails:[
       text: "If a laptop costs ₦250,000 after a 20% discount, what was the original price?",
       options: ["₦280,000", "₦300,000", "₦312,500", "₦325,000"],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 13,
@@ -116,7 +116,7 @@ allowedEmails:[
       text: "A company’s staff strength increased from 150 to 180 employees. Calculate the percentage increase.",
       options: ["15%", "18%", "20%", "25%"],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 14,
@@ -124,7 +124,7 @@ allowedEmails:[
       text: "What is the average of 12, 18, 24, and 30?",
       options: ["18", "19", "20", "21"],
       correct: 3,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 15,
@@ -132,7 +132,7 @@ allowedEmails:[
       text: "If ₦500,000 is shared in the ratio 2:3, how much does the larger share receive?",
       options: ["₦200,000", "₦250,000", "₦300,000", "₦350,000"],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     },
 
     {
@@ -141,7 +141,7 @@ allowedEmails:[
       text: "Choose the word closest in meaning to “Efficient.”",
       options: ["Slow", "Productive", "Weak", "Careless"],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 17,
@@ -149,7 +149,7 @@ allowedEmails:[
       text: "Choose the opposite of “Expand.”",
       options: ["Reduce", "Increase", "Improve", "Extend"],
       correct: 0,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 18,
@@ -162,7 +162,7 @@ allowedEmails:[
         "She not understand the process."
       ],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 19,
@@ -170,7 +170,7 @@ allowedEmails:[
       text: "Fill in the blank: The manager and his assistant _____ attending the meeting.",
       options: ["is", "are", "was", "has"],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 20,
@@ -178,7 +178,7 @@ allowedEmails:[
       text: "Choose the correctly spelled word.",
       options: ["Enviroment", "Environment", "Environmant", "Enviornment"],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 21,
@@ -186,7 +186,7 @@ allowedEmails:[
       text: "What is the meaning of the idiom “once in a blue moon”?",
       options: ["Frequently", "Rarely", "Suddenly", "Daily"],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 22,
@@ -194,7 +194,7 @@ allowedEmails:[
       text: "Choose the word that best completes the sentence: The employees were asked to _____ the new policy immediately.",
       options: ["implement", "implementing", "implemented", "implementation"],
       correct: 0,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 23,
@@ -202,7 +202,7 @@ allowedEmails:[
       text: "Which word does not belong?",
       options: ["Lion", "Tiger", "Elephant", "Carrot"],
       correct: 3,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 24,
@@ -210,7 +210,7 @@ allowedEmails:[
       text: "Complete the analogy: Book is to Reading as Fork is to _____.",
       options: ["Cooking", "Eating", "Washing", "Drinking"],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 25,
@@ -223,7 +223,7 @@ allowedEmails:[
         "However; we continued the meeting."
       ],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 26,
@@ -231,7 +231,7 @@ allowedEmails:[
       text: "What is the synonym of “Reliable”?",
       options: ["Dependable", "Weak", "Uncertain", "Dishonest"],
       correct: 0,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 27,
@@ -239,7 +239,7 @@ allowedEmails:[
       text: "Identify the error: “Each of the employees have submitted their reports.”",
       options: ["Each", "employees", "have", "reports"],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 28,
@@ -247,7 +247,7 @@ allowedEmails:[
       text: "Choose the best meaning of “confidential.”",
       options: ["Public", "Secret", "Dangerous", "Important"],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 29,
@@ -260,7 +260,7 @@ allowedEmails:[
         "A new product is launching the company."
       ],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 30,
@@ -268,7 +268,7 @@ allowedEmails:[
       text: "Choose the correct word: The training session was very _____.",
       options: ["inform", "informative", "information", "informed"],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
 
     {
@@ -277,7 +277,7 @@ allowedEmails:[
       text: "Find the next number: 2, 6, 12, 20, 30, ___",
       options: ["36", "40", "42", "44"],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 32,
@@ -290,7 +290,7 @@ allowedEmails:[
         "No bankers are managers"
       ],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 33,
@@ -303,7 +303,7 @@ allowedEmails:[
         "End the conversation"
       ],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 34,
@@ -311,7 +311,7 @@ allowedEmails:[
       text: "Choose the odd one out.",
       options: ["Laptop", "Keyboard", "Printer", "Banana"],
       correct: 3,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 35,
@@ -319,7 +319,7 @@ allowedEmails:[
       text: "If today is Friday, what day will it be in 10 days?",
       options: ["Sunday", "Monday", "Tuesday", "Wednesday"],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 36,
@@ -332,7 +332,7 @@ allowedEmails:[
         "Reduce staff salaries"
       ],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 37,
@@ -340,7 +340,7 @@ allowedEmails:[
       text: "Rearrange the letters “LPAEN” to form a meaningful word.",
       options: ["PANEL", "PENAL", "PLANE", "Both A and C"],
       correct: 3,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 38,
@@ -353,7 +353,7 @@ allowedEmails:[
         "Ignore permanently"
       ],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 39,
@@ -361,7 +361,7 @@ allowedEmails:[
       text: "Find the missing letter sequence: A, C, F, J, O, ___",
       options: ["T", "U", "V", "W"],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 40,
@@ -374,7 +374,7 @@ allowedEmails:[
         "Ignoring company policy"
       ],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 41,
@@ -387,7 +387,7 @@ allowedEmails:[
         "Staff birthdays"
       ],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 42,
@@ -395,7 +395,7 @@ allowedEmails:[
       text: "If all pens are books and all books are bags, then all pens are:",
       options: ["Bags", "Pencils", "Tables", "Papers"],
       correct: 0,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 43,
@@ -408,7 +408,7 @@ allowedEmails:[
         "Delegate without approval"
       ],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 44,
@@ -416,7 +416,7 @@ allowedEmails:[
       text: "Choose the next number: 1, 4, 9, 16, 25, ___",
       options: ["30", "35", "36", "49"],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 45,
@@ -429,7 +429,7 @@ allowedEmails:[
         "Ignore the customer"
       ],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 46,
@@ -442,7 +442,7 @@ allowedEmails:[
         "Avoiding responsibility"
       ],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 47,
@@ -455,7 +455,7 @@ allowedEmails:[
         "Wait indefinitely"
       ],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 48,
@@ -463,7 +463,7 @@ allowedEmails:[
       text: "Find the odd number: 8, 16, 24, 33, 40",
       options: ["8", "16", "24", "33"],
       correct: 3,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 49,
@@ -476,7 +476,7 @@ allowedEmails:[
         "It increases complaints"
       ],
       correct: 1,
-      timeLimit: 40
+      timeLimit: 70
     },
     {
       id: 50,
@@ -489,7 +489,7 @@ allowedEmails:[
         "Ignore it if it seems small"
       ],
       correct: 2,
-      timeLimit: 40
+      timeLimit: 70
     }
   ]
 };
