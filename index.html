@@ -407,13 +407,10 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      cursor: pointer;
+      cursor: default;
       position: relative;
       outline: none;
       transition: background-color 0.2s, border-color 0.2s, color 0.2s;
-    }
-    .navigator-cell:hover {
-      background-color: var(--gray-50);
     }
     .navigator-cell.answered {
       background-color: var(--primary);
@@ -937,7 +934,6 @@
 
       <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
         <button class="secondaryBtn" type="button" onclick="window.print()">Download results as PDF</button>
-        <a id="sheetLink" class="secondaryBtn hidden" target="_blank" rel="noopener">Open results sheet</a>
         <button class="dangerBtn" type="button" onclick="location.reload()">Return to start</button>
       </div>
     </div>
@@ -1055,7 +1051,6 @@
       resultTabs: document.getElementById("resultTabs"),
       sectionBreakdownBody: document.getElementById("sectionBreakdownBody"),
       resultRefNumber: document.getElementById("resultRefNumber"),
-      sheetLink: document.getElementById("sheetLink"),
       tabAlert: document.getElementById("tabAlert"),
 
       // Mobile sheet
@@ -1075,11 +1070,6 @@
       if (!QUESTIONS.length) {
         showStatusMessage(els.duplicateStatus, "error", "Assessment content is currently unavailable. Please contact the administrator.");
         els.startQuizButton.disabled = true;
-      }
-
-      if (GOOGLE_SHEET_URL && !isPlaceholder(GOOGLE_SHEET_URL)) {
-        els.sheetLink.href = GOOGLE_SHEET_URL;
-        els.sheetLink.classList.remove("hidden");
       }
 
       // Event Listeners
@@ -1572,13 +1562,6 @@
       navBtnWrap.style.display = "flex";
       navBtnWrap.style.gap = "12px";
 
-      const prevBtn = document.createElement("button");
-      prevBtn.id = "prevBtn";
-      prevBtn.className = "secondaryBtn";
-      prevBtn.type = "button";
-      prevBtn.textContent = "← Prev";
-      prevBtn.addEventListener("click", handlePrevClick);
-      navBtnWrap.appendChild(prevBtn);
 
       const nextBtn = document.createElement("button");
       nextBtn.id = "nextBtn";
@@ -1654,6 +1637,10 @@
 
         label.addEventListener("click", (e) => {
           e.preventDefault();
+          // Check if already answered or timed out
+          if (state.answers[index]) return;
+          if (state.remainingSeconds <= 0) return;
+
           document.querySelectorAll(".option-row").forEach(r => {
             r.classList.remove("selected");
             r.setAttribute("aria-checked", "false");
@@ -1666,15 +1653,19 @@
 
           saveCurrentQuestionAnswer(idx);
           updateNavigatorGrid();
+          disableAllOptions();
         });
 
         optionsContainer.appendChild(label);
       });
 
+      // If already answered or timed out, disable all options on render
+      if (state.answers[index]) {
+        disableAllOptions();
+      }
+
       // Update Navigation CTA states
-      const prevBtn = document.getElementById("prevBtn");
       const nextBtn = document.getElementById("nextBtn");
-      prevBtn.style.visibility = index === 0 ? "hidden" : "visible";
       nextBtn.textContent = index === QUESTIONS.length - 1 ? "Finish exam" : "Next →";
 
       // Update Flag state
@@ -1752,10 +1743,6 @@
       }
     }
 
-    function autoAdvance() {
-      saveCurrentQuestionAnswer(null);
-      advanceQuestion();
-    }
 
     /* TIMER HELPERS */
     function startTimer(seconds) {
@@ -1772,7 +1759,12 @@
 
         if (state.remainingSeconds <= 0) {
           clearTimer();
-          autoAdvance();
+          disableAllOptions();
+          document.getElementById("examQuestionMeta").textContent += " (TIME EXPIRED)";
+          els.timerBadge.textContent = "00:00";
+          els.timerBadge.classList.add("low-time");
+          saveCurrentQuestionAnswer(null);
+          updateNavigatorGrid();
         }
       }, 1000);
     }
@@ -1791,6 +1783,15 @@
         clearInterval(state.timerId);
         state.timerId = null;
       }
+    }
+
+    function disableAllOptions() {
+      document.querySelectorAll(".option-row").forEach(r => {
+        r.style.pointerEvents = "none";
+        r.style.opacity = "0.7";
+        const input = r.querySelector("input");
+        if (input) input.disabled = true;
+      });
     }
 
     function announceRemainingTime(secs) {
@@ -1865,21 +1866,7 @@
     }
 
     function bindGridEvents(parentEl) {
-      parentEl.querySelectorAll(".navigator-cell").forEach(cell => {
-        cell.addEventListener("click", () => {
-          const idx = parseInt(cell.getAttribute("data-index"), 10);
-          
-          // Save current question answer before jumping
-          const selected = document.querySelector("#optionsContainer input[type='radio']:checked");
-          saveCurrentQuestionAnswer(selected ? parseInt(selected.value, 10) : null);
-
-          loadQuestion(idx);
-
-          // Close bottom sheet if open
-          els.bottomSheet.classList.remove("open");
-          els.bottomSheetBackdrop.classList.remove("open");
-        });
-      });
+      // Navigator cells are read-only indicators. Only the Next button should work to move questions.
     }
 
     function toggleMobileSheet() {
