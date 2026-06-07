@@ -44,19 +44,24 @@ function doPost(e) {
 
     var payload = parsePayload_(e);
     var action  = payload.action || "";
+    var callback = (e && e.parameter && e.parameter.callback) || "";
 
+    var result;
     if (action === "uploadPhotos") {
-      return handleUploadPhotos_(payload);
+      result = handleUploadPhotos_(payload);
+    } else if (action === "saveResults") {
+      result = handleSaveResults_(payload);
+    } else {
+      result = { success: false, error: "Unknown action: " + action };
     }
 
-    if (action === "saveResults") {
-      return handleSaveResults_(payload);
-    }
-
-    return jsonResponse_({ success: false, error: "Unknown action: " + action });
+    // Support JSONP fallback for POSTs when caller provides a callback query param
+    return callback ? jsonpResponse_(callback, result) : jsonResponse_(result);
 
   } catch (err) {
-    return jsonResponse_({ success: false, error: err.message });
+    var cb = (e && e.parameter && e.parameter.callback) || "";
+    var errData = { success: false, error: err.message };
+    return cb ? jsonpResponse_(cb, errData) : jsonResponse_(errData);
 
   } finally {
     try { lock.releaseLock(); } catch (e2) {}
@@ -218,7 +223,13 @@ function handleSaveResults_(payload) {
 
 /** Returns the results sheet, creating it with headers if needed. */
 function getOrCreateSheet_() {
-  var ss    = SpreadsheetApp.openById(SHEET_ID);
+  var ss;
+  var idStr = String(SHEET_ID).trim();
+  if (idStr.indexOf("http") === 0) {
+    ss = SpreadsheetApp.openByUrl(idStr);
+  } else {
+    ss = SpreadsheetApp.openById(idStr);
+  }
   var sheet = ss.getSheetByName(SHEET_NAME);
 
   if (!sheet) {
@@ -302,7 +313,17 @@ function getResults_() {
  * specified Drive folder. Returns the shareable URL.
  */
 function saveBase64ToDrive_(base64String, fileName, folderId) {
-  var folder  = DriveApp.getFolderById(folderId);
+  var folder;
+  try {
+    var cleanId = String(folderId || "").trim();
+    if (cleanId.length > 5) {
+      folder = DriveApp.getFolderById(cleanId);
+    } else {
+      folder = DriveApp.getRootFolder();
+    }
+  } catch (err) {
+    folder = DriveApp.getRootFolder();
+  }
   var decoded = Utilities.base64Decode(base64String);
   var blob    = Utilities.newBlob(decoded, "image/jpeg", fileName);
   var file    = folder.createFile(blob);
