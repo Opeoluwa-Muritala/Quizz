@@ -793,8 +793,9 @@
           </div>
           <span id="selfieStateLabel" class="smallText-13">Position your face in the frame</span>
           
-          <div style="margin-top: 16px; width: 100%;">
-            <button id="captureSelfieBtn" class="primaryBtn" type="button" disabled style="height: 36px; padding: 0 16px; font-size: 13px;">Capture selfie</button>
+          <div style="margin-top: 16px; width: 100%; display: flex; flex-direction: column; gap: 8px; align-items: center;">
+            <button id="captureSelfieBtn" class="primaryBtn" type="button" disabled style="height: 36px; padding: 0 16px; font-size: 13px; width: auto;">Capture selfie</button>
+            <button id="nextToIdBtn" class="primaryBtn hidden" type="button" style="height: 36px; padding: 0 16px; font-size: 13px; width: auto;">Next: ID Card</button>
             <div id="selfieRetakeWrap" class="hidden" style="margin-top: 8px;">
               <a href="#" id="retakeSelfieLink" style="font-size: 13px; color: var(--primary); font-weight: 500; text-decoration: underline;">Retake selfie</a>
             </div>
@@ -813,7 +814,7 @@
 
           <div style="margin-top: 16px; width: 100%; display: flex; flex-direction: column; gap: 8px; align-items: center;">
             <button id="captureIdBtn" class="primaryBtn" type="button" disabled style="height: 36px; padding: 0 16px; font-size: 13px; width: auto;">Capture ID card</button>
-            <label class="secondaryBtn" style="height: 36px; padding: 0 16px; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; width: auto; border-radius: 6px; box-sizing: border-box;">
+            <label id="uploadIdLabel" class="secondaryBtn" style="height: 36px; padding: 0 16px; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; width: auto; border-radius: 6px; box-sizing: border-box;">
               Upload ID Photo
               <input type="file" id="uploadIdInput" accept="image/*" style="display: none;" />
             </label>
@@ -1020,6 +1021,7 @@
       selfieVideo: document.getElementById("selfieVideo"),
       selfieThumbnail: document.getElementById("selfieThumbnail"),
       captureSelfieBtn: document.getElementById("captureSelfieBtn"),
+      nextToIdBtn: document.getElementById("nextToIdBtn"),
       retakeSelfieLink: document.getElementById("retakeSelfieLink"),
       selfieRetakeWrap: document.getElementById("selfieRetakeWrap"),
       selfieStateLabel: document.getElementById("selfieStateLabel"),
@@ -1033,6 +1035,7 @@
       idStateLabel: document.getElementById("idStateLabel"),
       idCanvas: document.getElementById("idCanvas"),
       uploadIdInput: document.getElementById("uploadIdInput"),
+      uploadIdLabel: document.getElementById("uploadIdLabel"),
 
       verificationContinueBtn: document.getElementById("verificationContinueBtn"),
       uploadStatus: document.getElementById("uploadStatus"),
@@ -1088,6 +1091,7 @@
       els.uploadIdInput.addEventListener("change", handleIdUpload);
       els.step1Label.addEventListener("click", () => switchStep(1));
       els.step2Label.addEventListener("click", () => switchStep(2));
+      els.nextToIdBtn.addEventListener("click", () => switchStep(2));
       els.verificationContinueBtn.addEventListener("click", handleVerificationContinue);
       els.startQuizFinalBtn.addEventListener("click", handleStartExamClick);
 
@@ -1218,8 +1222,15 @@
           els.selfieThumbnail.src = state.selfieData;
           els.selfieThumbnail.classList.remove("hidden");
           els.selfieStateLabel.textContent = "Selfie captured successfully";
+          els.captureSelfieBtn.classList.add("hidden");
+          els.nextToIdBtn.classList.remove("hidden");
           els.selfieRetakeWrap.classList.remove("hidden");
         } else {
+          els.selfieVideo.classList.remove("hidden");
+          els.selfieThumbnail.classList.add("hidden");
+          els.captureSelfieBtn.classList.remove("hidden");
+          els.nextToIdBtn.classList.add("hidden");
+          els.selfieRetakeWrap.classList.add("hidden");
           await startSelfieCamera();
         }
       } else if (stepNum === 2) {
@@ -1231,8 +1242,15 @@
           els.idThumbnail.src = state.idData;
           els.idThumbnail.classList.remove("hidden");
           els.idStateLabel.textContent = "ID Card captured successfully";
+          els.captureIdBtn.classList.add("hidden");
+          els.uploadIdLabel.classList.add("hidden");
           els.idRetakeWrap.classList.remove("hidden");
         } else {
+          els.idVideo.classList.remove("hidden");
+          els.idThumbnail.classList.add("hidden");
+          els.captureIdBtn.classList.remove("hidden");
+          els.uploadIdLabel.classList.remove("hidden");
+          els.idRetakeWrap.classList.add("hidden");
           await startIdCamera();
         }
       }
@@ -1245,6 +1263,8 @@
       els.selfieVideo.classList.remove("hidden");
       els.selfieThumbnail.classList.add("hidden");
       els.selfieStateLabel.textContent = "Position your face in the frame";
+      els.captureSelfieBtn.classList.remove("hidden");
+      els.nextToIdBtn.classList.add("hidden");
       els.selfieRetakeWrap.classList.add("hidden");
       els.captureSelfieBtn.disabled = true;
 
@@ -1266,6 +1286,8 @@
       els.idVideo.classList.remove("hidden");
       els.idThumbnail.classList.add("hidden");
       els.idStateLabel.textContent = "Position your card in the frame";
+      els.captureIdBtn.classList.remove("hidden");
+      els.uploadIdLabel.classList.remove("hidden");
       els.idRetakeWrap.classList.add("hidden");
       els.captureIdBtn.disabled = true;
 
@@ -1282,11 +1304,14 @@
 
     async function openCamera(videoEl, facingMode) {
       try {
-        return await navigator.mediaDevices.getUserMedia({
+        const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: facingMode },
           audio: false
         });
+        videoEl.srcObject = stream;
+        return stream;
       } catch (err) {
+        console.error("Camera open failed:", err);
         return null;
       }
     }
@@ -1300,6 +1325,8 @@
         state.idStream.getTracks().forEach(t => t.stop());
         state.idStream = null;
       }
+      if (els.selfieVideo) els.selfieVideo.srcObject = null;
+      if (els.idVideo) els.idVideo.srcObject = null;
     }
 
     function captureFrame(videoEl, canvasEl) {
@@ -1319,22 +1346,19 @@
       els.selfieThumbnail.src = data;
       els.selfieThumbnail.classList.remove("hidden");
       els.selfieStateLabel.textContent = "Selfie captured successfully";
+      els.captureSelfieBtn.classList.add("hidden");
+      els.nextToIdBtn.classList.remove("hidden");
       els.selfieRetakeWrap.classList.remove("hidden");
 
       stopStreams();
       
       checkVerificationComplete();
-      
-      // Auto-advance to ID camera
-      if (!state.idData) {
-        switchStep(2);
-      } else {
-        updateStepLabels(1);
-      }
+      updateStepLabels(1);
     }
 
     function retakeSelfie() {
       state.selfieData = null;
+      els.nextToIdBtn.classList.add("hidden");
       checkVerificationComplete();
       startSelfieCamera();
     }
@@ -1348,6 +1372,8 @@
       els.idThumbnail.src = data;
       els.idThumbnail.classList.remove("hidden");
       els.idStateLabel.textContent = "ID Card captured successfully";
+      els.captureIdBtn.classList.add("hidden");
+      els.uploadIdLabel.classList.add("hidden");
       els.idRetakeWrap.classList.remove("hidden");
 
       stopStreams();
@@ -1375,6 +1401,8 @@
         els.idThumbnail.src = dataUrl;
         els.idThumbnail.classList.remove("hidden");
         els.idStateLabel.textContent = "ID Card uploaded successfully";
+        els.captureIdBtn.classList.add("hidden");
+        els.uploadIdLabel.classList.add("hidden");
         els.idRetakeWrap.classList.remove("hidden");
 
         stopStreams();
