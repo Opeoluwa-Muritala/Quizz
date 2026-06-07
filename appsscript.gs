@@ -150,7 +150,8 @@ function handleUploadPhotos_(payload) {
     });
   }
 
-  var folder = getOrCreateUploadFolder_(FOLDER_ID, "Mainstreet Exam Photos");
+  var rowIndex = findPlaceholderRow_(sheet, email);
+  var folder   = getOrCreateUploadFolder_(FOLDER_ID, "Mainstreet Exam Photos");
   var selfieUrl = "";
   var idUrl     = "";
   var slug      = sanitizeFilename_(email);
@@ -164,7 +165,6 @@ function handleUploadPhotos_(payload) {
   }
 
   if (payload.idCard) {
-    // Add 1-second delay to ensure Drive API processes uploads sequentially
     Utilities.sleep(1000);
     idUrl = saveBase64ToDrive_(
       payload.idCard,
@@ -173,21 +173,29 @@ function handleUploadPhotos_(payload) {
     );
   }
 
-  // Append placeholder row — score columns filled by saveResults later
-  sheet.appendRow([
-    new Date(payload.timestamp || new Date()),  //  A: Timestamp
-    payload.fullName || "",                      //  B: Full Name
-    email,                                       //  C: Email
-    "",                                          //  D: Score (%)
-    "",                                          //  E: Score (fraction)
-    "",                                          //  F: Pass/Fail
-    "",                                          //  G: Time Taken
-    "",                                          //  H: Tab Switches
-    "",                                          //  I: Per-question breakdown
-    selfieUrl,                                   //  J: Selfie URL
-    idUrl,                                       //  K: ID Card URL
-    "photos_uploaded"                            //  L: Status
-  ]);
+  if (rowIndex > 0) {
+    if (payload.selfie) {
+      sheet.getRange(rowIndex, 10).setValue(selfieUrl);
+    }
+    if (payload.idCard) {
+      sheet.getRange(rowIndex, 11).setValue(idUrl);
+    }
+  } else {
+    sheet.appendRow([
+      new Date(payload.timestamp || new Date()),  //  A: Timestamp
+      payload.fullName || "",                      //  B: Full Name
+      email,                                       //  C: Email
+      "",                                          //  D: Score (%)
+      "",                                          //  E: Score (fraction)
+      "",                                          //  F: Pass/Fail
+      "",                                          //  G: Time Taken
+      "",                                          //  H: Tab Switches
+      "",                                          //  I: Per-question breakdown
+      selfieUrl,                                   //  J: Selfie URL
+      idUrl,                                       //  K: ID Card URL
+      "photos_uploaded"                            //  L: Status
+    ]);
+  }
 
   return jsonResponse_({ success: true, selfieUrl: selfieUrl, idUrl: idUrl });
 }

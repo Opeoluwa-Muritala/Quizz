@@ -1293,19 +1293,55 @@
       showScreen("instructionsScreen");
 
       if (GOOGLE_SCRIPT_URL && !isPlaceholder(GOOGLE_SCRIPT_URL)) {
-        try {
-          await wait(1000);
-          await wait(1000);
-          const uploadResult = await uploadPhotos(state.candidate, state.selfieData, state.idData);
-          state.selfieUrl = uploadResult.selfieUrl || "";
-          state.idUrl = uploadResult.idUrl || "";
-        } catch (error) {
-          console.error("Photo upload error:", error);
+        if (state.selfieData) {
+          try {
+            const selfieResult = await uploadPhoto(state.candidate, "selfie", state.selfieData);
+            state.selfieUrl = selfieResult.selfieUrl || "";
+            state.selfieData = null;
+          } catch (error) {
+            console.error("Selfie upload error:", error);
+          }
+        }
+
+        await wait(1000);
+
+        if (state.idData) {
+          try {
+            const idResult = await uploadPhoto(state.candidate, "idCard", state.idData);
+            state.idUrl = idResult.idUrl || "";
+            state.idData = null;
+          } catch (error) {
+            console.error("ID card upload error:", error);
+          }
         }
       }
 
       stopStream(state.selfieStream);
       stopStream(state.idStream);
+    }
+
+    async function uploadPhoto(candidate, fieldName, imageData) {
+      const payload = {
+        action:    "uploadPhotos",
+        fullName:  candidate.fullName,
+        email:     candidate.email,
+        timestamp: new Date().toISOString(),
+      };
+      if (imageData) {
+        payload[fieldName] = imageData.replace(/^data:image\/\w+;base64,/, "");
+      }
+      const resp = await fetch(GOOGLE_SCRIPT_URL, { method: "POST", body: JSON.stringify(payload) });
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => "");
+        console.error("Photo upload HTTP error:", resp.status, body);
+        throw new Error("Verification upload failed");
+      }
+      const json = await resp.json();
+      if (!json.success && json.status !== "ok") {
+        console.error("Photo upload server error:", json);
+        throw new Error("Verification upload failed");
+      }
+      return json;
     }
 
     async function uploadPhotos(candidate, selfieData, idData) {
@@ -1339,6 +1375,14 @@
       const fill = els.btnConfirmFill;
       const txt  = els.btnConfirmText;
       if (!btn) return;
+
+      const isTouchDevice = ("ontouchstart" in window) || navigator.maxTouchPoints > 0 || navigator.msMaxTouchPoints > 0;
+      if (!isTouchDevice) {
+        if (fill) fill.style.display = "none";
+        if (txt) txt.textContent = "Start exam";
+        btn.addEventListener("click", beginExam);
+        return;
+      }
 
       let holdStart = null;
       let raf       = null;
