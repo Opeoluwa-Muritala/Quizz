@@ -361,6 +361,9 @@
               <th>Assessment Score</th>
               <th>Timestamp</th>
               <th>Pass/Fail</th>
+              <th>Selfie</th>
+              <th>ID Card</th>
+              <th>Breakdown</th>
             </tr>
           </thead>
           <tbody id="resultsBody">
@@ -471,6 +474,38 @@
       renderRowsList(filtered);
     }
 
+    function appendLinkCell(tr, url, label) {
+      const td = document.createElement("td");
+      if (url) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = label;
+        td.appendChild(link);
+      } else {
+        td.textContent = "-";
+      }
+      tr.appendChild(td);
+    }
+
+    function appendBreakdownCell(tr, row) {
+      const td = document.createElement("td");
+      const breakdown = readValue(row, "Per-question breakdown (JSON)");
+      if (breakdown) {
+        const link = document.createElement("a");
+        const blob = new Blob([breakdown], { type: "application/json;charset=utf-8" });
+        link.href = URL.createObjectURL(blob);
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = "View";
+        td.appendChild(link);
+      } else {
+        td.textContent = "-";
+      }
+      tr.appendChild(td);
+    }
+
     function renderRowsList(results) {
       resultsBody.replaceChildren();
       results.forEach((row) => {
@@ -490,6 +525,10 @@
           tr.appendChild(td);
         });
 
+        appendLinkCell(tr, readValue(row, "Selfie URL"), "Open");
+        appendLinkCell(tr, readValue(row, "ID Card URL"), "Open");
+        appendBreakdownCell(tr, row);
+
         resultsBody.appendChild(tr);
       });
     }
@@ -500,13 +539,16 @@
     }
 
     function exportCsv() {
-      const headers = ["Name", "Email", "Score", "Date", "Pass/Fail"];
+      const headers = ["Name", "Email", "Score", "Date", "Pass/Fail", "Selfie URL", "ID Card URL", "Question Breakdown JSON"];
       const rows = currentResults.map((row) => [
         readValue(row, "Full Name"),
         readValue(row, "Email"),
         `${readValue(row, "Score (fraction)")} ${readValue(row, "Score (%)")}%`,
         formatDate(readValue(row, "Timestamp")),
-        readValue(row, "Pass/Fail")
+        readValue(row, "Pass/Fail"),
+        readValue(row, "Selfie URL"),
+        readValue(row, "ID Card URL"),
+        readValue(row, "Per-question breakdown (JSON)")
       ]);
 
       const csv = [headers, ...rows]
@@ -533,7 +575,8 @@
       setStatus("pending", "Loading results...");
 
       try {
-        const data = await jsonp(GOOGLE_SCRIPT_URL);
+        const separator = GOOGLE_SCRIPT_URL.includes("?") ? "&" : "?";
+        const data = await jsonp(`${GOOGLE_SCRIPT_URL}${separator}action=getResults`);
         if (!data.success) {
           throw new Error(data.error || "Apps Script returned an error.");
         }
