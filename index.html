@@ -1288,7 +1288,7 @@
       const payload = {
         timestamp:     new Date().toISOString(),
         fullName:      state.candidate?.fullName || "",
-        email:         state.candidate?.email   ; || "",
+        email:         state.candidate?.email || "",
         scorePercent:  pct,
         scoreFraction: `${correct}/${total}`,
         passFail:      pct >= Number(CONFIG.passMark || 70) ? "PASS" : "FAIL",
@@ -1308,11 +1308,15 @@
     /* ── DUPLICATE CHECK ── */
     async function loadSubmittedResults() {
       if (!GOOGLE_SCRIPT_URL || isPlaceholder(GOOGLE_SCRIPT_URL)) return [];
-      const url  = `${GOOGLE_SCRIPT_URL}?t=${Date.now()}`;
+      const url  = `${GOOGLE_SCRIPT_URL}?action=getEmails&t=${Date.now()}`;
       const resp = await fetch(url);
       if (!resp.ok) throw new Error("Fetch failed");
       const data = await resp.json();
-      return Array.isArray(data.results) ? data.results : [];
+      return Array.isArray(data)
+        ? data
+        : Array.isArray(data.results)
+          ? data.results
+          : [];
     }
 
     function candidateAlreadySubmitted(results, email) {
