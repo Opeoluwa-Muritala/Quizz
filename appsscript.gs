@@ -118,6 +118,21 @@ function doGet(e) {
 // ══════════════════════════════════════════════════════════════
 
 /**
+ * Run this once from the Apps Script editor after adding/updating scopes.
+ * It forces Google to show the Spreadsheet + Drive authorization prompt.
+ */
+function authorizeStorage_() {
+  getOrCreateSheet_();
+  try {
+    var folder = getOrCreateUploadFolder_(FOLDER_ID, "Mainstreet Exam Photos");
+    Logger.log("Folder ready! Name: " + folder.getName() + " | ID: " + folder.getId() + " | URL: " + folder.getUrl());
+  } catch (e) {
+    Logger.log("Drive folder access error: " + e.message);
+  }
+  return "Storage authorization OK";
+}
+
+/**
  * Phase 1 — called right before the quiz starts.
  * Rejects duplicates, uploads photos to Drive, writes a
  * placeholder row with Status = "photos_uploaded".
@@ -135,6 +150,7 @@ function handleUploadPhotos_(payload) {
     });
   }
 
+  var folder = getOrCreateUploadFolder_(FOLDER_ID, "Mainstreet Exam Photos");
   var selfieUrl = "";
   var idUrl     = "";
   var slug      = sanitizeFilename_(email);
@@ -143,15 +159,17 @@ function handleUploadPhotos_(payload) {
     selfieUrl = saveBase64ToDrive_(
       payload.selfie,
       "selfie_" + slug + "_" + Date.now() + ".jpg",
-      FOLDER_ID
+      folder
     );
   }
 
   if (payload.idCard) {
+    // Add 1-second delay to ensure Drive API processes uploads sequentially
+    Utilities.sleep(1000);
     idUrl = saveBase64ToDrive_(
       payload.idCard,
       "id_" + slug + "_" + Date.now() + ".jpg",
-      FOLDER_ID
+      folder
     );
   }
 
@@ -312,18 +330,53 @@ function getResults_() {
  * Decodes a base64 string and saves it as a JPEG in the
  * specified Drive folder. Returns the shareable URL.
  */
-function saveBase64ToDrive_(base64String, fileName, folderId) {
+/**
+ * Resolves the target upload folder.
+ * 1. Tries to get the folder by ID if provided and valid.
+ * 2. Falls back to searching for a folder named folderName.
+ * 3. Creates the folder in the Google Drive root if it does not exist.
+ */
+function getOrCreateUploadFolder_(folderId, folderName) {
   var folder;
-  try {
-    var cleanId = String(folderId || "").trim();
-    if (cleanId.length > 5) {
+  var cleanId = String(folderId || "").trim();
+
+  // 1. Try accessing by ID if valid
+  if (cleanId.length > 5) {
+    try {
       folder = DriveApp.getFolderById(cleanId);
-    } else {
-      folder = DriveApp.getRootFolder();
+      return folder;
+    } catch (e) {
+      Logger.log("Folder not found by ID (or access denied), searching by name instead: " + e.message);
     }
-  } catch (err) {
-    folder = DriveApp.getRootFolder();
   }
+
+  // 2. Fallback: Search by name
+  var name = folderName || "Mainstreet Exam Photos";
+  try {
+    var folders = DriveApp.getFoldersByName(name);
+    if (folders.hasNext()) {
+      folder = folders.next();
+      return folder;
+    }
+  } catch (e) {
+    Logger.log("Failed to search folders by name: " + e.message);
+  }
+
+  // 3. Fallback: Create folder in Drive root
+  try {
+    folder = DriveApp.createFolder(name);
+    return folder;
+  } catch (err) {
+    throw new Error("Unable to access or create Google Drive folder. " +
+                    "Please verify your account permissions. Detail: " + err.message);
+  }
+}
+
+/**
+ * Decodes a base64 string and saves it as a JPEG in the
+ * specified Drive folder. Returns the shareable URL.
+ */
+function saveBase64ToDrive_(base64String, fileName, folder) {
   var decoded = Utilities.base64Decode(base64String);
   var blob    = Utilities.newBlob(decoded, "image/jpeg", fileName);
   var file    = folder.createFile(blob);

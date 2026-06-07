@@ -10,6 +10,7 @@ There is no application database and no custom backend server. Google Sheets, ac
 - `admin.html` - a separate live results dashboard that reads from the Apps Script GET endpoint.
 - `config.js` - quiz title, description, logo, pass mark, admin password, Apps Script URL, Sheet URL, and questions.
 - `appsscript.gs` - the Google Apps Script Web App endpoint that appends quiz results to a sheet.
+- `appsscript.json` - Apps Script manifest with the required Google Sheets and Drive upload scopes.
 
 If a result POST fails because of a network or configuration error, the app stores the result in `localStorage` and retries pending submissions on the next page load. Google Apps Script does not provide custom CORS response headers through `ContentService`, so the app sends JSON as `text/plain` with `no-cors`. That lets browsers POST directly without a preflight request, but the browser cannot read the response body from the static page.
 
@@ -20,12 +21,14 @@ After completion, candidates can download their results as a PDF generated in th
 1. Create a Google Sheet.
 2. Open **Extensions > Apps Script**.
 3. Paste the contents of `appsscript.gs` into the Apps Script editor.
-4. Deploy as **Web app**.
-5. Set **Execute as** to yourself.
-6. Set **Who has access** to the intended audience, commonly **Anyone** or **Anyone with the link** for a public static quiz.
-7. Copy the Web App URL.
-8. Copy the Google Sheet URL.
-9. In `config.js`, replace:
+4. Open **Project Settings**, enable **Show "appsscript.json" manifest file in editor**, then paste the contents of `appsscript.json` into the manifest.
+5. In the Apps Script editor, select and run `authorizeStorage_`, then approve the Google Sheets and Drive permissions.
+6. Deploy as **Web app**.
+7. Set **Execute as** to yourself.
+8. Set **Who has access** to the intended audience, commonly **Anyone** or **Anyone with the link** for a public static quiz.
+9. Copy the Web App URL.
+10. Copy the Google Sheet URL.
+11. In `config.js`, replace:
 
 ```js
 sheetsWebAppUrl: "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec",
@@ -39,6 +42,7 @@ For `admin.html`, also replace `adminPassword` in `config.js`. This is a simple 
 ### Troubleshooting: connection / CORS issues
 
 - Ensure the Apps Script is deployed as a Web App with **Execute as** set to your account and **Who has access** set to **Anyone, even anonymous** (or at least **Anyone with the link**) so the static pages can call it.
+- If Apps Script says `You do not have permission to call DriveApp.getFolderById`, add the Drive scope from `appsscript.json`, run `authorizeStorage_`, approve the permissions, then deploy a **new version** of the Web App.
 - If the admin dashboard shows "Could not fetch results" or the quiz cannot save results, check the deployed Web App URL in `config.js` and that the script is published (not only saved).
 - The frontend uses fetch POSTs for photo uploads and result saving. If the browser blocks the request due to CORS, the app will fall back to a fire-and-forget `navigator.sendBeacon` attempt for results and will continue without server-side photo uploads — in which case submissions still succeed locally, but images may not be stored in Drive.
 - To inspect server-side errors, open the Apps Script editor, run the `getResults_()` function manually, or check the script executions log (Executions) in the Apps Script dashboard.

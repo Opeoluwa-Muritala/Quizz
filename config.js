@@ -4,13 +4,14 @@ const QUIZ_CONFIG = {
   passMark: 70,
   adminPassword: "admin123",
   logo: "./logo1.png",
-  sheetsWebAppUrl: "https://script.google.com/macros/s/AKfycbzDATvZfXbK3r6NYngF2_rv2hXpsobp957lGEh4B_tw79qQ834ohmYMKNUHYzU6vMKr/exec",
+  sheetsWebAppUrl: "https://script.google.com/macros/s/AKfycbwImel_515rYVoU6TclrNsQ1EIqwGjSGN775lnz8vu5ZH4q3A_H5q5oIEhCyW6UpOCv/exec",
   sheetUrl: "https://docs.google.com/spreadsheets/d/1vkdOHo9Rrid2CnQOXHPYIRPSE_B84VRM-CA7yw5OAxk/edit?usp=sharing",
 
 allowedEmails:[
 "Juchenna@mainstreetmfb.com",
 "eguuchennajohn@gmail.com",
 "muritalaopeoluwa10@gmail.com",
+"test@mail.com"
 ],
 
   questions: [
