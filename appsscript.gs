@@ -92,7 +92,7 @@ function doGet(e) {
         if (email) emails.push({ email: email });
       }
 
-      data = emails;
+      data = { success: true, results: emails };
 
     } else if (action === "getResults") {
       data = { success: true, results: getResults_() };
