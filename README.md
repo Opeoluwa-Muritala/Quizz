@@ -36,6 +36,15 @@ with your deployed Web App URL and Google Sheet URL.
 
 For `admin.html`, also replace `adminPassword` in `config.js`. This is a simple client-side password gate for casual access control, not strong security.
 
+### Troubleshooting: connection / CORS issues
+
+- Ensure the Apps Script is deployed as a Web App with **Execute as** set to your account and **Who has access** set to **Anyone, even anonymous** (or at least **Anyone with the link**) so the static pages can call it.
+- If the admin dashboard shows "Could not fetch results" or the quiz cannot save results, check the deployed Web App URL in `config.js` and that the script is published (not only saved).
+- The frontend uses fetch POSTs for photo uploads and result saving. If the browser blocks the request due to CORS, the app will fall back to a fire-and-forget `navigator.sendBeacon` attempt for results and will continue without server-side photo uploads — in which case submissions still succeed locally, but images may not be stored in Drive.
+- To inspect server-side errors, open the Apps Script editor, run the `getResults_()` function manually, or check the script executions log (Executions) in the Apps Script dashboard.
+
+If you want, I can update the Apps Script to write CORS-friendly responses and add a small server-side health endpoint — tell me and I'll patch `appsscript.gs` and provide redeploy steps.
+
 ## Static Deployment
 
 The app is a static site. Deploy these files together to Nginx, Apache, GitHub Pages, Netlify, or any static host:
