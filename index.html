@@ -833,6 +833,8 @@
       <h2>Before you begin</h2>
       <p class="smallText-13" style="margin-bottom: 32px;">Please read all details carefully. You cannot pause the exam once it starts.</p>
 
+      <div id="uploadNotice" class="notice info hidden"></div>
+
       <div class="instructions-layout">
         <div>
           <ol class="instructions-list">
@@ -1290,28 +1292,31 @@
     async function handleVerificationContinue() {
       els.verificationContinueBtn.disabled = true;
       els.verificationContinueBtn.textContent = "Uploading...";
+      els.uploadStatus.className = "notice info";
+      els.uploadStatus.textContent = "Uploading verification photos...";
       els.uploadStatus.classList.remove("hidden");
+
+      showScreen("instructionsScreen");
+      showUploadNotice("info", "Uploading verification photos in the background...");
 
       if (GOOGLE_SCRIPT_URL && !isPlaceholder(GOOGLE_SCRIPT_URL)) {
         try {
+          showUploadNotice("info", "Uploading selfie... Please keep this tab open.");
+          await wait(1000);
+          showUploadNotice("info", "Uploading ID card in 1 second...");
+          await wait(1000);
           const uploadResult = await uploadPhotos(state.candidate, state.selfieData, state.idData);
           state.selfieUrl = uploadResult.selfieUrl || "";
           state.idUrl = uploadResult.idUrl || "";
-          els.uploadStatus.className   = "notice success";
-          els.uploadStatus.textContent = "✅ Photos uploaded successfully.";
+          showUploadNotice("success", "Verification photos uploaded successfully.");
         } catch (error) {
-          els.uploadStatus.className   = "notice error";
-          els.uploadStatus.textContent = error.message || "Photo upload failed. Please try again.";
-          els.verificationContinueBtn.disabled = false;
-          els.verificationContinueBtn.textContent = "Continue to instructions";
-          return;
+          console.error("Photo upload error:", error);
+          showUploadNotice("error", "Verification upload failed. Please contact admin.");
         }
-        await wait(700);
       }
 
       stopStream(state.selfieStream);
       stopStream(state.idStream);
-      showScreen("instructionsScreen");
     }
 
     async function uploadPhotos(candidate, selfieData, idData) {
@@ -1324,9 +1329,16 @@
         timestamp: new Date().toISOString(),
       };
       const resp = await fetch(GOOGLE_SCRIPT_URL, { method: "POST", body: JSON.stringify(payload) });
-      if (!resp.ok) throw new Error("Upload failed");
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => "");
+        console.error("Photo upload HTTP error:", resp.status, body);
+        throw new Error("Verification upload failed");
+      }
       const json = await resp.json();
-      if (!json.success && json.status !== "ok") throw new Error(json.error || json.message || "Upload error");
+      if (!json.success && json.status !== "ok") {
+        console.error("Photo upload server error:", json);
+        throw new Error("Verification upload failed");
+      }
       return json;
     }
 
@@ -1727,6 +1739,20 @@
       if (!els.duplicateStatus) return;
       els.duplicateStatus.classList.add("hidden");
       els.duplicateStatus.textContent = "";
+    }
+
+    function showUploadNotice(type, msg) {
+      const notice = document.getElementById("uploadNotice");
+      if (!notice) return;
+      notice.className = `notice ${type}`;
+      notice.textContent = msg;
+      notice.classList.remove("hidden");
+    }
+
+    function hideUploadNotice() {
+      const notice = document.getElementById("uploadNotice");
+      if (!notice) return;
+      notice.classList.add("hidden");
     }
 
     function showTabAlert() {
