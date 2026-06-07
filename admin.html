@@ -1,292 +1,566 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Quiz Results Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="./config.js"></script>
-  </head>
-  <body class="min-h-screen bg-white text-zinc-950">
-    <section id="loginPanel" class="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center px-4">
-      <div class="rounded border border-zinc-200 bg-white p-5 shadow-sm">
-        <p class="text-sm font-semibold uppercase tracking-wide text-zinc-500">Admin</p>
-        <h1 class="mt-1 text-2xl font-semibold text-zinc-950">Results Dashboard</h1>
-        <form id="loginForm" class="mt-5 space-y-4">
-          <label class="block">
-            <span class="text-sm font-medium text-zinc-700">Password</span>
-            <input
-              id="adminPasswordInput"
-              class="mt-1 w-full rounded border border-zinc-300 px-3 py-2 text-base outline-none focus:border-blue-950 focus:ring-2 focus:ring-blue-100"
-              type="password"
-              autocomplete="current-password"
-              required
-            />
-          </label>
-          <button
-            class="w-full rounded bg-blue-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            type="submit"
-          >
-            Sign in
-          </button>
-          <p id="loginError" class="hidden text-sm text-rose-700">Incorrect password.</p>
-        </form>
-      </div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Results Dashboard — Mainstreet Exam Portal</title>
+  <script src="./config.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* Strict corporate palette */
+    :root {
+      --primary: #5B2D8E;
+      --surface-dark: #3B1F6A;
+      --gray-900: #1A1A2E;
+      --gray-700: #4A4A68;
+      --gray-400: #9898B0;
+      --gray-100: #F2F2F7;
+      --gray-50: #FAFAFC;
+      --white: #FFFFFF;
+      --accent-green: #2A7A4B;
+      --accent-red: #B53C3C;
+      --border-color: #E0E0EE;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--gray-100);
+      color: var(--gray-900);
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    /* Typography scale & style */
+    h1, h2, h3 {
+      font-family: 'DM Serif Display', serif;
+      font-weight: 400;
+      color: var(--gray-900);
+      margin: 0 0 16px 0;
+    }
+    h1 { font-size: 32px; }
+    h2 { font-size: 24px; }
+    h3 { font-size: 18px; }
+    p { margin: 0 0 16px 0; color: var(--gray-700); }
+
+    .smallText-13 {
+      font-size: 13px;
+      color: var(--gray-700);
+    }
+    .metadata-13 {
+      font-size: 13px;
+      color: var(--gray-400);
+    }
+
+    /* Layout grid */
+    .app-container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 40px 16px;
+      text-align: center;
+    }
+
+    .panel-card {
+      background-color: var(--white);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 32px;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+
+    /* Centered narrow panel for login */
+    .narrow-panel {
+      max-width: 400px;
+      margin: 40px auto 0;
+    }
+
+    /* Logo Monogram */
+    .logo-container {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 24px;
+    }
+
+    /* Buttons */
+    .primaryBtn, .secondaryBtn, .dangerBtn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 44px;
+      padding: 0 24px;
+      font-size: 15px;
+      font-weight: 500;
+      font-family: 'IBM Plex Sans', sans-serif;
+      border-radius: 6px;
+      cursor: pointer;
+      box-sizing: border-box;
+      text-decoration: none;
+      transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+      outline: none;
+      border: none;
+    }
+
+    .primaryBtn {
+      background-color: var(--primary);
+      color: var(--white);
+    }
+    .primaryBtn:hover:not(:disabled) {
+      background-color: #4A2474;
+    }
+    .primaryBtn:disabled {
+      background-color: var(--gray-400);
+      cursor: not-allowed;
+    }
+
+    .secondaryBtn {
+      background-color: transparent;
+      color: var(--primary);
+      border: 1px solid var(--primary);
+    }
+    .secondaryBtn:hover:not(:disabled) {
+      background-color: #F0EBF9;
+    }
+
+    .dangerBtn {
+      background-color: var(--accent-red);
+      color: var(--white);
+    }
+    .dangerBtn:hover:not(:disabled) {
+      background-color: #9C3333;
+    }
+
+    /* Inputs */
+    .form-group {
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--gray-700);
+      margin-bottom: 8px;
+    }
+    .form-group input {
+      width: 100%;
+      height: 44px;
+      background-color: var(--white);
+      border: 1px solid var(--gray-400);
+      border-radius: 6px;
+      padding: 0 16px;
+      font-size: 15px;
+      color: var(--gray-900);
+      box-sizing: border-box;
+      outline: none;
+      font-family: 'IBM Plex Sans', sans-serif;
+    }
+    .form-group input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(91, 45, 142, 0.12);
+    }
+
+    /* Dashboard grids */
+    .dashboard-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 768px) {
+      .dashboard-metrics {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    @media (max-width: 480px) {
+      .dashboard-metrics {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .metric-card {
+      background-color: var(--gray-50);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 20px;
+      text-align: left;
+    }
+    .metric-label {
+      font-size: 13px;
+      color: var(--gray-700);
+      text-transform: uppercase;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    .metric-value {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 28px;
+      font-weight: 600;
+      color: var(--gray-900);
+    }
+
+    /* Table styles */
+    .table-container {
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background-color: var(--white);
+      overflow-x: auto;
+      margin-top: 16px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+    table th, table td {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    table th {
+      background-color: var(--gray-50);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--gray-700);
+      text-transform: uppercase;
+    }
+    table td {
+      font-size: 15px;
+    }
+    table tr:last-child td {
+      border-bottom: none;
+    }
+    table tbody tr:hover td {
+      background-color: var(--gray-50);
+    }
+
+    /* Accessibility focus styling */
+    *:focus-visible {
+      outline: 3px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    /* Section dividers */
+    hr {
+      border: 0;
+      height: 1px;
+      background-color: var(--border-color);
+      margin: 24px 0;
+    }
+
+    /* Notice styling */
+    .notice {
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 24px;
+      text-align: left;
+      border: 1px solid var(--border-color);
+    }
+    .notice.pending {
+      background-color: #E8E0F5;
+      color: var(--primary);
+      border-color: #d1bfe3;
+    }
+    .notice.success {
+      background-color: #E2F3E7;
+      color: var(--accent-green);
+      border-color: #c0ebd2;
+    }
+    .notice.error {
+      background-color: #FDE8E8;
+      color: var(--accent-red);
+      border-color: #f8b4b4;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- Out-of-dashboard Brand Monogram -->
+    <div class="logo-container">
+      <img src="./logo1.png" alt="Bank Logo" style="height: 64px; width: auto; max-width: 100%; object-fit: contain;" />
+    </div>
+
+    <!-- LOGIN PANEL -->
+    <section id="loginPanel" class="panel-card narrow-panel">
+      <p class="smallText-13" style="text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Staff Authorization</p>
+      <h2>Results Login</h2>
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="adminPasswordInput">Security Password</label>
+          <input id="adminPasswordInput" type="password" required autocomplete="current-password" placeholder="••••••••" />
+        </div>
+        <button class="primaryBtn" type="submit" style="width: 100%; margin-top: 12px;">Sign In</button>
+        <p id="loginError" class="hidden" style="color: var(--accent-red); margin-top: 16px; font-weight: 500; font-size: 13px; text-align: center;">Incorrect password.</p>
+      </form>
     </section>
 
-    <main id="dashboardPanel" class="mx-auto hidden w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <header class="flex flex-col gap-4 border-b border-zinc-200 pb-5 md:flex-row md:items-end md:justify-between">
+    <!-- DASHBOARD PANEL -->
+    <main id="dashboardPanel" class="panel-card hidden">
+      <header style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 20px; margin-bottom: 24px;">
         <div>
-          <p class="text-sm font-semibold uppercase tracking-wide text-zinc-500">Admin</p>
-          <h1 class="mt-1 text-3xl font-semibold text-zinc-950">Quiz Results Dashboard</h1>
+          <p class="smallText-13" style="text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Mainstreet MFB</p>
+          <h2 style="margin: 0;">Exam Results Dashboard</h2>
         </div>
-        <div class="flex flex-wrap gap-2">
-          <button
-            id="refreshButton"
-            class="rounded bg-blue-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            type="button"
-          >
-            Refresh
-          </button>
-          <button
-            id="exportCsvButton"
-            class="rounded border border-zinc-300 px-4 py-2.5 text-sm font-semibold text-blue-950 hover:bg-zinc-50"
-            type="button"
-          >
-            Export CSV
-          </button>
-          <a
-            id="sheetLink"
-            class="hidden rounded border border-zinc-300 px-4 py-2.5 text-sm font-semibold text-blue-950 hover:bg-zinc-50"
-            target="_blank"
-            rel="noopener"
-          >
-            Open sheet
-          </a>
+        <div style="display: flex; gap: 12px;">
+          <button id="refreshButton" class="primaryBtn" type="button">Refresh</button>
+          <button id="exportCsvButton" class="secondaryBtn" type="button">Export CSV</button>
+          <a id="sheetLink" class="secondaryBtn hidden" target="_blank" rel="noopener">Open Sheet</a>
         </div>
       </header>
 
-      <section class="mt-5 grid gap-3 sm:grid-cols-4">
-        <div class="rounded border border-zinc-200 bg-white p-4">
-          <div id="totalCount" class="text-2xl font-semibold text-zinc-950">0</div>
-          <div class="text-sm text-zinc-500">Submissions</div>
+      <!-- METRICS GRID -->
+      <section class="dashboard-metrics">
+        <div class="metric-card">
+          <div class="metric-label">Total Submissions</div>
+          <div id="totalCount" class="metric-value">0</div>
         </div>
-        <div class="rounded border border-zinc-200 bg-white p-4">
-          <div id="passCount" class="text-2xl font-semibold text-zinc-950">0</div>
-          <div class="text-sm text-zinc-500">Passed</div>
+        <div class="metric-card">
+          <div class="metric-label">Passed Candidates</div>
+          <div id="passCount" class="metric-value" style="color: var(--accent-green);">0</div>
         </div>
-        <div class="rounded border border-zinc-200 bg-white p-4">
-          <div id="failCount" class="text-2xl font-semibold text-zinc-950">0</div>
-          <div class="text-sm text-zinc-500">Failed</div>
+        <div class="metric-card">
+          <div class="metric-label">Failed Candidates</div>
+          <div id="failCount" class="metric-value" style="color: var(--accent-red);">0</div>
         </div>
-        <div class="rounded border border-zinc-200 bg-white p-4">
-          <div id="averageScore" class="text-2xl font-semibold text-zinc-950">0%</div>
-          <div class="text-sm text-zinc-500">Average score</div>
+        <div class="metric-card">
+          <div class="metric-label">Average Score</div>
+          <div id="averageScore" class="metric-value">0%</div>
         </div>
       </section>
 
-      <p id="statusMessage" class="mt-5 rounded border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
-        Loading results...
-      </p>
+      <!-- SEARCH FILTER -->
+      <div class="form-group" style="max-width: 360px; margin-bottom: 24px;">
+        <label for="adminSearch">Filter Results</label>
+        <input id="adminSearch" type="text" placeholder="Search by name or email..." />
+      </div>
 
-      <section class="mt-4 overflow-hidden rounded border border-zinc-200">
-        <div class="overflow-x-auto">
-          <table class="min-w-full divide-y divide-zinc-200 text-left text-sm">
-            <thead class="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500">
-              <tr>
-                <th class="px-3 py-3 font-semibold">Full Name</th>
-                <th class="px-3 py-3 font-semibold">Email</th>
-                <th class="px-3 py-3 font-semibold">Score</th>
-                <th class="px-3 py-3 font-semibold">Date</th>
-                <th class="px-3 py-3 font-semibold">Pass/Fail</th>
-              </tr>
-            </thead>
-            <tbody id="resultsBody" class="divide-y divide-zinc-200 bg-white"></tbody>
-          </table>
-        </div>
-      </section>
+      <!-- STATUS INDICATOR -->
+      <div id="statusMessage" class="notice pending">Loading results...</div>
+
+      <!-- DATA TABLE -->
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Candidate Name</th>
+              <th>Email</th>
+              <th>Assessment Score</th>
+              <th>Timestamp</th>
+              <th>Pass/Fail</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+            <!-- Row data injected safely -->
+          </tbody>
+        </table>
+      </div>
     </main>
 
-    <script>
-      const appConfig = window.QUIZ_CONFIG || {};
-      const GOOGLE_SCRIPT_URL = appConfig.sheetsWebAppUrl || appConfig.googleScriptUrl || "";
-      const GOOGLE_SHEET_URL = appConfig.sheetUrl || appConfig.googleSheetUrl || "";
-      const ADMIN_PASSWORD = appConfig.adminPassword || "change-me";
-      const ADMIN_AUTH_KEY = "corporateQuiz.adminAuthed";
+  </div>
 
-      const loginPanel = document.getElementById("loginPanel");
-      const dashboardPanel = document.getElementById("dashboardPanel");
-      const loginForm = document.getElementById("loginForm");
-      const adminPasswordInput = document.getElementById("adminPasswordInput");
-      const loginError = document.getElementById("loginError");
-      const statusMessage = document.getElementById("statusMessage");
-      const resultsBody = document.getElementById("resultsBody");
-      const refreshButton = document.getElementById("refreshButton");
-      const exportCsvButton = document.getElementById("exportCsvButton");
-      const sheetLink = document.getElementById("sheetLink");
-      let currentResults = [];
+  <script>
+    const appConfig = window.QUIZ_CONFIG || {};
+    const GOOGLE_SCRIPT_URL = appConfig.sheetsWebAppUrl || appConfig.googleScriptUrl || "";
+    const GOOGLE_SHEET_URL = appConfig.sheetUrl || appConfig.googleSheetUrl || "";
+    const ADMIN_PASSWORD = appConfig.adminPassword || "admin123";
+    const ADMIN_AUTH_KEY = "corporateQuiz.adminAuthed";
 
-      if (GOOGLE_SHEET_URL && !GOOGLE_SHEET_URL.includes("PASTE_YOUR")) {
-        sheetLink.href = GOOGLE_SHEET_URL;
-        sheetLink.classList.remove("hidden");
-      }
+    const loginPanel = document.getElementById("loginPanel");
+    const dashboardPanel = document.getElementById("dashboardPanel");
+    const loginForm = document.getElementById("loginForm");
+    const adminPasswordInput = document.getElementById("adminPasswordInput");
+    const loginError = document.getElementById("loginError");
+    const statusMessage = document.getElementById("statusMessage");
+    const resultsBody = document.getElementById("resultsBody");
+    const refreshButton = document.getElementById("refreshButton");
+    const exportCsvButton = document.getElementById("exportCsvButton");
+    const sheetLink = document.getElementById("sheetLink");
+    let currentResults = [];
 
-      function isPlaceholderUrl(url) {
-        return !url || url.includes("PASTE_YOUR") || url.includes("YOUR_SCRIPT_ID");
-      }
+    if (GOOGLE_SHEET_URL && !GOOGLE_SHEET_URL.includes("PASTE_YOUR")) {
+      sheetLink.href = GOOGLE_SHEET_URL;
+      sheetLink.classList.remove("hidden");
+    }
 
-      function showDashboard() {
-        loginPanel.classList.add("hidden");
-        dashboardPanel.classList.remove("hidden");
-        loadResults();
-      }
+    function isPlaceholderUrl(url) {
+      return !url || url.includes("PASTE_YOUR") || url.includes("YOUR_SCRIPT_ID");
+    }
 
-      function setStatus(type, message) {
-        const classes = {
-          pending: "mt-5 rounded border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800",
-          success: "mt-5 rounded border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800",
-          error: "mt-5 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800"
+    function showDashboard() {
+      loginPanel.classList.add("hidden");
+      dashboardPanel.classList.remove("hidden");
+      loadResults();
+    }
+
+    function setStatus(type, message) {
+      statusMessage.replaceChildren();
+      statusMessage.textContent = message;
+      statusMessage.className = `notice ${type}`;
+    }
+
+    function jsonp(url) {
+      return new Promise((resolve, reject) => {
+        const callbackName = `quizResultsCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const script = document.createElement("script");
+        const separator = url.includes("?") ? "&" : "?";
+
+        window[callbackName] = (data) => {
+          delete window[callbackName];
+          script.remove();
+          resolve(data);
         };
-        statusMessage.className = classes[type];
-        statusMessage.textContent = message;
-      }
 
-      function jsonp(url) {
-        return new Promise((resolve, reject) => {
-          const callbackName = `quizResultsCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-          const script = document.createElement("script");
-          const separator = url.includes("?") ? "&" : "?";
+        script.onerror = () => {
+          delete window[callbackName];
+          script.remove();
+          reject(new Error("Could not fetch results from Apps Script."));
+        };
 
-          window[callbackName] = (data) => {
-            delete window[callbackName];
-            script.remove();
-            resolve(data);
-          };
+        script.src = `${url}${separator}callback=${encodeURIComponent(callbackName)}`;
+        document.body.appendChild(script);
+      });
+    }
 
-          script.onerror = () => {
-            delete window[callbackName];
-            script.remove();
-            reject(new Error("Could not fetch results from Apps Script."));
-          };
+    function readValue(record, key) {
+      return record[key] === undefined || record[key] === null ? "" : String(record[key]);
+    }
 
-          script.src = `${url}${separator}callback=${encodeURIComponent(callbackName)}`;
-          document.body.appendChild(script);
-        });
-      }
+    function formatDate(value) {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+    }
 
-      function readValue(record, key) {
-        return record[key] === undefined || record[key] === null ? "" : String(record[key]);
-      }
+    function renderSummary(results) {
+      const total = results.length;
+      const passed = results.filter((row) => readValue(row, "Pass/Fail").toLowerCase() === "pass").length;
+      const failed = results.filter((row) => readValue(row, "Pass/Fail").toLowerCase() === "fail").length;
+      const scoreSum = results.reduce((sum, row) => sum + Number(row["Score (%)"] || 0), 0);
 
-      function formatDate(value) {
-        const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-      }
+      document.getElementById("totalCount").textContent = String(total);
+      document.getElementById("passCount").textContent = String(passed);
+      document.getElementById("failCount").textContent = String(failed);
+      document.getElementById("averageScore").textContent = total ? `${Math.round(scoreSum / total)}%` : "0%";
+    }
 
-      function renderSummary(results) {
-        const total = results.length;
-        const passed = results.filter((row) => readValue(row, "Pass/Fail").toLowerCase() === "pass").length;
-        const failed = results.filter((row) => readValue(row, "Pass/Fail").toLowerCase() === "fail").length;
-        const scoreSum = results.reduce((sum, row) => sum + Number(row["Score (%)"] || 0), 0);
+    let activeSearchQuery = "";
+    document.getElementById("adminSearch").addEventListener("input", (e) => {
+      activeSearchQuery = e.target.value.toLowerCase().trim();
+      filterAndRenderRows();
+    });
 
-        document.getElementById("totalCount").textContent = String(total);
-        document.getElementById("passCount").textContent = String(passed);
-        document.getElementById("failCount").textContent = String(failed);
-        document.getElementById("averageScore").textContent = total ? `${Math.round(scoreSum / total)}%` : "0%";
-      }
+    function filterAndRenderRows() {
+      const filtered = currentResults.filter(row => {
+        const name = readValue(row, "Full Name").toLowerCase();
+        const email = readValue(row, "Email").toLowerCase();
+        return name.includes(activeSearchQuery) || email.includes(activeSearchQuery);
+      });
+      renderRowsList(filtered);
+    }
 
-      function renderRows(results) {
-        resultsBody.innerHTML = "";
-        results.forEach((row) => {
-          const tr = document.createElement("tr");
-          tr.className = "hover:bg-zinc-50";
+    function renderRowsList(results) {
+      resultsBody.replaceChildren();
+      results.forEach((row) => {
+        const tr = document.createElement("tr");
 
-          const cells = [
-            readValue(row, "Full Name"),
-            readValue(row, "Email"),
-            `${readValue(row, "Score (fraction)")} ${readValue(row, "Score (%)")}%`,
-            formatDate(readValue(row, "Timestamp")),
-            readValue(row, "Pass/Fail")
-          ];
-
-          cells.forEach((value) => {
-            const td = document.createElement("td");
-            td.className = "whitespace-nowrap px-3 py-3 text-zinc-700";
-            td.textContent = value;
-            tr.appendChild(td);
-          });
-
-          resultsBody.appendChild(tr);
-        });
-      }
-
-      function csvEscape(value) {
-        const text = String(value ?? "");
-        return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-      }
-
-      function exportCsv() {
-        const headers = ["Name", "Email", "Score", "Date", "Pass/Fail"];
-        const rows = currentResults.map((row) => [
+        const cells = [
           readValue(row, "Full Name"),
           readValue(row, "Email"),
           `${readValue(row, "Score (fraction)")} ${readValue(row, "Score (%)")}%`,
           formatDate(readValue(row, "Timestamp")),
           readValue(row, "Pass/Fail")
-        ]);
+        ];
 
-        const csv = [headers, ...rows]
-          .map((row) => row.map(csvEscape).join(","))
-          .join("\n");
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
+        cells.forEach((value) => {
+          const td = document.createElement("td");
+          td.textContent = value;
+          tr.appendChild(td);
+        });
 
-        link.href = url;
-        link.download = "quiz-results.csv";
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
-      }
-
-      async function loadResults() {
-        if (isPlaceholderUrl(GOOGLE_SCRIPT_URL)) {
-          setStatus("error", "Google Apps Script Web App URL is not configured in config.js.");
-          return;
-        }
-
-        setStatus("pending", "Loading results...");
-
-        try {
-          const data = await jsonp(GOOGLE_SCRIPT_URL);
-          if (!data.success) {
-            throw new Error(data.error || "Apps Script returned an error.");
-          }
-          currentResults = data.results || [];
-          renderSummary(currentResults);
-          renderRows(currentResults);
-          setStatus("success", `Loaded ${currentResults.length} result(s).`);
-        } catch (error) {
-          setStatus("error", error.message);
-        }
-      }
-
-      refreshButton.addEventListener("click", loadResults);
-      exportCsvButton.addEventListener("click", exportCsv);
-      loginForm.addEventListener("submit", (event) => {
-        event.preventDefault();
-        if (adminPasswordInput.value === ADMIN_PASSWORD) {
-          window.sessionStorage.setItem(ADMIN_AUTH_KEY, "true");
-          showDashboard();
-        } else {
-          loginError.classList.remove("hidden");
-        }
+        resultsBody.appendChild(tr);
       });
+    }
 
-      if (window.sessionStorage.getItem(ADMIN_AUTH_KEY) === "true") {
-        showDashboard();
+    function csvEscape(value) {
+      const text = String(value ?? "");
+      return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    }
+
+    function exportCsv() {
+      const headers = ["Name", "Email", "Score", "Date", "Pass/Fail"];
+      const rows = currentResults.map((row) => [
+        readValue(row, "Full Name"),
+        readValue(row, "Email"),
+        `${readValue(row, "Score (fraction)")} ${readValue(row, "Score (%)")}%`,
+        formatDate(readValue(row, "Timestamp")),
+        readValue(row, "Pass/Fail")
+      ]);
+
+      const csv = [headers, ...rows]
+        .map((row) => row.map(csvEscape).join(","))
+        .join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = "quiz-results.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function loadResults() {
+      if (isPlaceholderUrl(GOOGLE_SCRIPT_URL)) {
+        setStatus("error", "Google Apps Script Web App URL is not configured in config.js.");
+        return;
       }
-    </script>
-  </body>
+
+      setStatus("pending", "Loading results...");
+
+      try {
+        const data = await jsonp(GOOGLE_SCRIPT_URL);
+        if (!data.success) {
+          throw new Error(data.error || "Apps Script returned an error.");
+        }
+        currentResults = data.results || [];
+        renderSummary(currentResults);
+        filterAndRenderRows();
+        setStatus("success", `Loaded ${currentResults.length} result(s).`);
+      } catch (error) {
+        setStatus("error", error.message);
+      }
+    }
+
+    refreshButton.addEventListener("click", loadResults);
+    exportCsvButton.addEventListener("click", exportCsv);
+    loginForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (adminPasswordInput.value === ADMIN_PASSWORD) {
+        window.sessionStorage.setItem(ADMIN_AUTH_KEY, "true");
+        showDashboard();
+      } else {
+        loginError.classList.remove("hidden");
+      }
+    });
+
+    if (window.sessionStorage.getItem(ADMIN_AUTH_KEY) === "true") {
+      showDashboard();
+    }
+  </script>
+</body>
 </html>
