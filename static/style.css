@@ -85,7 +85,11 @@ select:focus-visible,
 }
 
 .wizard-step.active {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
 }
 
 @keyframes fadeIn {
@@ -627,6 +631,8 @@ input:checked + .switch-slider:before {
 .wizard-step.exam-step.active {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
     min-height: 100vh;
 }
 
