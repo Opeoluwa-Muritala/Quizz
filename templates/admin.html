@@ -1,0 +1,392 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin Dashboard — Mainstreet Exam Portal{% endblock %}
+
+{% block content %}
+{% if not authenticated %}
+<!-- Admin Login Gate -->
+<div class="admin-login-container">
+    <div class="card login-card">
+        <div class="logo-container">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Mainstreet Microfinance Bank Logo" class="bank-logo-img" width="40" height="40">
+            <div class="bank-wordmark">MAINSTREET</div>
+            <div class="bank-submark">ADMIN DASHBOARD</div>
+        </div>
+
+        <h1 class="step-heading">Admin Authentication</h1>
+        <p class="step-subtext">Enter your administrator access token to manage settings and questions.</p>
+
+        <div id="login-error" class="alert alert-danger hidden"></div>
+
+        <form id="admin-login-form">
+            <div class="form-group">
+                <label for="admin-token">Access Token</label>
+                <input type="password" id="admin-token" required placeholder="Enter admin token">
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">Access Dashboard</button>
+        </form>
+    </div>
+</div>
+
+{% else %}
+<!-- Full Admin Dashboard -->
+<div class="admin-dashboard-container">
+    <!-- Header -->
+    <header class="admin-header">
+        <div class="header-left">
+            <div class="topbar-logo">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Mainstreet Microfinance Bank Logo" class="bank-logo-img" width="28" height="28">
+                <div class="topbar-wordmark">MAINSTREET ADMIN</div>
+            </div>
+        </div>
+        <div class="header-right">
+            <button type="button" id="btn-admin-logout" class="btn btn-ghost">Logout</button>
+        </div>
+    </header>
+
+    <!-- Tab Bar -->
+    <nav class="admin-tabs">
+        <button type="button" class="tab-btn active" data-tab="settings">Exam Settings</button>
+        <button type="button" class="tab-btn" data-tab="questions">Question Editor</button>
+        <button type="button" class="tab-btn" data-tab="candidates">Candidates & Results</button>
+        <button type="button" class="tab-btn" data-tab="whitelist">Whitelist</button>
+    </nav>
+
+    <!-- Tab Contents -->
+    <div class="admin-tab-content">
+        
+        <!-- Panel 1: Exam Settings -->
+        <section id="tab-settings" class="tab-panel active">
+            <div class="card settings-card">
+                <h2>Exam Global Settings</h2>
+                <p class="step-subtext">Configure live rules and operational limits of the aptitude test.</p>
+
+                <form id="settings-form">
+                    <div class="form-group toggle-group">
+                        <span class="toggle-label">Exam Portal Status</span>
+                        <label class="switch-container">
+                            <input type="checkbox" id="setting-exam-open">
+                            <span class="switch-slider"></span>
+                        </label>
+                        <span id="setting-status-text" class="toggle-status-text">Exam closed</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="setting-seconds-per-q">Seconds per Question</label>
+                        <input type="number" id="setting-seconds-per-q" min="10" max="300" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="setting-pass-mark">Pass Mark (%)</label>
+                        <input type="number" id="setting-pass-mark" min="0" max="100" step="0.5" required>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Save settings</button>
+                </form>
+
+                <p id="settings-last-updated" class="settings-timestamp">Last updated: -</p>
+            </div>
+        </section>
+
+        <!-- Panel 2: Question Editor -->
+        <section id="tab-questions" class="tab-panel">
+            <div class="questions-editor-layout">
+                
+                <!-- Left: Question List -->
+                <div class="questions-list-pane">
+                    <div class="pane-header">
+                        <h2>Question Bank</h2>
+                        <p class="step-subtext">Manage active questions. Drag rows to reorder.</p>
+                    </div>
+
+                    <div class="questions-sections-container">
+                        <div class="section-group">
+                            <h3 class="group-header">NUMERICAL REASONING</h3>
+                            <div class="questions-list" id="admin-questions-numerical"></div>
+                            <button type="button" class="btn btn-ghost btn-full btn-add-q" data-section="Numerical">+ Add Numerical Question</button>
+                        </div>
+                        
+                        <div class="section-group">
+                            <h3 class="group-header">VERBAL REASONING</h3>
+                            <div class="questions-list" id="admin-questions-verbal"></div>
+                            <button type="button" class="btn btn-ghost btn-full btn-add-q" data-section="Verbal">+ Add Verbal Question</button>
+                        </div>
+
+                        <div class="section-group">
+                            <h3 class="group-header">LOGICAL REASONING</h3>
+                            <div class="questions-list" id="admin-questions-logical"></div>
+                            <button type="button" class="btn btn-ghost btn-full btn-add-q" data-section="Logical">+ Add Logical Question</button>
+                        </div>
+                    </div>
+
+                    <!-- Bulk Import Section -->
+                    <div class="bulk-import-card card">
+                        <div class="bulk-header" id="bulk-toggle">
+                            <h3>Bulk Question Import</h3>
+                            <span class="toggle-icon">&plus;</span>
+                        </div>
+                        <div class="bulk-body hidden" id="bulk-body-content">
+                            <!-- JSON Paste -->
+                            <div class="form-group">
+                                <label for="bulk-json-paste">JSON Array Paste</label>
+                                <textarea id="bulk-json-paste" rows="4" placeholder='[{"section":"Logical","stem":"Example?","options":["A","B","C","D"],"answer":0}]'></textarea>
+                                <button type="button" id="btn-import-json" class="btn btn-ghost">Import JSON</button>
+                            </div>
+
+                            <hr class="card-divider">
+
+                            <!-- CSV Upload -->
+                            <div class="form-group">
+                                <label>CSV File Upload</label>
+                                <div class="file-uploader-row">
+                                    <input type="file" id="csv-file-input" accept=".csv" class="hidden">
+                                    <button type="button" id="btn-trigger-csv" class="btn btn-ghost">Choose CSV File</button>
+                                    <span id="csv-file-name" class="file-name-text">No file selected</span>
+                                </div>
+                                <p class="help-text">Columns: section, stem, option_a, option_b, option_c, option_d, answer</p>
+                                <div id="csv-preview-text" class="preview-text hidden"></div>
+                                <button type="button" id="btn-import-csv" class="btn btn-primary" disabled>Import CSV Questions</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Editor Form -->
+                <div class="question-form-pane">
+                    <div class="card form-card sticky-card">
+                        <h2 id="editor-title">Add Question</h2>
+                        
+                        <form id="question-editor-form">
+                            <input type="hidden" id="editor-q-id">
+                            <input type="hidden" id="editor-q-position">
+                            
+                            <div class="form-group">
+                                <label>Section</label>
+                                <div class="segmented-control">
+                                    <label class="segment">
+                                        <input type="radio" name="editor-section" value="Numerical" checked>
+                                        <span>Numerical</span>
+                                    </label>
+                                    <label class="segment">
+                                        <input type="radio" name="editor-section" value="Verbal">
+                                        <span>Verbal</span>
+                                    </label>
+                                    <label class="segment">
+                                        <input type="radio" name="editor-section" value="Logical">
+                                        <span>Logical</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="editor-stem">Question Stem (HTML allowed)</label>
+                                <textarea id="editor-stem" rows="4" required placeholder="Write question stem here..."></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="editor-opt-a">Option A</label>
+                                <input type="text" id="editor-opt-a" required placeholder="Enter option A">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="editor-opt-b">Option B</label>
+                                <input type="text" id="editor-opt-b" required placeholder="Enter option B">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="editor-opt-c">Option C</label>
+                                <input type="text" id="editor-opt-c" required placeholder="Enter option C">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="editor-opt-d">Option D</label>
+                                <input type="text" id="editor-opt-d" required placeholder="Enter option D">
+                            </div>
+
+                            <div class="form-group">
+                                <label>Correct Answer</label>
+                                <div class="answer-radios-row">
+                                    <label class="radio-option">
+                                        <input type="radio" name="editor-answer" value="0" checked>
+                                        <span>A</span>
+                                    </label>
+                                    <label class="radio-option">
+                                        <input type="radio" name="editor-answer" value="1">
+                                        <span>B</span>
+                                    </label>
+                                    <label class="radio-option">
+                                        <input type="radio" name="editor-answer" value="2">
+                                        <span>C</span>
+                                    </label>
+                                    <label class="radio-option">
+                                        <input type="radio" name="editor-answer" value="3">
+                                        <span>D</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="form-group toggle-group">
+                                <span class="toggle-label">Active (Include in Live Exam)</span>
+                                <label class="switch-container">
+                                    <input type="checkbox" id="editor-active" checked>
+                                    <span class="switch-slider"></span>
+                                </label>
+                            </div>
+
+                            <div class="button-group">
+                                <button type="submit" class="btn btn-primary">Save question</button>
+                                <button type="button" id="btn-cancel-edit" class="btn btn-ghost">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- Panel 3: Candidates & Results -->
+        <section id="tab-candidates" class="tab-panel">
+            <div class="candidates-results-layout">
+                
+                <!-- Summary Statistics -->
+                <div class="summary-stats-grid">
+                    <div class="card stat-mini-card">
+                        <span class="stat-mini-label">Total Candidates</span>
+                        <span id="results-stat-total" class="stat-mini-value font-mono">0</span>
+                    </div>
+                    <div class="card stat-mini-card">
+                        <span class="stat-mini-label">Passed Candidates</span>
+                        <span id="results-stat-passed" class="stat-mini-value font-mono green-text">0</span>
+                    </div>
+                    <div class="card stat-mini-card">
+                        <span class="stat-mini-label">Failed Candidates</span>
+                        <span id="results-stat-failed" class="stat-mini-value font-mono red-text">0</span>
+                    </div>
+                    <div class="card stat-mini-card">
+                        <span class="stat-mini-label">Average Score</span>
+                        <span id="results-stat-avg" class="stat-mini-value font-mono">0.00%</span>
+                    </div>
+                    <div class="card stat-mini-card">
+                        <span class="stat-mini-label">Average Time</span>
+                        <span id="results-stat-time" class="stat-mini-value font-mono">0s</span>
+                    </div>
+                </div>
+
+                <!-- Action Row -->
+                <div class="actions-header-row">
+                    <h3>Candidate Result Log</h3>
+                    <a href="/api/admin/export-csv" id="btn-export-csv" class="btn btn-ghost download-btn">Download CSV</a>
+                </div>
+
+                <!-- Results Table -->
+                <div class="table-container">
+                    <table class="data-table" id="results-table">
+                        <thead>
+                            <tr>
+                                <th class="sortable" data-sort="name">Candidate Name <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort="email">Email <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort="score">Score (%) <span class="sort-icon"></span></th>
+                                <th>Pass/Fail</th>
+                                <th class="sortable" data-sort="time">Time Taken <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort="switches">Tab Switches <span class="sort-icon"></span></th>
+                                <th class="sortable active" data-sort="submitted_at">Submitted At <span class="sort-icon desc"></span></th>
+                                <th>Verification</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-tbody">
+                            <!-- Dynamic rows -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="pagination-row">
+                    <button type="button" id="btn-prev-page" class="btn btn-ghost">&larr; Previous</button>
+                    <span id="page-indicator" class="page-indicator font-mono">Page 1</span>
+                    <button type="button" id="btn-next-page" class="btn btn-ghost">Next &rarr;</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Panel 4: Whitelist -->
+        <section id="tab-whitelist" class="tab-panel">
+            <div class="whitelist-layout">
+                
+                <!-- Left: Add panel -->
+                <div class="whitelist-form-side">
+                    <div class="card">
+                        <h2>Whitelist Management</h2>
+                        <p class="step-subtext">Add approved email addresses of candidates allowed to take the exam.</p>
+
+                        <!-- Add single -->
+                        <form id="whitelist-add-form" class="inline-add-form">
+                            <div class="form-group">
+                                <label for="whitelist-email">Email Address</label>
+                                <div class="input-btn-row">
+                                    <input type="email" id="whitelist-email" required placeholder="e.g. candidate@mail.com">
+                                    <button type="submit" class="btn btn-primary">Add</button>
+                                </div>
+                            </div>
+                        </form>
+
+                        <hr class="card-divider">
+
+                        <!-- Bulk Whitelist -->
+                        <div class="form-group">
+                            <label>Bulk CSV Import</label>
+                            <p class="help-text">Upload a text/CSV file containing one email address per line.</p>
+                            <div class="file-uploader-row">
+                                <input type="file" id="whitelist-csv-input" accept=".csv, .txt" class="hidden">
+                                <button type="button" id="btn-trigger-whitelist-csv" class="btn btn-ghost">Choose Whitelist CSV</button>
+                                <span id="whitelist-csv-name" class="file-name-text">No file selected</span>
+                            </div>
+                            <div id="whitelist-preview-text" class="preview-text hidden"></div>
+                            <button type="button" id="btn-import-whitelist-csv" class="btn btn-primary" disabled>Import Whitelist</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: List panel -->
+                <div class="whitelist-table-side">
+                    <div class="card whitelist-list-card">
+                        <div class="list-header-row">
+                            <h3>Whitelisted Emails</h3>
+                            <span id="whitelist-count-badge" class="count-badge font-mono">0</span>
+                        </div>
+                        
+                        <div class="table-container list-table-container">
+                            <table class="data-table min-table">
+                                <thead>
+                                    <tr>
+                                        <th>Email Address</th>
+                                        <th>Added At</th>
+                                        <th class="action-cell">Remove</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="whitelist-tbody">
+                                    <!-- Dynamic whitelist rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </div>
+</div>
+
+<!-- Image Lightbox Modal Overlay (Only place where position fixed is used) -->
+<div id="lightbox-modal" class="lightbox-modal hidden">
+    <div class="lightbox-content">
+        <img id="lightbox-img" src="" alt="Enlarged Document View">
+        <p class="lightbox-caption">Click outside the image to close.</p>
+    </div>
+</div>
+{% endif %}
+
+<!-- Client-side Toasts Container -->
+<div id="toast-container" class="toast-container"></div>
+
+{% endblock %}
