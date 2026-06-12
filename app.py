@@ -26,6 +26,9 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='Lax'
 )
 
+ADMIN_SESSION_TIMEOUT_MINUTES = 30
+MAX_ADMIN_DEVICES = 2
+
 # Initialize PostgreSQL Connection Pool
 db_url = os.environ.get("NEON_DATABASE_URL")
 connection_pool = None
@@ -159,6 +162,19 @@ def init_db():
                     updated_at           TIMESTAMPTZ DEFAULT NOW()
                 );
             """)
+
+            # Create admin_sessions table for device tracking and inactivity timeouts
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS admin_sessions (
+                    id             SERIAL PRIMARY KEY,
+                    session_token  TEXT UNIQUE NOT NULL,
+                    user_agent     TEXT,
+                    ip_address     TEXT,
+                    last_activity  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    active         BOOLEAN DEFAULT TRUE
+                );
+            """)
             
             # Seed exam_settings if missing
             cur.execute("SELECT count(*) FROM exam_settings WHERE id = 1;")
@@ -228,10 +244,61 @@ def check_csrf():
             return jsonify({"error": "CSRF token missing or invalid"}), 400
 
 # Helper to check admin authentication
+
+def prune_expired_admin_sessions():
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                UPDATE admin_sessions
+                SET active = FALSE
+                WHERE active = TRUE
+                  AND last_activity < NOW() - INTERVAL '{ADMIN_SESSION_TIMEOUT_MINUTES} minutes';
+            """)
+            conn.commit()
+
+
+def get_admin_device_fingerprint():
+    user_agent = request.headers.get('User-Agent', '').strip()
+    ip_address = request.remote_addr or 'unknown'
+    return user_agent, ip_address
+
+
+def get_current_admin_session_id():
+    session_token = session.get('admin_session_token')
+    if not session_token:
+        return None
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT id
+                FROM admin_sessions
+                WHERE session_token = %s
+                  AND active = TRUE
+                  AND last_activity >= NOW() - INTERVAL '{ADMIN_SESSION_TIMEOUT_MINUTES} minutes';
+            """, (session_token,))
+            row = cur.fetchone()
+            if not row:
+                return None
+
+            admin_session_id = row[0]
+            cur.execute("UPDATE admin_sessions SET last_activity = NOW() WHERE id = %s;", (admin_session_id,))
+        conn.commit()
+
+    return admin_session_id
+
+
 def require_admin():
-    if not session.get('admin'):
+    if not session.get('admin') or not session.get('admin_session_token'):
         return jsonify({"error": "Unauthorized"}), 401
+
+    if not get_current_admin_session_id():
+        session.pop('admin', None)
+        session.pop('admin_session_token', None)
+        return jsonify({"error": "Unauthorized"}), 401
+
     return None
+
 
 # Context processor to expose CSRF token to templates
 @app.context_processor
@@ -554,15 +621,19 @@ def submit_results():
 
 @app.route('/admin')
 def admin_dashboard():
-    if not session.get('admin'):
+    if not session.get('admin') or not session.get('admin_session_token') or not get_current_admin_session_id():
+        session.pop('admin', None)
+        session.pop('admin_session_token', None)
         return redirect(url_for('admin_login'))
     return render_template('admin.html', authenticated=True)
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
     if request.method == 'GET':
-        if session.get('admin'):
+        if session.get('admin') and session.get('admin_session_token') and get_current_admin_session_id():
             return redirect(url_for('admin_dashboard'))
+        session.pop('admin', None)
+        session.pop('admin_session_token', None)
         return render_template('admin.html', authenticated=False)
         
     # Handle login POST
@@ -572,15 +643,61 @@ def admin_login():
     admin_token = os.environ.get("ADMIN_TOKEN", "admin123")
     
     # Constant-time comparison
-    if hmac.compare_digest(token.encode('utf-8'), admin_token.encode('utf-8')):
-        session['admin'] = True
-        return jsonify({"success": True})
-    else:
+    if not hmac.compare_digest(token.encode('utf-8'), admin_token.encode('utf-8')):
         return jsonify({"success": False, "error": "Incorrect access token"}), 401
+
+    user_agent, ip_address = get_admin_device_fingerprint()
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            prune_expired_admin_sessions()
+
+            cur.execute("""
+                SELECT id, session_token
+                FROM admin_sessions
+                WHERE active = TRUE
+                  AND user_agent = %s
+                  AND ip_address = %s;
+            """, (user_agent, ip_address))
+            existing_session = cur.fetchone()
+
+            cur.execute("SELECT COUNT(*) FROM admin_sessions WHERE active = TRUE;")
+            active_sessions = cur.fetchone()[0]
+
+            if existing_session:
+                session_token = existing_session[1]
+                cur.execute("UPDATE admin_sessions SET last_activity = NOW() WHERE id = %s;", (existing_session[0],))
+            else:
+                if active_sessions >= MAX_ADMIN_DEVICES:
+                    return jsonify({
+                        "success": False,
+                        "error": "Maximum number of active admin devices reached. Logout from another device or wait for inactivity timeout."
+                    }), 403
+
+                session_token = secrets.token_urlsafe(32)
+                cur.execute("""
+                    INSERT INTO admin_sessions (session_token, user_agent, ip_address, last_activity, active)
+                    VALUES (%s, %s, %s, NOW(), TRUE)
+                    RETURNING id;
+                """, (session_token, user_agent, ip_address))
+                cur.fetchone()
+        conn.commit()
+
+    session['admin'] = True
+    session['admin_session_token'] = session_token
+    return jsonify({"success": True})
 
 @app.route('/admin/logout', methods=['POST'])
 def admin_logout():
+    session_token = session.get('admin_session_token')
+    if session_token:
+        with DBConnection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE admin_sessions SET active = FALSE WHERE session_token = %s;", (session_token,))
+            conn.commit()
+
     session.pop('admin', None)
+    session.pop('admin_session_token', None)
     return jsonify({"success": True})
 
 
