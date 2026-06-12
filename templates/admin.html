@@ -96,7 +96,24 @@
                 <div class="questions-list-pane">
                     <div class="pane-header">
                         <h2>Question Bank</h2>
-                        <p class="step-subtext">Manage active questions. Drag rows to reorder.</p>
+                        <p class="step-subtext">Manage questions. Drag rows to reorder.</p>
+                    </div>
+
+                    <div class="question-filter-container">
+                        <div class="segmented-control">
+                            <label class="segment">
+                                <input type="radio" name="question-type-filter" value="all" checked>
+                                <span>All Questions</span>
+                            </label>
+                            <label class="segment">
+                                <input type="radio" name="question-type-filter" value="default">
+                                <span>Default</span>
+                            </label>
+                            <label class="segment">
+                                <input type="radio" name="question-type-filter" value="uploaded">
+                                <span>Uploaded</span>
+                            </label>
+                        </div>
                     </div>
 
                     <div class="questions-sections-container">
@@ -151,95 +168,7 @@
                     </div>
                 </div>
 
-                <!-- Right: Editor Form -->
-                <div class="question-form-pane">
-                    <div class="card form-card sticky-card">
-                        <h2 id="editor-title">Add Question</h2>
-                        
-                        <form id="question-editor-form">
-                            <input type="hidden" id="editor-q-id">
-                            <input type="hidden" id="editor-q-position">
-                            
-                            <div class="form-group">
-                                <label>Section</label>
-                                <div class="segmented-control">
-                                    <label class="segment">
-                                        <input type="radio" name="editor-section" value="Numerical" checked>
-                                        <span>Numerical</span>
-                                    </label>
-                                    <label class="segment">
-                                        <input type="radio" name="editor-section" value="Verbal">
-                                        <span>Verbal</span>
-                                    </label>
-                                    <label class="segment">
-                                        <input type="radio" name="editor-section" value="Logical">
-                                        <span>Logical</span>
-                                    </label>
-                                </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label for="editor-stem">Question Stem (HTML allowed)</label>
-                                <textarea id="editor-stem" rows="4" required placeholder="Write question stem here..."></textarea>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="editor-opt-a">Option A</label>
-                                <input type="text" id="editor-opt-a" required placeholder="Enter option A">
-                            </div>
-
-                            <div class="form-group">
-                                <label for="editor-opt-b">Option B</label>
-                                <input type="text" id="editor-opt-b" required placeholder="Enter option B">
-                            </div>
-
-                            <div class="form-group">
-                                <label for="editor-opt-c">Option C</label>
-                                <input type="text" id="editor-opt-c" required placeholder="Enter option C">
-                            </div>
-
-                            <div class="form-group">
-                                <label for="editor-opt-d">Option D</label>
-                                <input type="text" id="editor-opt-d" required placeholder="Enter option D">
-                            </div>
-
-                            <div class="form-group">
-                                <label>Correct Answer</label>
-                                <div class="answer-radios-row">
-                                    <label class="radio-option">
-                                        <input type="radio" name="editor-answer" value="0" checked>
-                                        <span>A</span>
-                                    </label>
-                                    <label class="radio-option">
-                                        <input type="radio" name="editor-answer" value="1">
-                                        <span>B</span>
-                                    </label>
-                                    <label class="radio-option">
-                                        <input type="radio" name="editor-answer" value="2">
-                                        <span>C</span>
-                                    </label>
-                                    <label class="radio-option">
-                                        <input type="radio" name="editor-answer" value="3">
-                                        <span>D</span>
-                                    </label>
-                                </div>
-                            </div>
-
-                            <div class="form-group toggle-group">
-                                <span class="toggle-label">Active (Include in Live Exam)</span>
-                                <label class="switch-container">
-                                    <input type="checkbox" id="editor-active" checked>
-                                    <span class="switch-slider"></span>
-                                </label>
-                            </div>
-
-                            <div class="button-group">
-                                <button type="submit" class="btn btn-primary">Save question</button>
-                                <button type="button" id="btn-cancel-edit" class="btn btn-ghost">Cancel</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
 
             </div>
         </section>
@@ -273,9 +202,12 @@
                 </div>
 
                 <!-- Action Row -->
-                <div class="actions-header-row">
+                <div class="actions-header-row" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px;">
                     <h3>Candidate Result Log</h3>
-                    <a href="/api/admin/export-csv" id="btn-export-csv" class="btn btn-ghost download-btn">Download CSV</a>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <button type="button" id="btn-clear-results" class="btn btn-ghost" style="border-color: var(--color-danger); color: var(--color-danger); padding: 8px 16px;">Clear Results & Reset Portal</button>
+                        <a href="/api/admin/export-csv" id="btn-export-csv" class="btn btn-ghost download-btn">Download CSV</a>
+                    </div>
                 </div>
 
                 <!-- Results Table -->
@@ -350,8 +282,11 @@
                 <div class="whitelist-table-side">
                     <div class="card whitelist-list-card">
                         <div class="list-header-row">
-                            <h3>Whitelisted Emails</h3>
-                            <span id="whitelist-count-badge" class="count-badge font-mono">0</span>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <h3>Whitelisted Emails</h3>
+                                <span id="whitelist-count-badge" class="count-badge font-mono">0</span>
+                            </div>
+                            <button type="button" id="btn-clear-whitelist" class="btn btn-ghost" style="border-color: var(--color-danger); color: var(--color-danger); padding: 4px 10px; font-size: 13px;">Clear All</button>
                         </div>
                         
                         <div class="table-container list-table-container">
@@ -374,6 +309,121 @@
             </div>
         </section>
 
+    </div>
+</div>
+
+<!-- Question Editor Modal Popup -->
+<div id="question-editor-modal" class="modal-overlay hidden">
+    <div class="card modal-card" style="padding: 24px;">
+        <div class="modal-header">
+            <h2 id="editor-title">Add Question</h2>
+            <div class="modal-header-actions">
+                <button type="button" id="btn-delete-question" class="btn-icon btn-icon-danger hidden" title="Delete Question">
+                    <i class="ti ti-trash"></i>
+                </button>
+                <button type="button" id="btn-close-question-modal" class="btn-icon" title="Close">
+                    <i class="ti ti-x"></i>
+                </button>
+            </div>
+        </div>
+        
+        <form id="question-editor-form" style="padding: 0 4px;">
+            <input type="hidden" id="editor-q-id">
+            <input type="hidden" id="editor-q-position">
+            
+            <div class="form-group">
+                <label>Section</label>
+                <div class="segmented-control">
+                    <label class="segment">
+                        <input type="radio" name="editor-section" value="Numerical" checked>
+                        <span>Numerical</span>
+                    </label>
+                    <label class="segment">
+                        <input type="radio" name="editor-section" value="Verbal">
+                        <span>Verbal</span>
+                    </label>
+                    <label class="segment">
+                        <input type="radio" name="editor-section" value="Logical">
+                        <span>Logical</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="editor-stem">Question Stem (HTML allowed)</label>
+                <textarea id="editor-stem" rows="4" required placeholder="Write question stem here..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="editor-opt-a">Option A</label>
+                <input type="text" id="editor-opt-a" required placeholder="Enter option A">
+            </div>
+
+            <div class="form-group">
+                <label for="editor-opt-b">Option B</label>
+                <input type="text" id="editor-opt-b" required placeholder="Enter option B">
+            </div>
+
+            <div class="form-group">
+                <label for="editor-opt-c">Option C</label>
+                <input type="text" id="editor-opt-c" required placeholder="Enter option C">
+            </div>
+
+            <div class="form-group">
+                <label for="editor-opt-d">Option D</label>
+                <input type="text" id="editor-opt-d" required placeholder="Enter option D">
+            </div>
+
+            <div class="form-group">
+                <label>Correct Answer</label>
+                <div class="answer-radios-row">
+                    <label class="radio-option">
+                        <input type="radio" name="editor-answer" value="0" checked>
+                        <span>A</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="editor-answer" value="1">
+                        <span>B</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="editor-answer" value="2">
+                        <span>C</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="editor-answer" value="3">
+                        <span>D</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group toggle-group">
+                <span class="toggle-label">Active (Include in Live Exam)</span>
+                <label class="switch-container">
+                    <input type="checkbox" id="editor-active" checked>
+                    <span class="switch-slider"></span>
+                </label>
+            </div>
+
+            <div class="button-group">
+                <button type="submit" class="btn btn-primary">Save question</button>
+                <button type="button" id="btn-cancel-edit" class="btn btn-ghost">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Custom Confirmation Modal Overlay -->
+<div id="confirm-modal" class="modal-overlay hidden" style="z-index: 3000;">
+    <div class="card modal-card" style="max-width: 400px; padding: 24px; text-align: center;">
+        <div style="font-size: 40px; color: var(--color-danger); margin-bottom: 16px;">
+            <i class="ti ti-alert-triangle"></i>
+        </div>
+        <h3 id="confirm-title" style="margin-bottom: 8px; font-size: 18px; color: var(--color-text-primary);">Confirm Action</h3>
+        <p id="confirm-message" style="font-size: 14px; color: var(--color-text-secondary); margin-bottom: 24px; line-height: 1.5;">Are you sure you want to proceed?</p>
+        <div class="btn-row">
+            <button type="button" id="btn-confirm-yes" class="btn btn-primary btn-half">Proceed</button>
+            <button type="button" id="btn-confirm-no" class="btn btn-ghost btn-half">Cancel</button>
+        </div>
     </div>
 </div>
 
