@@ -1,111 +1,231 @@
-# Corporate Quiz App
+# Mainstreet MFB Aptitude Test Portal
 
-Self-hosted quiz app built as a single static HTML file with SurveyJS, Tailwind CSS, and Google Sheets result saving through Google Apps Script.
+A Python Flask-based aptitude test platform for candidate registration, identity verification, timed exams, and administrative question management.
 
-There is no application database and no custom backend server. Google Sheets, accessed through the Google Apps Script Web App, is the only results backend.
+This repository includes:
 
-## Files
+- `app.py` — Flask application and API server
+- `config.py` — seeded exam settings, question bank, and whitelist entries
+- `requirements.txt` — Python dependencies
+- `templates/` — candidate and admin HTML templates
+- `static/` — JavaScript, CSS, and image assets
 
-- `index.html` - the quiz UI, scoring, timing, tab-switch tracking, and result POST.
-- `admin.html` - a separate live results dashboard that reads from the Apps Script GET endpoint.
-- `config.js` - quiz title, description, logo, pass mark, admin password, Apps Script URL, Sheet URL, and questions.
-- `appsscript.gs` - the Google Apps Script Web App endpoint that appends quiz results to a sheet.
-- `appsscript.json` - Apps Script manifest with the required Google Sheets and Drive upload scopes.
+---
 
-If a result POST fails because of a network or configuration error, the app stores the result in `localStorage` and retries pending submissions on the next page load. Google Apps Script does not provide custom CORS response headers through `ContentService`, so the app sends JSON as `text/plain` with `no-cors`. That lets browsers POST directly without a preflight request, but the browser cannot read the response body from the static page.
+## Overview
 
-After completion, candidates can download their results as a PDF generated in the browser.
+The portal supports two main flows:
 
-## Google Sheets Setup
+1. **Candidate exam workflow**
+   - register with full name and email
+   - whitelist verification and exam availability check
+   - upload government ID and capture/upload a selfie
+   - read instructions and take a timed, section-based exam
+   - receive immediate pass/fail results and a downloadable certificate
 
-1. Create a Google Sheet.
-2. Open **Extensions > Apps Script**.
-3. Paste the contents of `appsscript.gs` into the Apps Script editor.
-4. Open **Project Settings**, enable **Show "appsscript.json" manifest file in editor**, then paste the contents of `appsscript.json` into the manifest.
-5. In the Apps Script editor, select and run `authorizeStorage_`, then approve the Google Sheets and Drive permissions.
-6. Deploy as **Web app**.
-7. Set **Execute as** to yourself.
-8. Set **Who has access** to the intended audience, commonly **Anyone** or **Anyone with the link** for a public static quiz.
-9. Copy the Web App URL.
-10. Copy the Google Sheet URL.
-11. In `config.js`, replace:
+2. **Admin dashboard**
+   - secure login using an admin access token
+   - control exam availability, timer, and pass mark
+   - manage question bank with add/edit/delete/reorder capabilities
+   - bulk import questions via JSON or CSV
+   - manage whitelist email access
+   - review candidate results and export CSV
+   - preview verification images from Cloudinary
 
-```js
-sheetsWebAppUrl: "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec",
-sheetUrl: "PASTE_YOUR_GOOGLE_SHEET_URL_HERE",
-```
+---
 
-with your deployed Web App URL and Google Sheet URL.
+## Features
 
-For `admin.html`, also replace `adminPassword` in `config.js`. This is a simple client-side password gate for casual access control, not strong security.
+- Flask backend with PostgreSQL persistence
+- Cloudinary-based image upload for selfie and ID storage
+- Candidate session protection for exam endpoints
+- Exam open/close toggle and pass mark configuration
+- Active question bank with numerical, verbal, and logical sections
+- Timed single-pass exam; unanswered questions are marked incorrect
+- Tab-switch detection and tracking in exam sessions
+- CSV export of results from the admin dashboard
+- Automatic database table creation and seeding on first run
 
-### Troubleshooting: connection / CORS issues
+---
 
-- Ensure the Apps Script is deployed as a Web App with **Execute as** set to your account and **Who has access** set to **Anyone, even anonymous** (or at least **Anyone with the link**) so the static pages can call it.
-- If Apps Script says `You do not have permission to call DriveApp.getFolderById`, add the Drive scope from `appsscript.json`, run `authorizeStorage_`, approve the permissions, then deploy a **new version** of the Web App.
-- If the admin dashboard shows "Could not fetch results" or the quiz cannot save results, check the deployed Web App URL in `config.js` and that the script is published (not only saved).
-- The frontend uses fetch POSTs for photo uploads and result saving. If the browser blocks the request due to CORS, the app will fall back to a fire-and-forget `navigator.sendBeacon` attempt for results and will continue without server-side photo uploads — in which case submissions still succeed locally, but images may not be stored in Drive.
-- To inspect server-side errors, open the Apps Script editor, run the `getResults_()` function manually, or check the script executions log (Executions) in the Apps Script dashboard.
+## Prerequisites
 
-If you want, I can update the Apps Script to write CORS-friendly responses and add a small server-side health endpoint — tell me and I'll patch `appsscript.gs` and provide redeploy steps.
+- Python 3.11+ installed
+- PostgreSQL server available
+- Cloudinary account
+- Recommended: a virtual environment for Python dependencies
 
-## Static Deployment
+---
 
-The app is a static site. Deploy these files together to Nginx, Apache, GitHub Pages, Netlify, or any static host:
+## Installation
 
-- `index.html`
-- `admin.html`
-- `config.js`
-- optional `logo.png` if `QUIZ_CONFIG.logo` points to it
-
-The pages load SurveyJS, Tailwind CSS, and jsPDF from public CDNs, so the deployed site needs browser internet access for those assets unless you vendor them locally.
-
-## Docker Compose
-
-Serve the static files with Nginx on port 80. This container only serves HTML, JS, and static assets; it does not run an application backend or database.
+1. Open a terminal in the project root.
+2. Create and activate a virtual environment:
 
 ```bash
-docker compose up -d
+python -m venv .venv
+.\.venv\Scripts\activate
 ```
 
-Then open `http://localhost/`.
+3. Install dependencies:
 
-Local URLs:
+```bash
+pip install -r requirements.txt
+```
 
-- Quiz page: `http://localhost/`
-- Admin dashboard: `http://localhost/admin.html`
+4. Create a `.env` file in the project root with the following variables:
 
-## Quick Validation
+```env
+FLASK_SECRET_KEY=your-secret-key
+NEON_DATABASE_URL=postgresql://user:password@host:port/database
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
+ADMIN_TOKEN=your-admin-token
+```
 
-1. Open `index.html` or the deployed quiz URL.
-2. Enter a full name and email.
-3. Complete the quiz.
-4. Confirm the results screen shows score, pass/fail, breakdown, PDF download, and the submission success message.
-5. Open the Google Sheet and confirm a new row was appended.
-6. Open `admin.html`, enter the configured admin password, and confirm the result appears in the dashboard.
+Notes:
 
-## Saved Columns
+- `FLASK_SECRET_KEY` is used to secure session cookies.
+- `NEON_DATABASE_URL` must point to a working PostgreSQL database.
+- If `ADMIN_TOKEN` is omitted, the default admin token is `admin123`.
 
-The Apps Script appends to the active sheet and initializes it with these columns when it is empty:
+---
 
-- Timestamp
-- Full Name
-- Email
-- Score (%)
-- Score (fraction)
-- Pass/Fail
-- Time Taken
-- Tab Switches
-- Per-question breakdown (JSON)
+## Running Locally
 
-## Editing Quiz Content
+Start the application:
 
-Questions live in `config.js` under `QUIZ_CONFIG.questions`.
+```bash
+python app.py
+```
 
-Each question can define `timeLimit`. If omitted, the app uses `defaultQuestionTimeLimitSeconds` from `config.js` when present, or 60 seconds.
+Open in your browser:
 
-Supported scored question types:
+- Candidate portal: `http://127.0.0.1:5000/`
+- Admin dashboard: `http://127.0.0.1:5000/admin`
 
-- `mcq` for single-choice questions, with `correct` as the zero-based option index.
-- `multi` for multi-select questions, with `correct` as zero-based option indexes.
-- any other type is treated as short answer, with `correct` as a string or list of accepted strings.
+The app will initialize database tables and seed the question bank / whitelist on first launch.
+
+---
+
+## Production Deployment
+
+For production, use a WSGI server such as Gunicorn and set `FLASK_DEBUG` to `False` if you add it manually.
+
+Example:
+
+```bash
+gunicorn app:app --bind 0.0.0.0:5000
+```
+
+Ensure your environment variables are configured in the host environment and that the PostgreSQL and Cloudinary accounts are reachable from production.
+
+---
+
+## Configuration
+
+### `config.py`
+
+This file seeds database defaults when the server boots:
+
+- `EXAM_TITLE` — exam display title
+- `PASS_MARK_PERCENT` — default passing percentage
+- `SECONDS_PER_QUESTION` — default timer per question
+- `WHITELIST_SEEDS` — initial allowed candidate emails
+- `QUESTIONS` — initial question bank
+
+All seeded data is written only if the corresponding tables are empty.
+
+---
+
+## Candidate Flow
+
+1. Visit `/`
+2. Enter full name and registered email
+3. The backend verifies:
+   - exam is currently open
+   - email exists in the whitelist
+   - the candidate has not already submitted
+4. Upload ID card image
+5. Capture a live selfie or upload a selfie image
+6. Read the exam instructions and begin the test
+7. Answer questions in a forward-only timed sequence
+8. Submit and receive a score, pass/fail result, and reference number
+
+---
+
+## Admin Flow
+
+1. Visit `/admin`
+2. Authenticate with the admin token
+3. Manage settings, questions, whitelist, and candidate results
+4. Use CSV export to download exam results
+
+Admin routes are protected by a session flag and require the correct `ADMIN_TOKEN`.
+
+---
+
+## Backend API Endpoints
+
+Candidate-facing endpoints:
+
+- `POST /api/check-email` — validate registration email and exam availability
+- `GET /api/exam-summary` — fetch current exam settings
+- `POST /api/upload-photos` — upload selfie and ID to Cloudinary
+- `GET /api/questions` — fetch active exam questions
+- `POST /api/submit-results` — submit exam answers and store results
+
+Admin endpoints:
+
+- `GET/POST /api/admin/settings`
+- `GET/POST /api/admin/questions`
+- `PUT/DELETE /api/admin/questions/<id>`
+- `POST /api/admin/questions/bulk`
+- `POST /api/admin/questions/reorder`
+- `GET/POST /api/admin/whitelist`
+- `POST /api/admin/whitelist/bulk`
+- `DELETE /api/admin/whitelist/<id>`
+- `GET /api/admin/results`
+- `GET /api/admin/export-csv`
+- `GET /api/admin/image/<candidate_id>/<image_type>`
+
+---
+
+## Database Schema
+
+The app manages these tables automatically:
+
+- `candidates`
+- `questions`
+- `exam_results`
+- `whitelist`
+- `exam_settings`
+
+The database schema is created and migrated on startup by `init_db()` in `app.py`.
+
+---
+
+## Notes & Best Practices
+
+- Use a strong `ADMIN_TOKEN` before exposing `/admin` publicly.
+- Keep `FLASK_SECRET_KEY` secret.
+- Ensure Cloudinary credentials are valid; image uploads fail otherwise.
+- The candidate exam uses session state, so browser cookies must be enabled.
+- If remote Postgres requires SSL, include that in `NEON_DATABASE_URL`.
+
+---
+
+## Project Structure
+
+- `app.py` — Flask server and API logic
+- `config.py` — initial seeds and exam defaults
+- `requirements.txt` — dependency list
+- `templates/` — Flask HTML templates
+- `static/` — frontend Javascript, CSS, and logo
+
+---
+
+## Contact
+
+If you need help customizing the question set, adjusting the whitelist, or changing the exam logic, update `config.py` or ask for assistance.
