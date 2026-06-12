@@ -162,6 +162,8 @@ All seeded data is written only if the corresponding tables are empty.
 3. Manage settings, questions, whitelist, and candidate results
 4. Use CSV export to download exam results
 
+Admin sessions expire after 30 minutes of inactivity. The system also limits active admin logins to two devices at a time; a third device must wait until one session expires or logs out.
+
 Admin routes are protected by a session flag and require the correct `ADMIN_TOKEN`.
 
 ---
