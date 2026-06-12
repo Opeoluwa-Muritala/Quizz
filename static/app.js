@@ -744,6 +744,50 @@ function initAdminLogin(form) {
 }
 
 function initAdminOperations() {
+    let currentQuestionFilter = "all";
+    let allQuestionsList = [];
+
+    // Filter change listeners
+    document.querySelectorAll('input[name="question-type-filter"]').forEach(radio => {
+        radio.addEventListener("change", (e) => {
+            currentQuestionFilter = e.target.value;
+            renderQuestionList(allQuestionsList);
+        });
+    });
+
+    function showCustomConfirm(title, message, onConfirm) {
+        document.getElementById("confirm-title").textContent = title;
+        document.getElementById("confirm-message").textContent = message;
+        
+        const modal = document.getElementById("confirm-modal");
+        modal.classList.remove("hidden");
+        
+        const btnYes = document.getElementById("btn-confirm-yes");
+        const btnNo = document.getElementById("btn-confirm-no");
+        
+        const newYes = btnYes.cloneNode(true);
+        const newNo = btnNo.cloneNode(true);
+        btnYes.parentNode.replaceChild(newYes, btnYes);
+        btnNo.parentNode.replaceChild(newNo, btnNo);
+        
+        newYes.addEventListener("click", () => {
+            modal.classList.add("hidden");
+            if (onConfirm) onConfirm();
+        });
+        
+        newNo.addEventListener("click", () => {
+            modal.classList.add("hidden");
+        });
+        
+        const closeOnOutside = (e) => {
+            if (e.target === modal) {
+                modal.classList.add("hidden");
+                modal.removeEventListener("click", closeOnOutside);
+            }
+        };
+        modal.addEventListener("click", closeOnOutside);
+    }
+
     // Setup Logouts
     document.getElementById("btn-admin-logout").addEventListener("click", async () => {
         try {
@@ -836,6 +880,8 @@ function initAdminOperations() {
     }
 
     function renderQuestionList(questions) {
+        allQuestionsList = questions; // Store reference
+        
         const sections = {
             "Numerical": document.getElementById("admin-questions-numerical"),
             "Verbal": document.getElementById("admin-questions-verbal"),
@@ -848,19 +894,41 @@ function initAdminOperations() {
         }
         
         questions.forEach(q => {
+            // Apply filter
+            if (currentQuestionFilter === "default" && !q.is_default) return;
+            if (currentQuestionFilter === "uploaded" && q.is_default) return;
+            
             const row = document.createElement("div");
             row.className = `question-row-item ${q.active ? '' : 'inactive'}`;
-            row.setAttribute("draggable", "true");
+            // Reordering via drag and drop is only meaningful when viewing "All Questions"
+            if (currentQuestionFilter === "all") {
+                row.setAttribute("draggable", "true");
+            } else {
+                row.setAttribute("draggable", "false");
+            }
             row.dataset.id = q.id;
             
             // Drag handle
             const handle = document.createElement("i");
-            handle.className = "ti-grip-vertical drag-handle";
+            handle.className = "ti ti-grip-vertical drag-handle";
+            if (currentQuestionFilter !== "all") {
+                handle.style.visibility = "hidden";
+            }
             
             // Pos
             const pos = document.createElement("span");
             pos.className = "question-pos";
             pos.textContent = q.position || q.id;
+            
+            // Badge for default vs uploaded
+            const badge = document.createElement("span");
+            if (q.is_default) {
+                badge.className = "badge badge-default";
+                badge.textContent = "Default";
+            } else {
+                badge.className = "badge badge-uploaded";
+                badge.textContent = "Uploaded";
+            }
             
             // Stem
             const stem = document.createElement("span");
@@ -876,16 +944,16 @@ function initAdminOperations() {
             btnEdit.className = "btn-icon";
             btnEdit.title = "Edit Question";
             const iconEdit = document.createElement("i");
-            iconEdit.className = "ti-edit";
+            iconEdit.className = "ti ti-edit";
             btnEdit.appendChild(iconEdit);
             btnEdit.addEventListener("click", () => editQuestion(q));
             
             const btnDelete = document.createElement("button");
             btnDelete.type = "button";
             btnDelete.className = "btn-icon btn-icon-danger";
-            btnDelete.title = "Deactivate/Soft-delete";
+            btnDelete.title = "Delete Question";
             const iconTrash = document.createElement("i");
-            iconTrash.className = "ti-trash";
+            iconTrash.className = "ti ti-trash";
             btnDelete.appendChild(iconTrash);
             btnDelete.addEventListener("click", () => deleteQuestion(q.id));
             
@@ -894,11 +962,20 @@ function initAdminOperations() {
             
             row.appendChild(handle);
             row.appendChild(pos);
+            row.appendChild(badge);
             row.appendChild(stem);
             row.appendChild(actionBox);
             
             // Drag listeners
             setupDragAndDropRow(row, q.section);
+            
+            // Click handler on row to trigger edit (excluding actions and drag handle)
+            row.addEventListener("click", (e) => {
+                if (e.target.closest("button") || e.target.closest(".drag-handle")) {
+                    return;
+                }
+                editQuestion(q);
+            });
             
             if (sections[q.section]) {
                 sections[q.section].appendChild(row);
@@ -949,6 +1026,44 @@ function initAdminOperations() {
         });
     }
 
+    let editorFormSnapshot = null;
+
+    function getEditorFormSnapshot() {
+        const sectionEl = document.querySelector('input[name="editor-section"]:checked');
+        const answerEl = document.querySelector('input[name="editor-answer"]:checked');
+        return JSON.stringify({
+            section: sectionEl ? sectionEl.value : "Numerical",
+            stem: document.getElementById("editor-stem").value.trim(),
+            opt_a: document.getElementById("editor-opt-a").value.trim(),
+            opt_b: document.getElementById("editor-opt-b").value.trim(),
+            opt_c: document.getElementById("editor-opt-c").value.trim(),
+            opt_d: document.getElementById("editor-opt-d").value.trim(),
+            answer: answerEl ? answerEl.value : "0",
+            active: document.getElementById("editor-active").checked
+        });
+    }
+
+    function takeFormSnapshot() {
+        editorFormSnapshot = getEditorFormSnapshot();
+    }
+
+    function hasFormChanges() {
+        if (!editorFormSnapshot) return false;
+        return getEditorFormSnapshot() !== editorFormSnapshot;
+    }
+
+    function closeEditorModal(force = false) {
+        if (!force && hasFormChanges()) {
+            showCustomConfirm("Unsaved Changes", "You have unsaved changes. Do you want to discard them?", () => {
+                document.getElementById("question-editor-modal").classList.add("hidden");
+                resetEditorForm();
+            });
+        } else {
+            document.getElementById("question-editor-modal").classList.add("hidden");
+            resetEditorForm();
+        }
+    }
+
     function editQuestion(q) {
         document.getElementById("editor-title").textContent = "Edit Question";
         document.getElementById("editor-q-id").value = q.id;
@@ -973,17 +1088,24 @@ function initAdminOperations() {
         });
         
         document.getElementById("editor-active").checked = q.active;
+        document.getElementById("btn-delete-question").classList.remove("hidden");
+        
+        // Show modal and take snapshot
+        document.getElementById("question-editor-modal").classList.remove("hidden");
+        takeFormSnapshot();
     }
 
-    async function deleteQuestion(id) {
-        if (!confirm("Are you sure you want to deactivate (soft-delete) this question?")) return;
-        try {
-            await apiRequest(`/api/admin/questions/${id}`, "DELETE");
-            toastSuccess("Question soft-deleted.");
-            loadQuestionsTab();
-        } catch (err) {
-            toastError("Delete operation failed.");
-        }
+    function deleteQuestion(id) {
+        showCustomConfirm("Delete Question", "Permanently delete this question? This cannot be undone.", async () => {
+            try {
+                await apiRequest(`/api/admin/questions/${id}`, "DELETE");
+                toastSuccess("Question deleted.");
+                closeEditorModal(true);
+                loadQuestionsTab();
+            } catch (err) {
+                toastError("Delete operation failed.");
+            }
+        });
     }
 
     // Ghost buttons add question trigger
@@ -995,6 +1117,8 @@ function initAdminOperations() {
             radios.forEach(r => {
                 r.checked = (r.value === sec);
             });
+            document.getElementById("question-editor-modal").classList.remove("hidden");
+            takeFormSnapshot();
         });
     });
 
@@ -1004,9 +1128,33 @@ function initAdminOperations() {
         document.getElementById("editor-q-position").value = "";
         document.getElementById("question-editor-form").reset();
         document.getElementById("editor-active").checked = true;
+        document.getElementById("btn-delete-question").classList.add("hidden");
+        editorFormSnapshot = null;
     }
 
-    document.getElementById("btn-cancel-edit").addEventListener("click", resetEditorForm);
+    document.getElementById("btn-cancel-edit").addEventListener("click", (e) => {
+        e.preventDefault();
+        closeEditorModal(false);
+    });
+
+    document.getElementById("btn-close-question-modal").addEventListener("click", () => {
+        closeEditorModal(false);
+    });
+
+    // Close on click outside modal card
+    const editorModalEl = document.getElementById("question-editor-modal");
+    editorModalEl.addEventListener("click", (e) => {
+        if (e.target === editorModalEl) {
+            closeEditorModal(false);
+        }
+    });
+
+    document.getElementById("btn-delete-question").addEventListener("click", () => {
+        const qId = document.getElementById("editor-q-id").value;
+        if (qId) {
+            deleteQuestion(parseInt(qId));
+        }
+    });
 
     editorForm.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -1039,7 +1187,7 @@ function initAdminOperations() {
                 await apiRequest("/api/admin/questions", "POST", payload);
                 toastSuccess("Question created.");
             }
-            resetEditorForm();
+            closeEditorModal(true);
             loadQuestionsTab();
         } catch (err) {
             toastError(err.message);
@@ -1254,7 +1402,7 @@ function initAdminOperations() {
             btnSelfie.className = "btn-icon";
             btnSelfie.title = "View Selfie";
             const iconCam = document.createElement("i");
-            iconCam.className = "ti-camera";
+            iconCam.className = "ti ti-camera";
             btnSelfie.appendChild(iconCam);
             btnSelfie.addEventListener("click", () => openLightbox(r.candidate_id, "selfie"));
             
@@ -1263,7 +1411,7 @@ function initAdminOperations() {
             btnId.className = "btn-icon";
             btnId.title = "View ID Card";
             const iconId = document.createElement("i");
-            iconId.className = "ti-id-badge";
+            iconId.className = "ti ti-id-badge";
             btnId.appendChild(iconId);
             btnId.addEventListener("click", () => openLightbox(r.candidate_id, "idcard"));
             
@@ -1294,6 +1442,23 @@ function initAdminOperations() {
     document.getElementById("btn-next-page").addEventListener("click", () => {
         currentResultsPage++;
         loadResultsTab();
+    });
+
+    document.getElementById("btn-clear-results").addEventListener("click", () => {
+        showCustomConfirm(
+            "Clear All Results",
+            "Are you sure you want to permanently clear all candidate registrations and exam results? This resets the portal and cannot be undone.",
+            async () => {
+                try {
+                    await apiRequest("/api/admin/results/clear", "POST");
+                    toastSuccess("All results and registrations cleared successfully.");
+                    currentResultsPage = 1;
+                    loadResultsTab();
+                } catch (err) {
+                    toastError("Failed to clear results.");
+                }
+            }
+        );
     });
 
     // Sorting headers
@@ -1404,7 +1569,7 @@ function initAdminOperations() {
             btnDel.type = "button";
             btnDel.className = "btn-icon btn-icon-danger";
             const iconTrash = document.createElement("i");
-            iconTrash.className = "ti-trash";
+            iconTrash.className = "ti ti-trash";
             btnDel.appendChild(iconTrash);
             btnDel.addEventListener("click", () => removeEmailFromWhitelist(item.id));
             
@@ -1432,16 +1597,31 @@ function initAdminOperations() {
         }
     });
 
-    async function removeEmailFromWhitelist(id) {
-        if (!confirm("Remove email from whitelist?")) return;
-        try {
-            await apiRequest(`/api/admin/whitelist/${id}`, "DELETE");
-            toastSuccess("Removed successfully.");
-            loadWhitelistTab();
-        } catch (err) {
-            toastError("Failed to remove email.");
-        }
+    function removeEmailFromWhitelist(id) {
+        showCustomConfirm("Remove Email", "Remove email from whitelist?", async () => {
+            try {
+                await apiRequest(`/api/admin/whitelist/${id}`, "DELETE");
+                toastSuccess("Removed successfully.");
+                loadWhitelistTab();
+            } catch (err) {
+                toastError("Failed to remove email.");
+            }
+        });
     }
+
+    function clearWhitelist() {
+        showCustomConfirm("Clear Whitelist", "Are you sure you want to permanently clear all whitelisted emails? This cannot be undone.", async () => {
+            try {
+                await apiRequest("/api/admin/whitelist/clear", "POST");
+                toastSuccess("Whitelist cleared successfully.");
+                loadWhitelistTab();
+            } catch (err) {
+                toastError("Failed to clear whitelist.");
+            }
+        });
+    }
+
+    document.getElementById("btn-clear-whitelist").addEventListener("click", clearWhitelist);
 
     // Whitelist CSV bulk imports
     whitelistCsvBtn.addEventListener("click", () => whitelistCsvInput.click());

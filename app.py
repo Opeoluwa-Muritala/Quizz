@@ -96,10 +96,16 @@ def init_db():
                     answer     SMALLINT NOT NULL CHECK (answer BETWEEN 0 AND 3),
                     active     BOOLEAN DEFAULT TRUE,
                     position   INTEGER,
+                    is_default BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMPTZ DEFAULT NOW(),
                     updated_at TIMESTAMPTZ DEFAULT NOW()
                 );
             """)
+            cur.execute("""
+                ALTER TABLE questions
+                ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE;
+            """)
+            cur.execute("UPDATE questions SET is_default = TRUE WHERE id <= 50;")
             # Create exam_results table
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS exam_results (
@@ -169,8 +175,8 @@ def init_db():
                 from config import QUESTIONS
                 for q in QUESTIONS:
                     cur.execute("""
-                        INSERT INTO questions (id, section, stem, option_a, option_b, option_c, option_d, answer, active, position)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                        INSERT INTO questions (id, section, stem, option_a, option_b, option_c, option_d, answer, active, position, is_default)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE);
                     """, (
                         q["id"],
                         q["section"],
@@ -626,7 +632,7 @@ def admin_questions():
         with conn.cursor() as cur:
             if request.method == 'GET':
                 cur.execute("""
-                    SELECT id, section, stem, option_a, option_b, option_c, option_d, answer, active, position
+                    SELECT id, section, stem, option_a, option_b, option_c, option_d, answer, active, position, is_default
                     FROM questions
                     ORDER BY section, position ASC, id ASC;
                 """)
@@ -640,7 +646,8 @@ def admin_questions():
                         "options": [r[3], r[4], r[5], r[6]],
                         "answer": r[7],
                         "active": r[8],
-                        "position": r[9]
+                        "position": r[9],
+                        "is_default": r[10]
                     })
                 return jsonify(questions)
                 
@@ -839,6 +846,33 @@ def admin_delete_whitelist(w_id):
         conn.commit()
         
     return jsonify({"status": "success", "message": "Email removed from whitelist."})
+
+@app.route('/api/admin/whitelist/clear', methods=['POST'])
+def admin_clear_whitelist():
+    auth_err = require_admin()
+    if auth_err: return auth_err
+    
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM whitelist;")
+        conn.commit()
+        
+    return jsonify({"status": "success", "message": "All whitelisted emails removed successfully."})
+
+
+@app.route('/api/admin/results/clear', methods=['POST'])
+def admin_clear_results():
+    auth_err = require_admin()
+    if auth_err: return auth_err
+    
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            # Delete results first due to foreign key constraint
+            cur.execute("DELETE FROM exam_results;")
+            cur.execute("DELETE FROM candidates;")
+        conn.commit()
+        
+    return jsonify({"status": "success", "message": "All exam results and candidate registrations have been cleared."})
 
 
 # Candidates & Results
