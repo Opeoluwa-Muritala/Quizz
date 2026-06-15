@@ -51,6 +51,9 @@ async function apiRequest(url, method = "GET", body = null) {
 function initCandidatePortal() {
     let candidateName = "";
     let candidateEmail = "";
+    let candidatePhone = "";
+    let candidateRole = "";
+    let candidateLocation = "";
     let candidateId = null;
     let idCardBase64 = null;
     let selfieBase64 = null;
@@ -99,6 +102,18 @@ function initCandidatePortal() {
         window.location.reload(); // Wipes JS state, returns to Step 1 cleanly
     });
 
+    // Initialize intl-tel-input
+    let iti = null;
+    const phoneInput = document.getElementById("phone-number");
+    if (phoneInput && window.intlTelInput) {
+        iti = window.intlTelInput(phoneInput, {
+            initialCountry: "ng",
+            separateDialCode: true,
+            preferredCountries: ["ng", "gh", "gb", "us"],
+            utilsScript: "https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/utils.js"
+        });
+    }
+
     // ── Step 1: Registration ──
     const regForm = document.getElementById("reg-form");
     regForm.addEventListener("submit", async (e) => {
@@ -108,17 +123,32 @@ function initCandidatePortal() {
         
         const name = document.getElementById("full-name").value.trim();
         const email = document.getElementById("email").value.trim();
+        const phone = document.getElementById("phone-number").value.trim();
+        const role = document.getElementById("role").value.trim();
+        const location = document.getElementById("location").value.trim();
         
-        if (!name || !email) {
+        if (!name || !email || !phone || !role || !location) {
             errorEl.textContent = "Please fill in all fields.";
             errorEl.classList.remove("hidden");
             return;
         }
+
+        // Validate phone number using intl-tel-input
+        if (iti && !iti.isValidNumber()) {
+            errorEl.textContent = "Please enter a valid phone number for the selected country.";
+            errorEl.classList.remove("hidden");
+            return;
+        }
+
+        const fullPhone = iti ? iti.getNumber() : phone;
         
         try {
-            const res = await apiRequest("/api/check-email", "POST", { email, full_name: name });
+            const res = await apiRequest("/api/check-email", "POST", { email, full_name: name, phone_number: fullPhone, role: role, location: location });
             candidateName = name;
             candidateEmail = email;
+            candidatePhone = fullPhone;
+            candidateRole = role;
+            candidateLocation = location;
             goToStep(2);
         } catch (err) {
             errorEl.textContent = err.message;
@@ -322,6 +352,9 @@ function initCandidatePortal() {
             const res = await apiRequest("/api/upload-photos", "POST", {
                 email: candidateEmail,
                 full_name: candidateName,
+                phone_number: candidatePhone,
+                role: candidateRole,
+                location: candidateLocation,
                 selfie_b64: selfieBase64,
                 id_card_b64: idCardBase64
             });
@@ -362,6 +395,9 @@ function initCandidatePortal() {
                 apiRequest("/api/upload-photos", "POST", {
                     email: candidateEmail,
                     full_name: candidateName,
+                    phone_number: candidatePhone,
+                    role: candidateRole,
+                    location: candidateLocation,
                     selfie_b64: selfieBase64,
                     id_card_b64: idCardBase64
                 }).then(res => {
@@ -1357,7 +1393,7 @@ function initAdminOperations() {
         if (results.length === 0) {
             const tr = document.createElement("tr");
             const td = document.createElement("td");
-            td.setAttribute("colspan", "8");
+            td.setAttribute("colspan", "11");
             td.style.textAlign = "center";
             td.textContent = "No candidate exam results recorded.";
             tr.appendChild(td);
@@ -1374,6 +1410,15 @@ function initAdminOperations() {
             
             const tdEmail = document.createElement("td");
             tdEmail.textContent = r.email;
+            
+            const tdPhone = document.createElement("td");
+            tdPhone.textContent = r.phone_number;
+            
+            const tdRole = document.createElement("td");
+            tdRole.textContent = r.role;
+            
+            const tdLocation = document.createElement("td");
+            tdLocation.textContent = r.location;
             
             const tdScore = document.createElement("td");
             tdScore.className = "font-mono";
@@ -1420,6 +1465,9 @@ function initAdminOperations() {
             
             tr.appendChild(tdName);
             tr.appendChild(tdEmail);
+            tr.appendChild(tdPhone);
+            tr.appendChild(tdRole);
+            tr.appendChild(tdLocation);
             tr.appendChild(tdScore);
             tr.appendChild(tdBadge);
             tr.appendChild(tdTime);

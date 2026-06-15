@@ -2,6 +2,51 @@
 
 {% block title %}Candidate Assessment Portal — Mainstreet Microfinance Bank{% endblock %}
 
+{% block extra_head %}
+<!-- intl-tel-input CSS & JS -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/css/intlTelInput.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/intlTelInput.min.js"></script>
+<style>
+    /* Styling adjustments for intl-tel-input integration */
+    .iti {
+        width: 100%;
+        display: block;
+    }
+    .iti__country-list {
+        background-color: var(--color-white, #ffffff);
+        color: var(--color-text-primary, #1A1A2E);
+        border: 1px solid var(--color-border, #E0E0EE);
+        z-index: 1000;
+        max-width: 300px;
+        max-height: 200px;
+        font-family: var(--font-body);
+        font-size: 14px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        border-radius: 6px;
+    }
+    .iti__country {
+        padding: 8px 12px;
+        outline: none;
+    }
+    .iti__country.iti__highlight {
+        background-color: var(--color-gray-100, #F2F2F7);
+    }
+    .iti__flag-box {
+        margin-right: 8px;
+    }
+    .iti__selected-flag {
+        background-color: var(--color-gray-50, #FAFAFC);
+        border-right: 1px solid var(--color-border, #E0E0EE);
+        border-top-left-radius: 6px;
+        border-bottom-left-radius: 6px;
+        padding: 0 12px;
+    }
+    .iti--separate-dial-code .iti__selected-flag {
+        background-color: var(--color-gray-50, #FAFAFC);
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="wizard-container">
     <!-- Step 1: Registration -->
@@ -26,6 +71,38 @@
                 <div class="form-group">
                     <label for="email">Email Address</label>
                     <input type="email" id="email" required placeholder="e.g. candidate@mail.com">
+                </div>
+                <div class="form-group">
+                    <label for="phone-number">Phone Number</label>
+                    <input type="tel" id="phone-number" name="phone" placeholder="801 234 5678" required>
+                </div>
+                <div class="form-group">
+                    <label for="role">Select Role</label>
+                    <select id="role" required>
+                        <option value="">-- Select a Role --</option>
+                        <option value="Loan Officer(SME)">Loan Officer(SME)</option>
+                        <option value="Operations">Operations</option>
+                        <option value="Information Technology and Systems (IT&S)">Information Technology and Systems (IT&S)</option>
+                        <option value="Audit">Audit</option>
+                        <option value="Credit Risk">Credit Risk</option>
+                        <option value="Teller">Human Resources</option>
+                        <option value="Recovery">Recovery</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="location">Select Closest Location to You</label>
+                    <select id="location" required>
+                        <option value="">-- Select a Location --</option>
+                        <option value="Mushin">Mushin</option>
+                        <option value="Yaba">Yaba</option>
+                        <option value="Victoria Island">Victoria Island</option>
+                        <option value="Ikorodu">Ikorodu</option>
+                        <option value="Ikotun">Ikotun</option>
+                        <option value="Epe">Epe</option>
+                        <option value="Ajah">Ajah</option>
+                        <option value="Alaba">Alaba</option>
+                        <option value="Martins Street(Lagos Island)">Martins Street(Lagos Island)</option>
+                    </select>
                 </div>
                 
                 <p class="consent-statement">
