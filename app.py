@@ -10,6 +10,9 @@ import requests
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for, Response
 from psycopg2 import pool
 from dotenv import load_dotenv
+import cloudinary
+import cloudinary.uploader
+import cloudinary.utils
 
 # Load environment variables
 load_dotenv()
@@ -40,11 +43,8 @@ try:
 except Exception as e:
     print(f"Error creating connection pool: {e}")
 
-# Initialize Cloudinary
-import cloudinary
-import cloudinary.uploader
-import cloudinary.utils
 
+# Initialize Cloudinary
 cloudinary.config(
     cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
     api_key=os.environ.get("CLOUDINARY_API_KEY"),
@@ -84,7 +84,10 @@ def init_db():
                 ADD COLUMN IF NOT EXISTS selfie_url TEXT,
                 ADD COLUMN IF NOT EXISTS id_card_url TEXT,
                 ADD COLUMN IF NOT EXISTS cloudinary_folder TEXT,
-                ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+                ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+                ADD COLUMN IF NOT EXISTS phone_number TEXT,
+                ADD COLUMN IF NOT EXISTS role TEXT,
+                ADD COLUMN IF NOT EXISTS location TEXT;
             """)
             # Create questions table
             cur.execute("""
@@ -316,9 +319,12 @@ def check_email():
     data = request.json or {}
     email = data.get('email', '').strip().lower()
     full_name = data.get('full_name', '').strip()
+    phone_number = data.get('phone_number', '').strip()
+    role = data.get('role', '').strip()
+    location = data.get('location', '').strip()
     
-    if not email:
-        return jsonify({"error": "Email is required"}), 400
+    if not email or not full_name or not phone_number or not role or not location:
+        return jsonify({"error": "All registration fields are required"}), 400
         
     with DBConnection() as conn:
         with conn.cursor() as cur:
@@ -372,10 +378,13 @@ def upload_photos():
     data = request.json or {}
     email = data.get('email', '').strip().lower()
     full_name = data.get('full_name', '').strip()
+    phone_number = data.get('phone_number', '').strip()
+    role = data.get('role', '').strip()
+    location = data.get('location', '').strip()
     selfie_b64 = data.get('selfie_b64')
     id_card_b64 = data.get('id_card_b64')
     
-    if not email or not full_name or not selfie_b64 or not id_card_b64:
+    if not email or not full_name or not phone_number or not role or not location or not selfie_b64 or not id_card_b64:
         return jsonify({"error": "Missing registration details or images"}), 400
         
     with DBConnection() as conn:
@@ -429,15 +438,15 @@ def upload_photos():
                 candidate_id = cand_row[0]
                 cur.execute("""
                     UPDATE candidates
-                    SET full_name = %s, selfie_url = %s, id_card_url = %s, cloudinary_folder = %s
+                    SET full_name = %s, phone_number = %s, role = %s, location = %s, selfie_url = %s, id_card_url = %s, cloudinary_folder = %s
                     WHERE id = %s;
-                """, (full_name, selfie_url, id_card_url, folder_name, candidate_id))
+                """, (full_name, phone_number, role, location, selfie_url, id_card_url, folder_name, candidate_id))
             else:
                 cur.execute("""
-                    INSERT INTO candidates (full_name, email, selfie_url, id_card_url, cloudinary_folder)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO candidates (full_name, email, phone_number, role, location, selfie_url, id_card_url, cloudinary_folder)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id;
-                """, (full_name, email, selfie_url, id_card_url, folder_name))
+                """, (full_name, email, phone_number, role, location, selfie_url, id_card_url, folder_name))
                 candidate_id = cur.fetchone()[0]
                 
         conn.commit()
@@ -1042,7 +1051,8 @@ def admin_results():
             # Fetch results
             query = f"""
                 SELECT ER.id, C.full_name, C.email, ER.score_percent, ER.score_fraction,
-                       ER.pass_fail, ER.time_taken_secs, ER.tab_switches, ER.submitted_at, C.id
+                       ER.pass_fail, ER.time_taken_secs, ER.tab_switches, ER.submitted_at, C.id,
+                       C.phone_number, C.role, C.location
                 FROM exam_results ER
                 JOIN candidates C ON ER.candidate_id = C.id
                 ORDER BY {col_sql} {sort_order}
@@ -1063,7 +1073,10 @@ def admin_results():
                     "time_taken_secs": r[6],
                     "tab_switches": r[7],
                     "submitted_at": r[8].isoformat(),
-                    "candidate_id": r[9]
+                    "candidate_id": r[9],
+                    "phone_number": r[10] or "",
+                    "role": r[11] or "",
+                    "location": r[12] or ""
                 })
                 
     return jsonify({
@@ -1083,7 +1096,7 @@ def admin_export_csv():
         writer = csv.writer(data)
         
         # Write headers
-        writer.writerow(['Candidate Name', 'Email', 'Score %', 'Score (Fraction)', 'Pass/Fail', 'Time Taken (s)', 'Tab Switches', 'Submitted At'])
+        writer.writerow(['Candidate Name', 'Email', 'Phone Number', 'Role', 'Location', 'Score %', 'Score (Fraction)', 'Pass/Fail', 'Time Taken (s)', 'Tab Switches', 'Submitted At'])
         yield data.getvalue()
         data.seek(0)
         data.truncate(0)
@@ -1091,7 +1104,7 @@ def admin_export_csv():
         with DBConnection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT C.full_name, C.email, ER.score_percent, ER.score_fraction, ER.pass_fail, ER.time_taken_secs, ER.tab_switches, ER.submitted_at
+                    SELECT C.full_name, C.email, C.phone_number, C.role, C.location, ER.score_percent, ER.score_fraction, ER.pass_fail, ER.time_taken_secs, ER.tab_switches, ER.submitted_at
                     FROM exam_results ER
                     JOIN candidates C ON ER.candidate_id = C.id
                     ORDER BY ER.submitted_at DESC;
@@ -1101,7 +1114,7 @@ def admin_export_csv():
                     if not rows:
                         break
                     for r in rows:
-                        writer.writerow([r[0], r[1], float(r[2]), r[3], r[4], r[5], r[6], r[7].isoformat()])
+                        writer.writerow([r[0], r[1], r[2], r[3], r[4], float(r[5]), r[6], r[7], r[8], r[9], r[10].isoformat()])
                         yield data.getvalue()
                         data.seek(0)
                         data.truncate(0)
