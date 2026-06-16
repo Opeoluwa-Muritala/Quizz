@@ -199,8 +199,8 @@ function initCandidatePortal() {
             showToast("Invalid file type. Please upload a JPG or PNG image.", "error");
             return;
         }
-        if (file.size > 5 * 1024 * 1024) {
-            showToast("File size exceeds 5 MB limit.", "error");
+        if (file.size > 1 * 1024 * 1024) {
+            showToast("File size exceeds 1 MB limit.", "error");
             return;
         }
         
@@ -318,8 +318,8 @@ function initCandidatePortal() {
                 showToast("Invalid file type.", "error");
                 return;
             }
-            if (file.size > 5 * 1024 * 1024) {
-                showToast("File size exceeds 5 MB limit.", "error");
+            if (file.size > 1 * 1024 * 1024) {
+                showToast("File size exceeds 1 MB limit.", "error");
                 return;
             }
             try {
