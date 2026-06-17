@@ -29,5 +29,13 @@
     <!-- Shared Javascript -->
     <script src="{{ url_for('static', filename='app.js', v='20260610-1208') }}"></script>
     {% block extra_js %}{% endblock %}
+    
+    <!-- Vercel Web Analytics -->
+    <script>
+      window.va = window.va || function () { 
+        (window.vaq = window.vaq || []).push(arguments); 
+      };
+    </script>
+    <script defer src="/_vercel/insights/script.js"></script>
 </body>
 </html>
