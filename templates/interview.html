@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block extra_head %}
+<style>
+  .interview-wrap { max-width: 600px; margin: 60px auto; padding: 0 16px 80px; text-align: center; }
+  .interview-wrap h1 { font-family:'DM Serif Display',serif; font-size:1.75rem; color:#1a1a2e; margin:0 0 8px; }
+  .interview-wrap .sub { color:#666; margin:0 0 32px; }
+  .interview-card { background:#fff; border:1px solid #e5e5ef; border-radius:14px; padding:32px; }
+  .info-row { display:flex; justify-content:space-between; padding:10px 0;
+              border-bottom:1px solid #f0f0f7; font-size:0.92rem; }
+  .info-row:last-of-type { border:none; }
+  .info-row label { color:#888; }
+  .info-row span { font-weight:700; color:#1a1a2e; }
+  .join-btn { display:inline-flex; align-items:center; gap:10px; margin-top:24px;
+              background:#1a1a2e; color:#fff; padding:14px 32px; border-radius:10px;
+              text-decoration:none; font-weight:700; font-size:1rem;
+              transition:opacity .2s; }
+  .join-btn:hover { opacity:.85; }
+  .join-btn.inactive { background:#aaa; cursor:not-allowed; pointer-events:none; }
+  .countdown { font-size:0.85rem; color:#888; margin-top:10px; }
+  .instructions-block { background:#f9f9fb; border:1px solid #e5e5ef; border-radius:8px;
+                         padding:16px; margin-top:24px; text-align:left;
+                         font-size:0.88rem; color:#555; line-height:1.6; }
+  .instructions-block h3 { font-size:0.85rem; color:#888; text-transform:uppercase;
+                             letter-spacing:.05em; margin:0 0 8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="interview-wrap">
+  <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo"
+       style="height:32px;display:block;margin:0 auto 24px;">
+  <h1>Your Interview</h1>
+  <p class="sub">Executive Trainee Program — Final Interview</p>
+
+  <div class="interview-card">
+    {% if slot %}
+      <div class="info-row">
+        <label>Date &amp; Time</label>
+        <span id="interviewTime" data-utc="{{ slot[0].isoformat() }}">Loading…</span>
+      </div>
+      <div class="info-row">
+        <label>Duration</label>
+        <span>~{{ ((slot[1] - slot[0]).seconds // 60) }} minutes</span>
+      </div>
+      {% if slot[5] %}
+      <div class="info-row">
+        <label>Interviewer</label>
+        <span>{{ slot[4] }}</span>
+      </div>
+      {% endif %}
+      <div class="info-row">
+        <label>Platform</label>
+        <span>{{ 'Google Meet' if slot[3] == 'google_meet' else 'Zoom' }}</span>
+      </div>
+
+      {% if slot[2] %}
+        {% if join_active %}
+          <a class="join-btn" href="{{ slot[2] }}" target="_blank" rel="noopener">
+            📹 Join Interview Now
+          </a>
+        {% else %}
+          <a class="join-btn inactive" id="joinBtn" href="{{ slot[2] }}" target="_blank" rel="noopener">
+            📹 Join Interview
+          </a>
+          <p class="countdown" id="countdown">Available 15 minutes before start.</p>
+        {% endif %}
+      {% else %}
+        <p style="margin-top:20px;color:#888;font-size:0.9rem">
+          The meeting link will appear here once confirmed.
+        </p>
+      {% endif %}
+
+    {% else %}
+      <p style="color:#888">Your interview details are not yet available. Please check back closer to the scheduled date.</p>
+    {% endif %}
+
+    <div class="instructions-block">
+      <h3>Before your interview</h3>
+      {{ instructions }}
+    </div>
+  </div>
+
+  <p style="margin-top:24px">
+    <a href="/dashboard" style="color:#888;font-size:0.88rem;text-decoration:none;">← Back to dashboard</a>
+  </p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if slot %}
+<script>
+const timeEl = document.getElementById('interviewTime');
+if (timeEl && timeEl.dataset.utc) {
+  const d = new Date(timeEl.dataset.utc);
+  timeEl.textContent = d.toLocaleString('en-NG', {
+    weekday:'long', year:'numeric', month:'long', day:'numeric',
+    hour:'2-digit', minute:'2-digit', timeZone:'Africa/Lagos',
+  }) + ' WAT';
+}
+
+const joinBtn = document.getElementById('joinBtn');
+const countdownEl = document.getElementById('countdown');
+if (joinBtn && timeEl && timeEl.dataset.utc) {
+  const start = new Date(timeEl.dataset.utc);
+  function tick() {
+    const diff = start - new Date();
+    if (diff <= 15 * 60 * 1000) {
+      joinBtn.classList.remove('inactive');
+      if (countdownEl) countdownEl.style.display = 'none';
+    } else {
+      const hrs = Math.floor(diff / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
+      if (countdownEl) {
+        countdownEl.textContent = hrs > 0
+          ? `Link activates in ${hrs}h ${mins}m`
+          : `Link activates in ${mins} minutes`;
+      }
+    }
+  }
+  tick();
+  setInterval(tick, 30000);
+}
+</script>
+{% endif %}
+{% endblock %}

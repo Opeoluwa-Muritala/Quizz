@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+{% block extra_head %}
+<style>
+  .dash-wrap { max-width: 800px; margin: 40px auto; padding: 0 16px 80px; }
+  .dash-header { display: flex; align-items: center; justify-content: space-between;
+                 margin-bottom: 28px; }
+  .dash-header h1 { font-family: 'DM Serif Display', serif; font-size: 1.5rem;
+                    color: #1a1a2e; margin: 0; }
+  .pipeline { display: flex; gap: 0; margin-bottom: 32px; overflow-x: auto;
+              padding-bottom: 4px; }
+  .pip-step { flex: 1; min-width: 80px; text-align: center; position: relative; }
+  .pip-step:not(:last-child)::after {
+    content: ''; position: absolute; top: 14px; left: 50%; width: 100%;
+    height: 2px; background: #e5e5ef; z-index: 0;
+  }
+  .pip-step.done:not(:last-child)::after { background: #1a1a2e; }
+  .pip-dot { width: 28px; height: 28px; border-radius: 50%; margin: 0 auto 6px;
+             display: flex; align-items: center; justify-content: center;
+             font-size: 0.75rem; font-weight: 700; position: relative; z-index: 1;
+             background: #e5e5ef; color: #888; border: 2px solid #e5e5ef; }
+  .pip-step.done .pip-dot { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+  .pip-step.current .pip-dot { background: #fff; color: #1a1a2e; border-color: #1a1a2e;
+                                box-shadow: 0 0 0 3px rgba(26,26,46,.15); }
+  .pip-label { font-size: 0.68rem; color: #888; }
+  .pip-step.current .pip-label { color: #1a1a2e; font-weight: 700; }
+  .pip-step.done .pip-label { color: #1a1a2e; }
+
+  .stage-card { background: #fff; border: 1px solid #e5e5ef; border-radius: 12px;
+                padding: 28px; margin-bottom: 20px; }
+  .stage-card h2 { font-size: 1.05rem; font-weight: 700; margin: 0 0 8px;
+                   color: #1a1a2e; display: flex; align-items: center; gap: 8px; }
+  .stage-card p { color: #555; font-size: 0.92rem; margin: 0 0 18px; line-height: 1.55; }
+  .stage-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+                 border-radius: 100px; font-size: 0.78rem; font-weight: 700;
+                 text-transform: uppercase; letter-spacing: .04em; }
+  .badge-pending   { background: #fffbeb; color: #92400e; }
+  .badge-progress  { background: #ebf8ff; color: #2b6cb0; }
+  .badge-pass      { background: #f0fff4; color: #276749; }
+  .badge-fail      { background: #fff5f5; color: #c53030; }
+  .badge-action    { background: #1a1a2e; color: #fff; }
+  .badge-flag      { background: #fff5f5; color: #c05621; }
+
+  .action-btn { display: inline-block; background: #1a1a2e; color: #fff;
+                border: none; border-radius: 8px; padding: 12px 24px;
+                font-weight: 700; font-size: 0.95rem; cursor: pointer;
+                text-decoration: none; transition: opacity .2s; }
+  .action-btn:hover { opacity: .85; }
+  .action-btn.outline { background: transparent; color: #1a1a2e;
+                        border: 2px solid #1a1a2e; }
+
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+  .info-item label { display: block; font-size: 0.75rem; color: #888;
+                     text-transform: uppercase; letter-spacing: .04em; }
+  .info-item span  { font-size: 0.92rem; font-weight: 600; color: #1a1a2e; }
+
+  .doc-checklist { margin-top: 16px; }
+  .doc-row { display: flex; align-items: center; gap: 10px; padding: 8px 0;
+             border-bottom: 1px solid #f0f0f7; font-size: 0.9rem; }
+  .doc-row:last-child { border: none; }
+  .doc-tick { width: 20px; height: 20px; border-radius: 50%; display: flex;
+              align-items: center; justify-content: center; font-size: 0.75rem; }
+  .tick-done { background: #f0fff4; color: #276749; }
+  .tick-wait { background: #fffbeb; color: #92400e; }
+  .tick-none { background: #f5f5f9; color: #aaa; }
+
+  .interview-card { background: #f0fff4; border: 1px solid #9ae6b4; border-radius: 10px;
+                    padding: 20px; margin-top: 16px; }
+  .join-btn { display: inline-flex; align-items: center; gap: 8px;
+              background: #276749; color: #fff; border-radius: 8px;
+              padding: 12px 24px; font-weight: 700; text-decoration: none;
+              transition: opacity .2s; margin-top: 12px; }
+  .join-btn:hover { opacity: .85; }
+  .join-btn:disabled, .join-btn.inactive { background: #aaa; cursor: not-allowed; opacity: 1; }
+
+  .flag-warning { background: #fffbeb; border: 1px solid #f6e05e;
+                  border-radius: 8px; padding: 12px 16px; font-size: 0.88rem;
+                  color: #744210; margin-bottom: 16px; }
+  @media(max-width:600px){
+    .info-grid { grid-template-columns: 1fr; }
+    .pipeline { gap: 0; }
+    .pip-label { display: none; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set cand_name = candidate[0] if candidate else 'Candidate' %}
+{% set cand_email = candidate[1] if candidate else '' %}
+
+<div class="dash-wrap">
+  <div class="dash-header">
+    <div>
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo"
+           style="height:28px;display:block;margin-bottom:8px;">
+      <h1>Hello, {{ cand_name.split()[0] }} 👋</h1>
+    </div>
+    <button onclick="fetch('/recruitment/logout',{method:'POST',headers:{'X-CSRF-Token':csrfMeta()}}).then(()=>location.href='/apply')"
+            style="background:none;border:1px solid #e5e5ef;border-radius:6px;padding:6px 14px;
+                   cursor:pointer;font-size:0.85rem;color:#555;">
+      Sign out
+    </button>
+  </div>
+
+  <!-- Pipeline progress -->
+  {% set pipeline_stages = [
+    ('applied', 'Apply'),
+    ('screening_passed', 'Screening'),
+    ('assessment_passed', 'Assessment'),
+    ('interview_scheduled', 'Interview'),
+    ('documents_submitted', 'Documents'),
+    ('offered', 'Decision'),
+  ] %}
+
+  {% set stage_order = {
+    'applied': 0, 'screening_failed': 1, 'screening_flagged': 1, 'screening_passed': 1,
+    'assessment_in_progress': 2, 'assessment_failed': 2, 'assessment_passed': 2,
+    'interview_slot_pending': 3, 'interview_scheduled': 3, 'interview_completed': 3,
+    'documents_pending': 4, 'documents_submitted': 4,
+    'offered': 5, 'rejected': 5,
+  } %}
+  {% set current_order = stage_order.get(stage, 0) %}
+
+  <div class="pipeline">
+    {% for s_key, s_label in pipeline_stages %}
+      {% set s_idx = loop.index0 %}
+      {% if s_idx < current_order %}
+        <div class="pip-step done">
+      {% elif s_idx == current_order %}
+        <div class="pip-step current">
+      {% else %}
+        <div class="pip-step">
+      {% endif %}
+        <div class="pip-dot">
+          {% if s_idx < current_order %}✓{% else %}{{ loop.index }}{% endif %}
+        </div>
+        <div class="pip-label">{{ s_label }}</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- Eligibility flag warning -->
+  {% if candidate and candidate[6] %}
+    <div class="flag-warning">
+      ⚠ Your application has a flag for manual review: {{ candidate[7] or 'Eligibility check' }}.
+      Our HR team will review and contact you within 2–3 business days.
+    </div>
+  {% endif %}
+
+  <!-- Stage-specific card -->
+  {% if stage in ('applied',) %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-pending">⏳ Under Review</span></h2>
+    <p>Your application has been received and is under eligibility review. This typically completes within a few minutes. Please refresh this page or check back shortly.</p>
+  </div>
+
+  {% elif stage == 'screening_failed' %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-fail">✕ Not Shortlisted</span></h2>
+    <p>We were unable to proceed with your application after the eligibility screening. Thank you for your interest in the Executive Trainee Program.</p>
+  </div>
+
+  {% elif stage in ('screening_passed', 'screening_flagged') %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-pass">✓ Screening Passed</span></h2>
+    <p>Your application has cleared the initial screening. You may now take the <strong>online assessment</strong>. Ensure you're in a quiet environment with a stable internet connection.</p>
+    <a href="/assessment" class="action-btn">Start Assessment →</a>
+    {% if stage_configs %}
+      {% for sc in stage_configs %}
+        {% if sc[0] == 'assessment' and sc[1] %}
+          <p style="margin-top:12px;font-size:0.82rem;color:#888;">
+            Assessment window closes: <strong>{{ sc[1] }}</strong> ·
+            Duration: <strong>{{ sc[2] or 60 }} minutes</strong>
+          </p>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+  </div>
+
+  {% elif stage == 'assessment_in_progress' %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-progress">▶ Assessment In Progress</span></h2>
+    <p>You have an ongoing assessment session. Click below to continue — your timer is still running.</p>
+    <a href="/assessment" class="action-btn">Resume Assessment →</a>
+  </div>
+
+  {% elif stage == 'assessment_failed' %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-fail">✕ Assessment Not Passed</span></h2>
+    <p>Thank you for taking the assessment. Unfortunately, your score did not meet the pass mark. We appreciate the effort and wish you well.</p>
+    {% if latest_score %}
+    <div class="info-grid" style="margin-top:12px">
+      <div class="info-item"><label>Score</label><span>{{ latest_score[1] }}</span></div>
+      <div class="info-item"><label>Result</label><span>{{ latest_score[2] }}</span></div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% elif stage in ('interview_slot_pending', 'assessment_passed') %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-action">📅 Schedule Interview</span></h2>
+    <p>Congratulations on passing the assessment! Please select an interview slot at your earliest convenience.</p>
+    {% if latest_score %}
+    <div class="info-grid" style="margin-bottom:16px">
+      <div class="info-item"><label>Assessment Score</label><span>{{ latest_score[1] }}</span></div>
+      <div class="info-item"><label>Result</label><span style="color:#276749">{{ latest_score[2] }}</span></div>
+    </div>
+    {% endif %}
+    <a href="/schedule" class="action-btn">Choose Interview Slot →</a>
+  </div>
+
+  {% elif stage == 'interview_scheduled' %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-progress">📹 Interview Scheduled</span></h2>
+    {% if slot_info %}
+    <div class="interview-card">
+      <div class="info-grid">
+        <div class="info-item">
+          <label>Date &amp; Time</label>
+          <span id="interviewTime" data-utc="{{ slot_info[0].isoformat() }}">Loading…</span>
+        </div>
+        <div class="info-item">
+          <label>Interviewer</label>
+          <span>{{ slot_info[4] or 'TBC' }}</span>
+        </div>
+        <div class="info-item">
+          <label>Platform</label>
+          <span>{{ 'Google Meet' if slot_info[3] == 'google_meet' else 'Zoom' }}</span>
+        </div>
+        <div class="info-item">
+          <label>Meeting Link</label>
+          <span>{% if slot_info[2] %}<a href="{{ slot_info[2] }}" target="_blank">Open link</a>{% else %}Will be available closer to time{% endif %}</span>
+        </div>
+      </div>
+      {% if slot_info[2] %}
+      <a href="/interview" class="join-btn" id="joinBtn">Join Interview</a>
+      {% endif %}
+    </div>
+    {% else %}
+    <p>Your interview is confirmed. Details will appear here shortly.</p>
+    {% endif %}
+    <p style="margin-top:16px;font-size:0.85rem;color:#666;">
+      Please also upload your supporting documents below.
+    </p>
+    <a href="/documents" class="action-btn outline" style="margin-top:4px">Upload Documents →</a>
+  </div>
+
+  {% elif stage in ('documents_pending', 'documents_submitted') %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-action">📂 Documents Required</span></h2>
+    <p>Please upload all required supporting documents before your interview.</p>
+    <div class="doc-checklist">
+      {% set doc_map = {} %}
+      {% for d in docs %}{% set _ = doc_map.update({d[0]: d}) %}{% endfor %}
+      {% for doc_type in required_docs %}
+      <div class="doc-row">
+        {% if doc_map.get(doc_type) and doc_map[doc_type][1] %}
+          <div class="doc-tick tick-done">✓</div>
+          <span style="flex:1;text-transform:capitalize">{{ doc_type.replace('_',' ') }}</span>
+          {% if doc_map[doc_type][2] %}<span style="font-size:0.78rem;color:#276749">Verified</span>{% else %}<span style="font-size:0.78rem;color:#888">Uploaded</span>{% endif %}
+        {% elif doc_map.get(doc_type) and doc_map[doc_type][3] == 'processing' %}
+          <div class="doc-tick tick-wait">⏳</div>
+          <span style="flex:1;text-transform:capitalize">{{ doc_type.replace('_',' ') }}</span>
+          <span style="font-size:0.78rem;color:#92400e">Processing…</span>
+        {% else %}
+          <div class="doc-tick tick-none">○</div>
+          <span style="flex:1;text-transform:capitalize">{{ doc_type.replace('_',' ') }}</span>
+          <span style="font-size:0.78rem;color:#aaa">Not uploaded</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <a href="/documents" class="action-btn" style="margin-top:16px">
+      {{ 'Update Documents' if stage == 'documents_submitted' else 'Upload Documents' }} →
+    </a>
+  </div>
+
+  {% elif stage == 'interview_completed' %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-progress">✓ Interview Completed</span></h2>
+    <p>Your interview has been completed. We are reviewing all candidates and will communicate the final decision shortly. Thank you for your patience.</p>
+  </div>
+
+  {% elif stage == 'offered' %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-pass">🎉 Offer Extended</span></h2>
+    <p>Congratulations! You have been selected for the Executive Trainee Program. Please watch your email for your formal offer letter and next steps from our HR team.</p>
+  </div>
+
+  {% elif stage == 'rejected' %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-fail">Application Closed</span></h2>
+    <p>Thank you for going through our recruitment process. At this time, we are unable to proceed with your application. We wish you the very best.</p>
+  </div>
+
+  {% elif 'expired' in stage %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-fail">⚠ Stage Expired</span></h2>
+    <p>The deadline for your current stage has passed. Please contact HR if you believe this is an error: <a href="mailto:recruitment@mainstreetmfb.com">recruitment@mainstreetmfb.com</a></p>
+  </div>
+
+  {% else %}
+  <div class="stage-card">
+    <h2>Application in Progress</h2>
+    <p>Your application is being processed. Current stage: <strong>{{ stage }}</strong></p>
+  </div>
+  {% endif %}
+
+  <!-- Candidate info card -->
+  {% if candidate %}
+  <div class="stage-card" style="margin-top:0">
+    <h2 style="font-size:0.9rem;color:#888;text-transform:uppercase;letter-spacing:.05em">Your Details</h2>
+    <div class="info-grid">
+      <div class="info-item"><label>Name</label><span>{{ candidate[0] }}</span></div>
+      <div class="info-item"><label>Email</label><span>{{ candidate[1] }}</span></div>
+      <div class="info-item"><label>Phone</label><span>{{ candidate[2] or '—' }}</span></div>
+      <div class="info-item"><label>NYSC Status</label><span style="text-transform:capitalize">{{ (candidate[4] or '—').replace('_',' ') }}</span></div>
+      {% if candidate[5] %}
+      <div class="info-item">
+        <label>CV</label>
+        <span><a href="{{ candidate[5] }}" target="_blank">View uploaded CV</a></span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function csrfMeta() {
+  return document.querySelector('meta[name="csrf-token"]')?.content || '';
+}
+
+// Localize interview time
+const timeEl = document.getElementById('interviewTime');
+if (timeEl && timeEl.dataset.utc) {
+  const d = new Date(timeEl.dataset.utc);
+  timeEl.textContent = d.toLocaleString('en-NG', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+    timeZone: 'Africa/Lagos',
+  });
+}
+
+// Enable join button 15 min before interview
+const joinBtn = document.getElementById('joinBtn');
+if (joinBtn && timeEl && timeEl.dataset.utc) {
+  const interviewStart = new Date(timeEl.dataset.utc);
+  function checkJoin() {
+    const now = new Date();
+    const diffMs = interviewStart - now;
+    if (diffMs > 15 * 60 * 1000) {
+      joinBtn.classList.add('inactive');
+      joinBtn.title = 'Available 15 minutes before interview';
+    } else {
+      joinBtn.classList.remove('inactive');
+    }
+  }
+  checkJoin();
+  setInterval(checkJoin, 30000);
+}
+</script>
+{% endblock %}
