@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block extra_head %}
+<style>
+  .docs-wrap { max-width: 640px; margin: 40px auto; padding: 0 16px 80px; }
+  .docs-wrap h1 { font-family:'DM Serif Display',serif; font-size:1.5rem; color:#1a1a2e; margin:0 0 6px; }
+  .docs-wrap .sub { color:#666; font-size:0.9rem; margin:0 0 28px; }
+  .doc-item { background:#fff; border:1px solid #e5e5ef; border-radius:10px;
+              padding:18px 20px; margin-bottom:12px; }
+  .doc-item-header { display:flex; align-items:center; gap:12px; }
+  .doc-status-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .dot-done { background:#48bb78; }
+  .dot-pending { background:#ed8936; }
+  .dot-none { background:#e2e8f0; }
+  .doc-label { font-weight:700; font-size:0.95rem; color:#1a1a2e; flex:1;
+               text-transform:capitalize; }
+  .doc-tag { font-size:0.75rem; padding:2px 8px; border-radius:100px; font-weight:700; }
+  .tag-verified { background:#f0fff4; color:#276749; }
+  .tag-uploaded { background:#ebf8ff; color:#2b6cb0; }
+  .tag-processing { background:#fffbeb; color:#92400e; }
+  .doc-body { margin-top:12px; display:none; }
+  .doc-item.expanded .doc-body { display:block; }
+  .drop-zone { border:2px dashed #d0d0df; border-radius:8px; padding:20px;
+               text-align:center; cursor:pointer; position:relative;
+               transition: border-color .2s, background .2s; }
+  .drop-zone:hover, .drop-zone.over { border-color:#1a1a2e; background:#f4f4fb; }
+  .drop-zone input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .drop-zone p { margin:4px 0 0; font-size:0.82rem; color:#888; }
+  .drop-zone .file-name { font-size:0.85rem; color:#1a1a2e; font-weight:600; margin-top:6px; }
+  .upload-btn { display:block; width:100%; background:#1a1a2e; color:#fff; border:none;
+                border-radius:7px; padding:10px; font-size:0.9rem; font-weight:700;
+                cursor:pointer; font-family:inherit; margin-top:10px;
+                transition:opacity .2s; }
+  .upload-btn:disabled { opacity:.45; cursor:not-allowed; }
+  .upload-progress { font-size:0.82rem; color:#888; margin-top:6px; text-align:center; display:none; }
+  .upload-done { font-size:0.82rem; color:#276749; margin-top:6px; text-align:center; display:none; }
+  .upload-err { font-size:0.82rem; color:#c53030; margin-top:6px; text-align:center; display:none; }
+
+  .submit-all-btn { width:100%; background:#276749; color:#fff; border:none;
+                    border-radius:8px; padding:14px; font-size:1rem; font-weight:700;
+                    cursor:pointer; font-family:inherit; transition:opacity .2s; margin-top:8px; }
+  .submit-all-btn:disabled { opacity:.4; cursor:not-allowed; }
+  .instructions { background:#ebf8ff; border:1px solid #bee3f8; border-radius:8px;
+                  padding:14px 16px; font-size:0.88rem; color:#2b6cb0; margin-bottom:24px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="docs-wrap">
+  <a href="/dashboard" style="font-size:0.88rem;color:#888;text-decoration:none;">← Back to dashboard</a>
+  <h1 style="margin-top:16px">Upload Documents</h1>
+  <p class="sub">Upload all required documents to complete your application. Files must be PDF, Word, JPEG, or PNG (max 10 MB each).</p>
+
+  <div class="instructions">
+    💡 Upload each document by clicking on it. Documents are saved immediately — you can upload them one at a time.
+  </div>
+
+  {% for doc_type in required_docs %}
+    {% set doc_info = submitted.get(doc_type) %}
+    {% set is_done = doc_info and doc_info[1] %}
+    {% set is_processing = doc_info and doc_info[3] == 'processing' %}
+    {% set is_verified = doc_info and doc_info[2] %}
+    <div class="doc-item" id="docItem-{{ doc_type }}">
+      <div class="doc-item-header" onclick="toggleDoc('{{ doc_type }}')" style="cursor:pointer">
+        <div class="doc-status-dot {% if is_done %}dot-done{% elif is_processing %}dot-pending{% else %}dot-none{% endif %}"></div>
+        <span class="doc-label">{{ doc_type.replace('_', ' ') }}</span>
+        {% if is_verified %}
+          <span class="doc-tag tag-verified">✓ Verified</span>
+        {% elif is_done %}
+          <span class="doc-tag tag-uploaded">Uploaded</span>
+        {% elif is_processing %}
+          <span class="doc-tag tag-processing">Processing…</span>
+        {% endif %}
+        <span style="color:#aaa;font-size:0.9rem">▾</span>
+      </div>
+      <div class="doc-body" id="docBody-{{ doc_type }}">
+        {% if is_done and not is_verified %}
+        <p style="font-size:0.85rem;color:#555;margin:0 0 10px">
+          Document uploaded. You can replace it by uploading again.
+        </p>
+        {% endif %}
+        <div class="drop-zone" id="drop-{{ doc_type }}">
+          <input type="file" id="file-{{ doc_type }}"
+                 accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                 onchange="handleFileSelect('{{ doc_type }}', this)">
+          <div style="font-size:1.5rem">📎</div>
+          <p>Click or drag &amp; drop a file here</p>
+          <div class="file-name" id="fname-{{ doc_type }}" style="display:none"></div>
+        </div>
+        <button class="upload-btn" id="uploadBtn-{{ doc_type }}"
+                onclick="uploadFile('{{ doc_type }}')" disabled>
+          Upload
+        </button>
+        <div class="upload-progress" id="prog-{{ doc_type }}">Uploading…</div>
+        <div class="upload-done" id="done-{{ doc_type }}">✓ Uploaded successfully</div>
+        <div class="upload-err" id="err-{{ doc_type }}"></div>
+      </div>
+    </div>
+  {% endfor %}
+
+  <button class="submit-all-btn" id="submitAllBtn" onclick="submitAll()">
+    Mark All Documents as Submitted
+  </button>
+  <p style="font-size:0.8rem;color:#888;text-align:center;margin-top:8px">
+    Click this after uploading all required documents.
+  </p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+const fileSelections = {};
+const uploadJobs = {};
+
+function toggleDoc(docType) {
+  const item = document.getElementById(`docItem-${docType}`);
+  item.classList.toggle('expanded');
+}
+
+function handleFileSelect(docType, input) {
+  const file = input.files[0];
+  if (!file) return;
+  fileSelections[docType] = file;
+  document.getElementById(`fname-${docType}`).textContent = file.name;
+  document.getElementById(`fname-${docType}`).style.display = 'block';
+  document.getElementById(`uploadBtn-${docType}`).disabled = false;
+  document.getElementById(`err-${docType}`).style.display = 'none';
+}
+
+// Drag & drop for each zone
+document.querySelectorAll('.drop-zone').forEach(zone => {
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('over');
+    const docType = zone.id.replace('drop-', '');
+    const fileInput = document.getElementById(`file-${docType}`);
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const dt = new DataTransfer(); dt.items.add(file); fileInput.files = dt.files;
+      handleFileSelect(docType, fileInput);
+    }
+  });
+});
+
+async function uploadFile(docType) {
+  const file = fileSelections[docType];
+  if (!file) return;
+
+  const btn  = document.getElementById(`uploadBtn-${docType}`);
+  const prog = document.getElementById(`prog-${docType}`);
+  const done = document.getElementById(`done-${docType}`);
+  const err  = document.getElementById(`err-${docType}`);
+
+  btn.disabled = true;
+  prog.style.display = 'block';
+  done.style.display = 'none';
+  err.style.display = 'none';
+
+  const formData = new FormData();
+  formData.append('doc_type', docType);
+  formData.append('file', file);
+
+  try {
+    const resp = await fetch('/api/documents/upload', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken },
+      body: formData,
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      prog.style.display = 'none';
+      err.textContent = data.error || 'Upload failed.';
+      err.style.display = 'block';
+      btn.disabled = false;
+      return;
+    }
+
+    uploadJobs[docType] = data.upload_job_id;
+    prog.textContent = 'Processing…';
+    pollUploadStatus(docType, data.upload_job_id);
+  } catch(e) {
+    prog.style.display = 'none';
+    err.textContent = 'Network error. Please try again.';
+    err.style.display = 'block';
+    btn.disabled = false;
+  }
+}
+
+function pollUploadStatus(docType, jobId) {
+  const prog = document.getElementById(`prog-${docType}`);
+  const done = document.getElementById(`done-${docType}`);
+  const err  = document.getElementById(`err-${docType}`);
+  const dot  = document.querySelector(`#docItem-${docType} .doc-status-dot`);
+
+  const interval = setInterval(async () => {
+    try {
+      const resp = await fetch(`/api/upload-status/${jobId}`);
+      const data = await resp.json();
+
+      if (data.status === 'done') {
+        clearInterval(interval);
+        prog.style.display = 'none';
+        done.style.display = 'block';
+        if (dot) { dot.className = 'doc-status-dot dot-done'; }
+        // Update tag
+        const header = document.querySelector(`#docItem-${docType} .doc-item-header`);
+        const oldTag = header.querySelector('.doc-tag');
+        if (oldTag) oldTag.remove();
+        header.insertBefore(
+          Object.assign(document.createElement('span'), {
+            className: 'doc-tag tag-uploaded', textContent: 'Uploaded'
+          }),
+          header.querySelector('span[style]')
+        );
+      } else if (data.status === 'failed') {
+        clearInterval(interval);
+        prog.style.display = 'none';
+        err.textContent = data.error || 'Upload failed on server.';
+        err.style.display = 'block';
+        document.getElementById(`uploadBtn-${docType}`).disabled = false;
+      }
+    } catch(e) { /* will retry */ }
+  }, 2000);
+}
+
+async function submitAll() {
+  const btn = document.getElementById('submitAllBtn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  try {
+    const resp = await fetch('/api/documents/submit', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (resp.ok) {
+      window.location.href = '/dashboard';
+    } else {
+      const data = await resp.json();
+      alert(data.error || 'Could not submit documents.');
+      btn.disabled = false;
+      btn.textContent = 'Mark All Documents as Submitted';
+    }
+  } catch(e) {
+    alert('Network error. Please try again.');
+    btn.disabled = false;
+    btn.textContent = 'Mark All Documents as Submitted';
+  }
+}
+</script>
+{% endblock %}

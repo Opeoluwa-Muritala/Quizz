@@ -1,0 +1,662 @@
+{% extends "base.html" %}
+{% block extra_head %}
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  .rec-wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 80px; }
+  .rec-tabs { display: flex; gap: 4px; margin-bottom: 24px; flex-wrap: wrap; }
+  .rec-tab { padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: 0.88rem;
+             font-weight: 600; border: 1.5px solid #e5e5ef; background: #fff;
+             color: #555; transition: all .15s; }
+  .rec-tab.active { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+  .rec-panel { display: none; }
+  .rec-panel.active { display: block; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  th { background: #f5f5f9; padding: 10px 12px; text-align: left; color: #555;
+       font-weight: 700; font-size: 0.78rem; text-transform: uppercase; letter-spacing:.04em; }
+  td { padding: 10px 12px; border-bottom: 1px solid #f0f0f7; color: #1a1a2e; }
+  tr:last-child td { border: none; }
+  tr:hover td { background: #fafafa; }
+  .card { background: #fff; border: 1px solid #e5e5ef; border-radius: 10px;
+          padding: 20px; margin-bottom: 16px; }
+  .card h3 { margin: 0 0 16px; font-size: 1rem; color: #1a1a2e; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 0.8rem; font-weight: 700; color: #555; }
+  .form-control { border: 1px solid #d0d0df; border-radius: 7px; padding: 8px 12px;
+                  font-size: 0.9rem; font-family: inherit; outline: none; }
+  .form-control:focus { border-color: #1a1a2e; }
+  .btn { border: none; border-radius: 7px; padding: 8px 16px; font-size: 0.88rem;
+         font-weight: 700; cursor: pointer; font-family: inherit; transition: opacity .2s; }
+  .btn-primary { background: #1a1a2e; color: #fff; }
+  .btn-danger { background: #c53030; color: #fff; }
+  .btn-sm { padding: 5px 10px; font-size: 0.8rem; }
+  .btn:hover { opacity: .85; }
+  .stage-pill { display: inline-block; padding: 2px 8px; border-radius: 100px;
+                font-size: 0.72rem; font-weight: 700; }
+  .pill-pass { background: #f0fff4; color: #276749; }
+  .pill-fail { background: #fff5f5; color: #c53030; }
+  .pill-pending { background: #fffbeb; color: #92400e; }
+  .pill-active { background: #ebf8ff; color: #2b6cb0; }
+  .flag-icon { color: #ed8936; }
+  .pagination { display: flex; gap: 8px; align-items: center; margin-top: 16px;
+                font-size: 0.88rem; }
+  .pagination button { background: #fff; border: 1px solid #e5e5ef; border-radius: 6px;
+                       padding: 5px 12px; cursor: pointer; }
+  .pagination button:disabled { opacity: .4; cursor: default; }
+  .search-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .search-bar input, .search-bar select { border: 1px solid #d0d0df; border-radius: 7px;
+                                           padding: 8px 12px; font-size: 0.88rem;
+                                           font-family: inherit; outline: none; }
+  .error-toast { background: #fff5f5; border: 1px solid #fed7d7; color: #c53030;
+                 border-radius: 6px; padding: 8px 12px; font-size: 0.85rem;
+                 margin-bottom: 12px; display: none; }
+  .success-toast { background: #f0fff4; border: 1px solid #9ae6b4; color: #276749;
+                   border-radius: 6px; padding: 8px 12px; font-size: 0.85rem;
+                   margin-bottom: 12px; display: none; }
+  details > summary { cursor: pointer; font-weight: 700; color: #1a1a2e;
+                      padding: 8px 0; user-select: none; }
+  .config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px,1fr));
+                 gap: 12px; margin-top: 12px; }
+  .config-item { background: #f9f9fb; border: 1px solid #e5e5ef; border-radius: 8px;
+                 padding: 14px; }
+  .config-item h4 { margin: 0 0 10px; font-size: 0.85rem; text-transform: uppercase;
+                     letter-spacing: .05em; color: #888; }
+  .config-val { font-size: 0.95rem; font-weight: 700; color: #1a1a2e; margin-bottom: 8px; }
+  .inline-edit { display: flex; gap: 6px; align-items: center; }
+  .inline-edit input { flex: 1; border: 1px solid #d0d0df; border-radius: 6px;
+                        padding: 5px 10px; font-size: 0.88rem; font-family: inherit; }
+  @media(max-width:640px){ .form-row { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rec-wrap">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div>
+      <a href="/admin" style="font-size:0.85rem;color:#888;text-decoration:none">← Exam Dashboard</a>
+      <h1 style="font-family:'DM Serif Display',serif;font-size:1.5rem;color:#1a1a2e;margin:4px 0 0">
+        Recruitment Pipeline
+      </h1>
+    </div>
+  </div>
+
+  <div class="rec-tabs">
+    <div class="rec-tab active" onclick="switchTab('candidates')">Candidates</div>
+    <div class="rec-tab" onclick="switchTab('interviewers')">Interviewers</div>
+    <div class="rec-tab" onclick="switchTab('slots')">Slots</div>
+    <div class="rec-tab" onclick="switchTab('config')">Stage Config</div>
+    <div class="rec-tab" onclick="switchTab('emaillog')">Email Log</div>
+  </div>
+
+  <!-- Candidates tab -->
+  <div class="rec-panel active" id="panel-candidates">
+    <div class="card">
+      <div class="search-bar">
+        <input id="searchStage" placeholder="Filter by stage…" oninput="loadCandidates(1)">
+        <select id="searchFlagged" onchange="loadCandidates(1)">
+          <option value="">All candidates</option>
+          <option value="1">Flagged only</option>
+        </select>
+        <button class="btn btn-primary" onclick="loadCandidates(1)">Refresh</button>
+      </div>
+      <div id="candidateTableWrap">Loading…</div>
+      <div class="pagination" id="candidatePagination"></div>
+    </div>
+  </div>
+
+  <!-- Interviewers tab -->
+  <div class="rec-panel" id="panel-interviewers">
+    <div class="card">
+      <h3>Add Interviewer</h3>
+      <div class="form-row">
+        <div class="form-group"><label>Name</label>
+          <input class="form-control" id="iName" placeholder="Full name"></div>
+        <div class="form-group"><label>Email</label>
+          <input class="form-control" id="iEmail" type="email" placeholder="email@example.com"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Meeting Provider</label>
+          <select class="form-control" id="iProvider">
+            <option value="google_meet">Google Meet</option>
+            <option value="zoom">Zoom</option>
+          </select></div>
+        <div class="form-group"><label>Google Calendar ID (optional)</label>
+          <input class="form-control" id="iGcalId" placeholder="primary or calendar@email"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px"><label>Zoom User ID (optional)</label>
+        <input class="form-control" id="iZoomUid" placeholder="me or zoom user id"></div>
+      <button class="btn btn-primary" onclick="addInterviewer()">Add Interviewer</button>
+      <div class="error-toast" id="iError"></div>
+    </div>
+    <div class="card">
+      <h3>Interviewers</h3>
+      <div id="interviewerTableWrap">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Slots tab -->
+  <div class="rec-panel" id="panel-slots">
+    <div class="card">
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px">
+        <div class="form-group">
+          <label>From</label>
+          <input class="form-control" type="date" id="slotsFrom"
+                 value="{{ '' }}">
+        </div>
+        <div class="form-group">
+          <label>To</label>
+          <input class="form-control" type="date" id="slotsTo">
+        </div>
+        <button class="btn btn-primary" onclick="loadSlots()">Load Slots</button>
+        <button class="btn btn-primary" style="background:#276749"
+                onclick="triggerGenerate()">↻ Generate Slots</button>
+      </div>
+      <div id="slotsTableWrap">Set date range and click Load Slots.</div>
+    </div>
+    <div class="card">
+      <h3>Add Availability Rule</h3>
+      <div class="form-row">
+        <div class="form-group"><label>Interviewer</label>
+          <select class="form-control" id="arInterviewer" style="min-width:160px"></select></div>
+        <div class="form-group"><label>Rule Type</label>
+          <select class="form-control" id="arType" onchange="toggleRuleType()">
+            <option value="recurring">Recurring (day of week)</option>
+            <option value="date_range">Date Range</option>
+          </select></div>
+      </div>
+      <div id="arRecurring" class="form-row">
+        <div class="form-group"><label>Day of Week</label>
+          <select class="form-control" id="arDow">
+            <option value="0">Monday</option><option value="1">Tuesday</option>
+            <option value="2">Wednesday</option><option value="3">Thursday</option>
+            <option value="4">Friday</option><option value="5">Saturday</option>
+            <option value="6">Sunday</option>
+          </select></div>
+        <div></div>
+      </div>
+      <div id="arDateRange" class="form-row" style="display:none">
+        <div class="form-group"><label>From</label>
+          <input class="form-control" type="date" id="arDateFrom"></div>
+        <div class="form-group"><label>To</label>
+          <input class="form-control" type="date" id="arDateTo"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Start Time</label>
+          <input class="form-control" type="time" id="arStart" value="09:00"></div>
+        <div class="form-group"><label>End Time</label>
+          <input class="form-control" type="time" id="arEnd" value="17:00"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Slot Duration (min)</label>
+          <input class="form-control" type="number" id="arDuration" value="30" min="15"></div>
+        <div class="form-group"><label>Buffer (min)</label>
+          <input class="form-control" type="number" id="arBuffer" value="10" min="0"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px"><label>Lead Time (hours)</label>
+        <input class="form-control" type="number" id="arLead" value="24" min="0"></div>
+      <button class="btn btn-primary" onclick="addRule()">Save Rule</button>
+    </div>
+  </div>
+
+  <!-- Stage Config tab -->
+  <div class="rec-panel" id="panel-config">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div>
+          <h3 style="margin:0 0 3px">Pipeline Configuration</h3>
+          <p style="margin:0;font-size:0.78rem;color:#9CA3AF">Tap a stage to configure its window, gates &amp; eligibility</p>
+        </div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;color:#B0B0B8;letter-spacing:0.08em;background:#F3F4F6;padding:4px 10px;border-radius:4px">LIVE · NO RESTART</span>
+      </div>
+      <div id="stageConfigGrid"><p style="color:#9CA3AF;font-size:0.85rem;font-family:'IBM Plex Mono',monospace">loading…</p></div>
+    </div>
+  </div>
+
+  <!-- Email Log tab -->
+  <div class="rec-panel" id="panel-emaillog">
+    <div class="card">
+      <h3>Email Log</h3>
+      <div id="emailLogTableWrap">Loading…</div>
+      <div class="pagination" id="emailPagination"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Candidate detail modal -->
+<div id="candModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+     z-index:100;overflow-y:auto;padding:40px 16px;">
+  <div style="max-width:700px;margin:0 auto;background:#fff;border-radius:12px;padding:28px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 id="candModalName" style="margin:0;font-family:'DM Serif Display',serif"></h2>
+      <button onclick="closeCandModal()" style="background:none;border:none;font-size:1.5rem;
+              cursor:pointer;color:#888">✕</button>
+    </div>
+    <div id="candModalContent"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+function switchTab(name) {
+  document.querySelectorAll('.rec-tab').forEach((t,i) => t.classList.remove('active'));
+  document.querySelectorAll('.rec-panel').forEach(p => p.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById(`panel-${name}`).classList.add('active');
+
+  if (name === 'candidates') loadCandidates(1);
+  if (name === 'interviewers') { loadInterviewers(); populateInterviewerSelect(); }
+  if (name === 'slots') populateInterviewerSelect();
+  if (name === 'config') loadStageConfig();
+  if (name === 'emaillog') loadEmailLog(1);
+}
+
+// ── Candidates ────────────────────────────────────────────────────────────────
+let candPage = 1;
+async function loadCandidates(page) {
+  candPage = page;
+  const stage = document.getElementById('searchStage').value;
+  const flagged = document.getElementById('searchFlagged').value;
+  const wrap = document.getElementById('candidateTableWrap');
+  wrap.innerHTML = 'Loading…';
+
+  let url = `/api/admin/recruitment/candidates?page=${page}`;
+  if (stage) url += `&stage=${encodeURIComponent(stage)}`;
+  if (flagged) url += `&flagged=${flagged}`;
+
+  const data = await apiGet(url);
+  if (!data) { wrap.innerHTML = 'Error loading candidates.'; return; }
+
+  if (!data.candidates.length) { wrap.innerHTML = '<p style="color:#888">No candidates found.</p>'; return; }
+
+  wrap.innerHTML = `
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr>
+        <th>Name</th><th>Email</th><th>Stage</th>
+        <th>Score</th><th>Flag</th><th>Applied</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${data.candidates.map(c => `
+          <tr>
+            <td>${c.name}</td>
+            <td style="color:#888">${c.email}</td>
+            <td><span class="stage-pill ${stagePillClass(c.stage)}">${c.stage}</span></td>
+            <td>${c.latest_score !== null ? c.latest_score + '%' : '—'}</td>
+            <td>${c.eligibility_flag ? '<span class="flag-icon" title="'+c.eligibility_flag_reason+'">⚠</span>' : ''}</td>
+            <td style="color:#888">${c.created_at ? c.created_at.slice(0,10) : '—'}</td>
+            <td><button class="btn btn-sm btn-primary" onclick="openCandModal(${c.id})">View</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>
+  `;
+
+  const pag = document.getElementById('candidatePagination');
+  pag.innerHTML = `
+    <button onclick="loadCandidates(${page-1})" ${page<=1?'disabled':''}>‹ Prev</button>
+    <span>Page ${page} of ${Math.ceil(data.total/data.per_page)}</span>
+    <button onclick="loadCandidates(${page+1})" ${page*data.per_page>=data.total?'disabled':''}>Next ›</button>
+  `;
+}
+
+function stagePillClass(stage) {
+  if (['screening_passed','assessment_passed','offered','documents_submitted'].includes(stage)) return 'pill-pass';
+  if (['screening_failed','assessment_failed','rejected'].includes(stage) || stage.includes('expired')) return 'pill-fail';
+  if (['applied','assessment_in_progress','interview_slot_pending','documents_pending'].includes(stage)) return 'pill-pending';
+  return 'pill-active';
+}
+
+async function openCandModal(candId) {
+  document.getElementById('candModal').style.display = 'block';
+  document.getElementById('candModalContent').innerHTML = 'Loading…';
+  const data = await apiGet(`/api/admin/recruitment/candidates/${candId}`);
+  if (!data) { document.getElementById('candModalContent').innerHTML = 'Error.'; return; }
+  const c = data.candidate;
+  document.getElementById('candModalName').textContent = c.name;
+  document.getElementById('candModalContent').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div><label style="font-size:.75rem;color:#888">Stage</label>
+           <div><span class="stage-pill ${stagePillClass(c.stage)}">${c.stage}</span></div></div>
+      <div><label style="font-size:.75rem;color:#888">Email</label><div>${c.email}</div></div>
+      <div><label style="font-size:.75rem;color:#888">Phone</label><div>${c.phone||'—'}</div></div>
+      <div><label style="font-size:.75rem;color:#888">NYSC Status</label><div>${c.nysc_status||'—'}</div></div>
+      ${c.eligibility_flag ? `<div style="grid-column:1/-1"><label style="font-size:.75rem;color:#888">Flag Reason</label><div style="color:#c05621">${c.flag_reason}</div></div>` : ''}
+    </div>
+    <div style="margin-bottom:16px">
+      <label style="font-size:.8rem;font-weight:700;color:#555;display:block;margin-bottom:6px">Manual Stage Override</label>
+      <div style="display:flex;gap:8px">
+        <select id="overrideStage" class="form-control" style="flex:1">
+          ${['applied','screening_failed','screening_flagged','screening_passed',
+             'assessment_in_progress','assessment_failed','assessment_passed',
+             'interview_slot_pending','interview_scheduled','documents_pending',
+             'documents_submitted','interview_completed','offered','rejected']
+            .map(s => `<option value="${s}" ${s===c.stage?'selected':''}>${s}</option>`).join('')}
+        </select>
+        <button class="btn btn-primary" onclick="setStage(${candId})">Apply</button>
+      </div>
+      <div id="overrideMsg" style="font-size:.82rem;margin-top:6px"></div>
+    </div>
+    ${c.cv_url ? `<p><a href="${c.cv_url}" target="_blank" style="color:#1a1a2e;font-size:.88rem">View CV →</a></p>` : ''}
+    ${data.scores.length ? `
+      <details><summary>Assessment Scores (${data.scores.length})</summary>
+        <table style="margin-top:8px"><thead><tr><th>Label</th><th>Score</th><th>Result</th><th>Date</th></tr></thead>
+        <tbody>${data.scores.map(s => `<tr><td>${s.label}</td><td>${s.score||'—'}%</td>
+          <td>${s.pass_fail||'—'}</td><td>${s.taken_at?s.taken_at.slice(0,16):'—'}</td></tr>`).join('')}</tbody>
+        </table></details>` : ''}
+    ${data.documents.length ? `
+      <details><summary>Documents (${data.documents.length})</summary>
+        <table style="margin-top:8px"><thead><tr><th>Type</th><th>Status</th><th>Verified</th><th></th></tr></thead>
+        <tbody>${data.documents.map(d => `<tr>
+          <td style="text-transform:capitalize">${d.doc_type.replace(/_/g,' ')}</td>
+          <td>${d.status||'—'}</td>
+          <td>${d.verified ? '✓' : '—'}</td>
+          <td><button class="btn btn-sm ${d.verified?'btn-danger':'btn-primary'}"
+            onclick="toggleVerify(${d.id},${!d.verified})">${d.verified?'Unverify':'Verify'}</button></td>
+          </tr>`).join('')}</tbody>
+        </table></details>` : ''}
+    ${data.interview_slots.length ? `
+      <details><summary>Interview Slots</summary>
+        <table style="margin-top:8px"><thead><tr><th>Time</th><th>Interviewer</th><th>Link</th></tr></thead>
+        <tbody>${data.interview_slots.map(s => `<tr>
+          <td>${s.start_time?new Date(s.start_time).toLocaleString('en-NG',{timeZone:'Africa/Lagos'}):'—'}</td>
+          <td>${s.interviewer||'—'}</td>
+          <td>${s.meeting_link?'<a href="'+s.meeting_link+'" target="_blank">Join</a>':'—'}</td>
+          </tr>`).join('')}</tbody>
+        </table></details>` : ''}
+    <details><summary>Stage History (${data.stage_history.length})</summary>
+      <table style="margin-top:8px"><thead><tr><th>From</th><th>To</th><th>By</th><th>Date</th></tr></thead>
+      <tbody>${data.stage_history.map(h => `<tr>
+        <td>${h.from||'—'}</td><td>${h.to}</td><td>${h.by}</td>
+        <td style="color:#888">${h.at?h.at.slice(0,16):'—'}</td>
+        </tr>`).join('')}</tbody>
+      </table></details>
+  `;
+}
+
+async function setStage(candId) {
+  const stage = document.getElementById('overrideStage').value;
+  const msg = document.getElementById('overrideMsg');
+  const data = await apiPost(`/api/admin/recruitment/candidates/${candId}/stage`,
+    { stage, notify: true, reason: 'admin override' });
+  msg.textContent = data?.status === 'success'
+    ? '✓ Stage updated.' : 'Error updating stage.';
+  msg.style.color = data?.status === 'success' ? '#276749' : '#c53030';
+  loadCandidates(candPage);
+}
+
+async function toggleVerify(docId, verified) {
+  await apiPost(`/api/admin/recruitment/documents/${docId}/verify`, { verified });
+}
+
+function closeCandModal() { document.getElementById('candModal').style.display = 'none'; }
+
+// ── Interviewers ──────────────────────────────────────────────────────────────
+async function loadInterviewers() {
+  const wrap = document.getElementById('interviewerTableWrap');
+  const data = await apiGet('/api/admin/recruitment/interviewers');
+  if (!data || !data.length) { wrap.innerHTML = '<p style="color:#888">No interviewers added yet.</p>'; return; }
+  wrap.innerHTML = `<div style="overflow-x:auto"><table>
+    <thead><tr><th>Name</th><th>Email</th><th>Provider</th><th>Active</th><th></th></tr></thead>
+    <tbody>${data.map(i => `<tr>
+      <td>${i.name}</td><td>${i.email}</td>
+      <td>${i.meeting_provider === 'google_meet' ? 'Google Meet' : 'Zoom'}</td>
+      <td>${i.active ? '✓' : '—'}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="deactivateInterviewer(${i.id})">Remove</button></td>
+      </tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+async function addInterviewer() {
+  const err = document.getElementById('iError');
+  err.style.display = 'none';
+  const body = {
+    name: document.getElementById('iName').value.trim(),
+    email: document.getElementById('iEmail').value.trim(),
+    meeting_provider: document.getElementById('iProvider').value,
+    google_calendar_id: document.getElementById('iGcalId').value.trim(),
+    zoom_user_id: document.getElementById('iZoomUid').value.trim(),
+  };
+  if (!body.name || !body.email) { showErrEl(err, 'Name and email required.'); return; }
+  const data = await apiPost('/api/admin/recruitment/interviewers', body);
+  if (data?.status === 'success') { loadInterviewers(); ['iName','iEmail','iGcalId','iZoomUid'].forEach(id => document.getElementById(id).value = ''); }
+  else showErrEl(err, data?.error || 'Error adding interviewer.');
+}
+
+async function deactivateInterviewer(id) {
+  if (!confirm('Deactivate this interviewer?')) return;
+  await apiDel(`/api/admin/recruitment/interviewers/${id}`);
+  loadInterviewers();
+}
+
+async function populateInterviewerSelect() {
+  const data = await apiGet('/api/admin/recruitment/interviewers');
+  const sel = document.getElementById('arInterviewer');
+  if (!data || !sel) return;
+  sel.innerHTML = data.filter(i => i.active).map(i => `<option value="${i.id}">${i.name}</option>`).join('');
+}
+
+// ── Slots & Rules ─────────────────────────────────────────────────────────────
+function toggleRuleType() {
+  const t = document.getElementById('arType').value;
+  document.getElementById('arRecurring').style.display = t === 'recurring' ? 'grid' : 'none';
+  document.getElementById('arDateRange').style.display = t === 'date_range' ? 'grid' : 'none';
+}
+
+async function addRule() {
+  const body = {
+    interviewer_id: parseInt(document.getElementById('arInterviewer').value),
+    rule_type: document.getElementById('arType').value,
+    day_of_week: document.getElementById('arType').value === 'recurring'
+      ? parseInt(document.getElementById('arDow').value) : null,
+    date_from: document.getElementById('arDateFrom').value || null,
+    date_to: document.getElementById('arDateTo').value || null,
+    start_time: document.getElementById('arStart').value,
+    end_time: document.getElementById('arEnd').value,
+    slot_duration_minutes: parseInt(document.getElementById('arDuration').value),
+    buffer_minutes: parseInt(document.getElementById('arBuffer').value),
+    booking_lead_time_hours: parseInt(document.getElementById('arLead').value),
+  };
+  const data = await apiPost('/api/admin/recruitment/availability-rules', body);
+  if (data?.status === 'success') alert('Rule saved! Slots are generating in background.');
+  else alert(data?.error || 'Error saving rule.');
+}
+
+async function loadSlots() {
+  const from = document.getElementById('slotsFrom').value;
+  const to   = document.getElementById('slotsTo').value;
+  const wrap = document.getElementById('slotsTableWrap');
+  if (!from || !to) { wrap.textContent = 'Please select both From and To dates.'; return; }
+  wrap.innerHTML = 'Loading…';
+  const data = await apiGet(`/api/admin/recruitment/slots?from=${from}&to=${to}`);
+  if (!data || !data.length) { wrap.innerHTML = '<p style="color:#888">No slots in this range.</p>'; return; }
+  wrap.innerHTML = `<div style="overflow-x:auto"><table>
+    <thead><tr><th>Start</th><th>End</th><th>Interviewer</th><th>Booked By</th><th>Status</th><th></th></tr></thead>
+    <tbody>${data.map(s => `<tr>
+      <td>${new Date(s.start_time).toLocaleString('en-NG',{timeZone:'Africa/Lagos'})}</td>
+      <td>${new Date(s.end_time).toLocaleTimeString('en-NG',{hour:'2-digit',minute:'2-digit',timeZone:'Africa/Lagos'})}</td>
+      <td>${s.interviewer}</td>
+      <td>${s.candidate_name||'—'}</td>
+      <td><span class="stage-pill ${s.is_blocked?'pill-fail':s.is_booked?'pill-active':'pill-pass'}">
+        ${s.is_blocked?'Blocked':s.is_booked?'Booked':'Available'}</span></td>
+      <td><button class="btn btn-sm ${s.is_blocked?'btn-primary':'btn-danger'}"
+          onclick="toggleBlock(${s.id},${!s.is_blocked})">${s.is_blocked?'Unblock':'Block'}</button></td>
+      </tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+async function toggleBlock(slotId, blocked) {
+  await apiPost(`/api/admin/recruitment/slots/${slotId}/block`, { blocked });
+  loadSlots();
+}
+
+async function triggerGenerate() {
+  const data = await apiPost('/api/admin/recruitment/slots/generate', { weeks_ahead: 4 });
+  alert(data?.message || 'Slot generation started.');
+  setTimeout(loadSlots, 2000);
+}
+
+// ── Stage Config ──────────────────────────────────────────────────────────────
+const STAGE_ORDER = ['application','screening','assessment','interview','documents','final_decision'];
+const DATE_ONLY_CFG = new Set(['final_decision','documents']);
+const DAYS_MODE_CFG = new Set(['assessment']);
+
+function cfgStageIsOpen(cfg) {
+  const now = Date.now();
+  const o = cfg.opens_at  ? new Date(cfg.opens_at).getTime()  : null;
+  const c = cfg.closes_at ? new Date(cfg.closes_at).getTime() : null;
+  return o && c && o <= now && now < c;
+}
+
+async function loadStageConfig() {
+  const wrap = document.getElementById('stageConfigGrid');
+  wrap.innerHTML = '<p style="color:#555;font-family:\'IBM Plex Mono\',monospace;font-size:0.78rem">loading…</p>';
+  const data = await apiGet('/api/admin/recruitment/stage-config');
+  if (!data) { wrap.innerHTML = '<p style="color:#FF5555;font-family:\'IBM Plex Mono\',monospace;font-size:0.78rem">error loading config</p>'; return; }
+
+  const ordered = [...data].sort((a, b) => {
+    const ai = STAGE_ORDER.indexOf(a.stage_name), bi = STAGE_ORDER.indexOf(b.stage_name);
+    return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+  });
+
+  wrap.innerHTML = `<div class="stage-terminal">${ordered.map((cfg, i) => {
+    const live     = cfgStageIsOpen(cfg);
+    const dOnly    = DATE_ONLY_CFG.has(cfg.stage_name);
+    const dayMode  = DAYS_MODE_CFG.has(cfg.stage_name);
+    const oa       = cfg.opens_at  ? cfg.opens_at.slice(0,16)  : '';
+    const ca       = cfg.closes_at ? cfg.closes_at.slice(0,16) : '';
+    const rdVal    = cfg.relative_deadline_hours != null
+      ? (dayMode ? Math.round(cfg.relative_deadline_hours / 24) : cfg.relative_deadline_hours) : '';
+    const label    = cfg.stage_name.replace(/_/g, ' ');
+    const num      = String(i + 1).padStart(2, '0');
+
+    return `<div class="stg-row${live ? ' is-live' : ''}">
+      <div class="stg-header" onclick="toggleStage('${cfg.stage_name}')">
+        <span class="stg-dot"></span>
+        <span class="stg-num">${num}</span>
+        <span class="stg-name">${label}</span>
+        <span class="stg-badge">${live ? '● LIVE' : '○ CLOSED'}</span>
+        <button class="stg-toggle" id="tbtn-${cfg.stage_name}" type="button">configure +</button>
+      </div>
+      <div class="stg-body" id="sbody-${cfg.stage_name}">
+        <div class="stg-body-inner">
+          <p class="stg-section">// window</p>
+          <div class="stg-fields">
+            <div class="stg-field"><label>opens_at</label><input id="oa-${cfg.stage_name}" type="datetime-local" value="${oa}"></div>
+            <div class="stg-field"><label>closes_at</label><input id="ca-${cfg.stage_name}" type="datetime-local" value="${ca}"></div>
+          </div>
+          ${!dOnly ? `<hr class="stg-hr">
+          <p class="stg-section">// gates</p>
+          <div class="stg-fields">
+            ${cfg.pass_mark != null ? `<div class="stg-field"><label>pass_mark (%)</label><input id="pm-${cfg.stage_name}" type="number" step="0.5" min="0" max="100" value="${cfg.pass_mark}"></div>` : ''}
+            ${cfg.duration_minutes != null ? `<div class="stg-field"><label>duration (min)</label><input id="dm-${cfg.stage_name}" type="number" min="1" value="${cfg.duration_minutes}"></div>` : ''}
+            ${cfg.relative_deadline_hours != null ? `<div class="stg-field"><label>deadline (${dayMode ? 'days' : 'hrs'})</label><input id="rd-${cfg.stage_name}" type="number" min="0" value="${rdVal}"></div>` : ''}
+          </div>
+          <hr class="stg-hr">
+          <p class="stg-section">// eligibility</p>
+          <div class="stg-fields">
+            <div class="stg-field"><label>min_age</label><input id="minage-${cfg.stage_name}" type="number" min="16" max="60" value="${cfg.min_age || 18}"></div>
+            <div class="stg-field"><label>max_age</label><input id="maxage-${cfg.stage_name}" type="number" min="16" max="60" value="${cfg.max_age || 35}"></div>
+          </div>` : ''}
+          <div class="stg-save-row">
+            <button class="stg-save-btn" type="button" onclick="saveConfig('${cfg.stage_name}')">apply changes</button>
+            <span class="stg-save-msg ok" id="cfgMsg-${cfg.stage_name}"></span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function toggleStage(name) {
+  const body = document.getElementById(`sbody-${name}`);
+  const btn  = document.getElementById(`tbtn-${name}`);
+  const open = body.classList.toggle('expanded');
+  btn.textContent = open ? 'close ×' : 'configure +';
+}
+
+async function saveConfig(stageName) {
+  const dOnly   = DATE_ONLY_CFG.has(stageName);
+  const dayMode = DAYS_MODE_CFG.has(stageName);
+  const rdRaw   = document.getElementById(`rd-${stageName}`)?.value;
+  const rdHours = rdRaw ? (dayMode ? parseInt(rdRaw) * 24 : parseInt(rdRaw)) : null;
+
+  const body = {
+    opens_at:                document.getElementById(`oa-${stageName}`)?.value || null,
+    closes_at:               document.getElementById(`ca-${stageName}`)?.value || null,
+    pass_mark:               dOnly ? null : (document.getElementById(`pm-${stageName}`)?.value || null),
+    duration_minutes:        dOnly ? null : (document.getElementById(`dm-${stageName}`)?.value || null),
+    relative_deadline_hours: dOnly ? null : rdHours,
+    min_age:                 dOnly ? null : (document.getElementById(`minage-${stageName}`)?.value || null),
+    max_age:                 dOnly ? null : (document.getElementById(`maxage-${stageName}`)?.value || null),
+  };
+  const data = await apiPost(`/api/admin/recruitment/stage-config/${stageName}`, body, 'PUT');
+  const msg  = document.getElementById(`cfgMsg-${stageName}`);
+  if (data?.status === 'success') {
+    msg.className = 'stg-save-msg ok';
+    msg.textContent = '✓ applied';
+    msg.style.display = 'inline';
+    setTimeout(() => { msg.style.display = 'none'; }, 2500);
+  } else {
+    msg.className = 'stg-save-msg err';
+    msg.textContent = data?.error || 'error — try again';
+    msg.style.display = 'inline';
+  }
+}
+
+// ── Email Log ─────────────────────────────────────────────────────────────────
+async function loadEmailLog(page) {
+  const wrap = document.getElementById('emailLogTableWrap');
+  const data = await apiGet(`/api/admin/recruitment/email-log?page=${page}`);
+  if (!data) { wrap.innerHTML = 'Error.'; return; }
+  if (!data.logs.length) { wrap.innerHTML = '<p style="color:#888">No emails logged yet.</p>'; return; }
+  wrap.innerHTML = `<div style="overflow-x:auto"><table>
+    <thead><tr><th>To</th><th>Event</th><th>Status</th><th>Date</th><th></th></tr></thead>
+    <tbody>${data.logs.map(l => `<tr>
+      <td>${l.recipient}</td>
+      <td>${l.event_type}</td>
+      <td><span class="stage-pill ${l.status==='sent'?'pill-pass':'pill-fail'}">${l.status}</span></td>
+      <td style="color:#888">${l.sent_at?l.sent_at.slice(0,16):'—'}</td>
+      <td>${l.status==='failed'?`<button class="btn btn-sm btn-primary" onclick="resend(${l.id})">Resend</button>`:'—'}</td>
+      </tr>`).join('')}
+    </tbody></table></div>`;
+  const pag = document.getElementById('emailPagination');
+  pag.innerHTML = `
+    <button onclick="loadEmailLog(${page-1})" ${page<=1?'disabled':''}>‹ Prev</button>
+    <span>Page ${page} of ${Math.ceil(data.total/data.per_page)||1}</span>
+    <button onclick="loadEmailLog(${page+1})" ${page*data.per_page>=data.total?'disabled':''}>Next ›</button>`;
+}
+
+async function resend(logId) {
+  const data = await apiPost(`/api/admin/recruitment/email-log/${logId}/resend`, {});
+  alert(data?.status === 'success' ? 'Email resent.' : 'Resend failed.');
+  loadEmailLog(1);
+}
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+async function apiGet(url) {
+  try { const r = await fetch(url); return r.ok ? await r.json() : null; }
+  catch(e) { return null; }
+}
+async function apiPost(url, body, method='POST') {
+  try {
+    const r = await fetch(url, {
+      method, headers: {'X-CSRF-Token':csrf,'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    return await r.json();
+  } catch(e) { return null; }
+}
+async function apiDel(url) {
+  try {
+    const r = await fetch(url, { method:'DELETE', headers:{'X-CSRF-Token':csrf} });
+    return await r.json();
+  } catch(e) { return null; }
+}
+function showErrEl(el, msg) { el.textContent = msg; el.style.display = 'block'; }
+
+// Init
+loadCandidates(1);
+</script>
+{% endblock %}

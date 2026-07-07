@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+{% block extra_head %}
+<style>
+  body { background: #f5f5f9; }
+  .exam-shell { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+  .exam-topbar { background: #1a1a2e; color: #fff; padding: 12px 20px;
+                 display: flex; align-items: center; gap: 16px; }
+  .exam-topbar .logo { height: 26px; filter: brightness(0) invert(1); }
+  .exam-topbar .section-tag { background: rgba(255,255,255,.15); border-radius: 100px;
+                               padding: 3px 12px; font-size: 0.78rem; font-weight: 700; }
+  .exam-topbar .progress-text { font-size: 0.82rem; opacity: .7; }
+  .timer-block { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .timer-display { font-family: 'IBM Plex Mono', monospace; font-size: 1.1rem;
+                   font-weight: 700; letter-spacing: .05em; }
+  .timer-display.warn { color: #fcd34d; }
+  .timer-display.danger { color: #fc8181; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+
+  .exam-body { display: grid; grid-template-columns: 280px 1fr;
+               height: calc(100vh - 56px); overflow: hidden; }
+  .sidebar { background: #fff; border-right: 1px solid #e5e5ef;
+             overflow-y: auto; padding: 16px; }
+  .sidebar h4 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .06em;
+                color: #888; margin: 0 0 10px; }
+  .q-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px,1fr)); gap: 6px; }
+  .q-cell { aspect-ratio: 1; border-radius: 6px; border: 1.5px solid #e5e5ef;
+             display: flex; align-items: center; justify-content: center;
+             font-size: 0.8rem; cursor: pointer; transition: all .15s;
+             background: #f9f9fb; color: #555; }
+  .q-cell.current { border-color: #1a1a2e; background: #1a1a2e; color: #fff; }
+  .q-cell.answered { border-color: #48bb78; background: #f0fff4; color: #276749; }
+  .q-cell.unanswered { border-color: #e5e5ef; background: #f9f9fb; }
+
+  .question-area { overflow-y: auto; padding: 32px 40px; }
+  .section-divider { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em;
+                     color: #888; margin-bottom: 20px; }
+  .question-stem { font-size: 1.08rem; line-height: 1.6; color: #1a1a2e;
+                   font-weight: 600; margin-bottom: 24px; }
+  .options-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
+  .option-row { display: flex; align-items: center; gap: 12px; border: 1.5px solid #e5e5ef;
+                border-radius: 8px; padding: 12px 16px; cursor: pointer;
+                transition: all .15s; background: #fff; }
+  .option-row:hover { border-color: #1a1a2e; background: #f4f4fb; }
+  .option-row.selected { border-color: #1a1a2e; background: #1a1a2e; color: #fff; }
+  .option-row input[type=radio] { display: none; }
+  .option-letter { width: 26px; height: 26px; border-radius: 50%; background: rgba(255,255,255,.15);
+                   display: flex; align-items: center; justify-content: center;
+                   font-size: 0.78rem; font-weight: 700; flex-shrink: 0;
+                   border: 1.5px solid currentColor; }
+  .option-row:not(.selected) .option-letter { border-color: #ccc; color: #888; background: #f5f5f9; }
+
+  .nav-bar { display: flex; gap: 10px; padding-top: 8px; }
+  .btn { border: none; border-radius: 8px; padding: 12px 24px; font-size: 0.92rem;
+         font-weight: 700; cursor: pointer; font-family: inherit; transition: opacity .2s; }
+  .btn-primary { background: #1a1a2e; color: #fff; }
+  .btn-outline { background: #fff; color: #1a1a2e; border: 2px solid #1a1a2e; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  #submitModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5);
+                 z-index:100; align-items:center; justify-content:center; }
+  #submitModal.open { display:flex; }
+  .modal-box { background:#fff; border-radius:12px; padding:32px; max-width:400px;
+               width:calc(100% - 40px); text-align:center; }
+  .modal-box h3 { margin:0 0 10px; font-family:'DM Serif Display',serif; }
+  .modal-box p { color:#555; font-size:0.92rem; margin:0 0 24px; }
+  .modal-btns { display:flex; gap:10px; justify-content:center; }
+
+  /* Results overlay */
+  #resultsOverlay { display:none; position:fixed; inset:0; background:#f5f5f9;
+                    z-index:200; overflow-y:auto; padding:40px 16px; }
+  #resultsOverlay.open { display:block; }
+  .result-card { max-width:540px; margin:0 auto; background:#fff;
+                  border-radius:14px; border:1px solid #e5e5ef; padding:36px; text-align:center; }
+  .score-big { font-size:3rem; font-weight:900; font-family:'DM Serif Display',serif;
+               color:#1a1a2e; }
+  .pass-badge { display:inline-block; padding:6px 20px; border-radius:100px;
+                font-weight:700; font-size:1rem; margin:8px 0 20px; }
+  .pass-badge.pass { background:#f0fff4; color:#276749; }
+  .pass-badge.fail { background:#fff5f5; color:#c53030; }
+
+  @media(max-width:700px){
+    .exam-body { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .question-area { padding: 20px 16px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="exam-shell">
+  <div class="exam-topbar">
+    <img class="logo" src="{{ url_for('static', filename='logo.png') }}" alt="Logo">
+    <span class="section-tag" id="sectionTag">—</span>
+    <span class="progress-text" id="progressText">Question 1 of …</span>
+    <div class="timer-block">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+      <span class="timer-display" id="timerDisplay">--:--</span>
+    </div>
+  </div>
+
+  <div class="exam-body" id="examBody">
+    <div class="sidebar" id="sidebarGrid">
+      <div style="padding:40px;text-align:center;color:#888;font-size:0.9rem">
+        Loading questions…
+      </div>
+    </div>
+    <div class="question-area" id="questionArea">
+      <div style="text-align:center;padding:60px;color:#888">Starting assessment…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Submit confirmation modal -->
+<div id="submitModal">
+  <div class="modal-box">
+    <h3>Submit Assessment?</h3>
+    <p>Are you sure you want to submit? You cannot change your answers after submission.</p>
+    <div class="modal-btns">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="doSubmit()">Submit</button>
+    </div>
+  </div>
+</div>
+
+<!-- Results overlay -->
+<div id="resultsOverlay">
+  <div class="result-card">
+    <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo"
+         style="height:28px;display:block;margin:0 auto 20px;">
+    <h2 style="font-family:'DM Serif Display',serif;margin:0 0 4px">Assessment Complete</h2>
+    <div class="score-big" id="scoreBig">—</div>
+    <div class="pass-badge" id="passBadge">—</div>
+    <p id="resultMsg" style="color:#555;font-size:0.9rem;margin:0 0 24px"></p>
+    <a href="/dashboard" class="btn btn-primary" style="text-decoration:none;display:inline-block">
+      Go to Dashboard →
+    </a>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+let questions = [];
+let answers   = {};   // { question_id: { answer_given, was_timeout, time_spent_secs } }
+let currentIdx = 0;
+let scoreId    = null;
+let totalSeconds = 3600;
+let remainingSeconds = 3600;
+let timerInterval = null;
+let qStartTime = null;
+let tabSwitches = 0;
+
+async function startAssessment() {
+  try {
+    const resp = await fetch('/api/assessment/start', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      document.getElementById('questionArea').innerHTML =
+        `<div style="text-align:center;padding:40px;color:#c53030">${data.error || 'Failed to start assessment.'}</div>`;
+      return;
+    }
+
+    questions = data.questions;
+    scoreId   = data.score_id;
+    totalSeconds = remainingSeconds = data.remaining_seconds || data.duration_seconds || 3600;
+
+    buildSidebar();
+    showQuestion(0);
+    startTimer();
+  } catch(e) {
+    document.getElementById('questionArea').innerHTML =
+      '<div style="text-align:center;padding:40px;color:#c53030">Network error. Please reload.</div>';
+  }
+}
+
+function buildSidebar() {
+  const sections = {};
+  questions.forEach((q, i) => {
+    if (!sections[q.section]) sections[q.section] = [];
+    sections[q.section].push({ q, i });
+  });
+
+  let html = '';
+  for (const [sec, qs] of Object.entries(sections)) {
+    html += `<h4>${sec}</h4><div class="q-grid">`;
+    qs.forEach(({ q, i }) => {
+      html += `<div class="q-cell unanswered" id="qcell-${i}" onclick="navTo(${i})">${i+1}</div>`;
+    });
+    html += '</div><div style="height:16px"></div>';
+  }
+  document.getElementById('sidebarGrid').innerHTML = html;
+}
+
+function showQuestion(idx) {
+  if (idx < 0 || idx >= questions.length) return;
+
+  // Record time spent on previous question
+  if (qStartTime !== null && currentIdx !== idx) {
+    const spent = Math.round((Date.now() - qStartTime) / 1000);
+    if (answers[questions[currentIdx].id]) {
+      answers[questions[currentIdx].id].time_spent_secs =
+        (answers[questions[currentIdx].id].time_spent_secs || 0) + spent;
+    }
+  }
+
+  currentIdx = idx;
+  qStartTime = Date.now();
+  const q = questions[idx];
+
+  document.getElementById('sectionTag').textContent = q.section;
+  document.getElementById('progressText').textContent =
+    `Question ${idx+1} of ${questions.length}`;
+
+  const saved = answers[q.id];
+  const html = `
+    <div class="section-divider">${q.section}</div>
+    <div class="question-stem">${idx+1}. ${q.stem}</div>
+    <div class="options-list">
+      ${q.options.map((opt, oi) => {
+        const letters = ['A','B','C','D'];
+        const isSel = saved && saved.answer_given === oi;
+        return `
+          <label class="option-row ${isSel ? 'selected' : ''}" onclick="selectOption(${q.id}, ${oi}, this)">
+            <input type="radio" name="q${q.id}" value="${oi}" ${isSel ? 'checked' : ''}>
+            <span class="option-letter">${letters[oi]}</span>
+            <span>${opt}</span>
+          </label>`;
+      }).join('')}
+    </div>
+    <div class="nav-bar">
+      <button class="btn btn-outline" onclick="navTo(${idx-1})" ${idx === 0 ? 'disabled' : ''}>← Prev</button>
+      ${idx < questions.length - 1
+        ? `<button class="btn btn-primary" onclick="navTo(${idx+1})">Next →</button>`
+        : `<button class="btn btn-primary" onclick="openModal()">Submit Assessment</button>`
+      }
+    </div>
+  `;
+  document.getElementById('questionArea').innerHTML = html;
+  updateCell(idx);
+}
+
+function selectOption(qId, optIdx, labelEl) {
+  document.querySelectorAll(`[name="q${qId}"]`).forEach(r => {
+    r.closest('.option-row').classList.remove('selected');
+  });
+  labelEl.classList.add('selected');
+  answers[qId] = {
+    question_id: qId,
+    answer_given: optIdx,
+    was_timeout: false,
+    time_spent_secs: 0,
+  };
+  updateCell(currentIdx);
+}
+
+function navTo(idx) {
+  if (idx < 0 || idx >= questions.length) return;
+  showQuestion(idx);
+}
+
+function updateCell(idx) {
+  document.querySelectorAll('.q-cell').forEach((el, i) => {
+    el.classList.remove('current','answered','unanswered');
+    const q = questions[i];
+    if (i === currentIdx) el.classList.add('current');
+    else if (answers[q?.id] !== undefined) el.classList.add('answered');
+    else el.classList.add('unanswered');
+  });
+}
+
+function startTimer() {
+  const disp = document.getElementById('timerDisplay');
+  timerInterval = setInterval(() => {
+    remainingSeconds--;
+    const m = Math.floor(remainingSeconds / 60);
+    const s = remainingSeconds % 60;
+    disp.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    if (remainingSeconds <= 120) disp.classList.add('warn');
+    if (remainingSeconds <= 30)  { disp.classList.remove('warn'); disp.classList.add('danger'); }
+    if (remainingSeconds <= 0) {
+      clearInterval(timerInterval);
+      // Mark remaining questions as timed out
+      questions.forEach(q => {
+        if (!answers[q.id]) {
+          answers[q.id] = { question_id: q.id, answer_given: null, was_timeout: true, time_spent_secs: 0 };
+        }
+      });
+      doSubmit();
+    }
+  }, 1000);
+}
+
+function openModal() { document.getElementById('submitModal').classList.add('open'); }
+function closeModal() { document.getElementById('submitModal').classList.remove('open'); }
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) tabSwitches++;
+});
+
+async function doSubmit() {
+  closeModal();
+  clearInterval(timerInterval);
+
+  // Record final question time
+  if (qStartTime !== null) {
+    const spent = Math.round((Date.now() - qStartTime) / 1000);
+    const q = questions[currentIdx];
+    if (q && answers[q.id]) answers[q.id].time_spent_secs = (answers[q.id].time_spent_secs || 0) + spent;
+  }
+
+  const answersArr = Object.values(answers);
+  const timeTaken = totalSeconds - remainingSeconds;
+
+  try {
+    const resp = await fetch('/api/assessment/submit', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        score_id: scoreId,
+        answers: answersArr,
+        tab_switches: tabSwitches,
+        time_taken_secs: timeTaken,
+      }),
+    });
+    const data = await resp.json();
+
+    document.getElementById('examBody').style.display = 'none';
+    const overlay = document.getElementById('resultsOverlay');
+    overlay.classList.add('open');
+
+    if (resp.ok) {
+      document.getElementById('scoreBig').textContent = data.score_percent + '%';
+      const badge = document.getElementById('passBadge');
+      badge.textContent = data.pass_fail === 'PASS' ? '✓ PASSED' : '✕ NOT PASSED';
+      badge.className = `pass-badge ${data.pass_fail === 'PASS' ? 'pass' : 'fail'}`;
+      document.getElementById('resultMsg').textContent =
+        data.pass_fail === 'PASS'
+          ? 'Congratulations! You may now schedule your interview.'
+          : 'Your result did not meet the required pass mark. Thank you for participating.';
+    } else {
+      document.getElementById('scoreBig').textContent = '—';
+      document.getElementById('passBadge').textContent = data.error || 'Error';
+    }
+  } catch(e) {
+    document.getElementById('examBody').style.display = 'none';
+    document.getElementById('resultsOverlay').classList.add('open');
+    document.getElementById('scoreBig').textContent = '—';
+    document.getElementById('passBadge').textContent = 'Network Error';
+    document.getElementById('resultMsg').textContent =
+      'Your answers could not be submitted. Please contact HR immediately.';
+  }
+}
+
+startAssessment();
+</script>
+{% endblock %}

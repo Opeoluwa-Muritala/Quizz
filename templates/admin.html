@@ -2,6 +2,10 @@
 
 {% block title %}Admin Dashboard — Mainstreet Assessment Portal{% endblock %}
 
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='admin_recruitment.css') }}">
+{% endblock %}
+
 {% block content %}
 {% if not authenticated %}
 <!-- Admin Login Gate -->
@@ -50,11 +54,12 @@
         <button type="button" class="tab-btn" data-tab="questions">Question Editor</button>
         <button type="button" class="tab-btn" data-tab="candidates">Candidates & Results</button>
         <button type="button" class="tab-btn" data-tab="whitelist">Whitelist</button>
+        <button type="button" class="tab-btn" data-tab="recruitment">Recruitment Pipeline</button>
     </nav>
 
     <!-- Tab Contents -->
     <div class="admin-tab-content">
-        
+
         <!-- Panel 1: Exam Settings -->
         <section id="tab-settings" class="tab-panel active">
             <div class="card settings-card">
@@ -91,7 +96,7 @@
         <!-- Panel 2: Question Editor -->
         <section id="tab-questions" class="tab-panel">
             <div class="questions-editor-layout">
-                
+
                 <!-- Left: Question List -->
                 <div class="questions-list-pane">
                     <div class="pane-header">
@@ -122,7 +127,7 @@
                             <div class="questions-list" id="admin-questions-numerical"></div>
                             <button type="button" class="btn btn-ghost btn-full btn-add-q" data-section="Numerical">+ Add Numerical Question</button>
                         </div>
-                        
+
                         <div class="section-group">
                             <h3 class="group-header">VERBAL REASONING</h3>
                             <div class="questions-list" id="admin-questions-verbal"></div>
@@ -168,15 +173,13 @@
                     </div>
                 </div>
 
-
-
             </div>
         </section>
 
         <!-- Panel 3: Candidates & Results -->
         <section id="tab-candidates" class="tab-panel">
             <div class="candidates-results-layout">
-                
+
                 <!-- Summary Statistics -->
                 <div class="summary-stats-grid">
                     <div class="card stat-mini-card">
@@ -246,7 +249,7 @@
         <!-- Panel 4: Whitelist -->
         <section id="tab-whitelist" class="tab-panel">
             <div class="whitelist-layout">
-                
+
                 <!-- Left: Add panel -->
                 <div class="whitelist-form-side">
                     <div class="card">
@@ -291,7 +294,7 @@
                             </div>
                             <button type="button" id="btn-clear-whitelist" class="btn btn-ghost" style="border-color: var(--color-danger); color: var(--color-danger); padding: 4px 10px; font-size: 13px;">Clear All</button>
                         </div>
-                        
+
                         <div class="table-container list-table-container">
                             <table class="data-table min-table">
                                 <thead>
@@ -312,6 +315,195 @@
             </div>
         </section>
 
+        <!-- Panel 5: Recruitment Pipeline -->
+        <section id="tab-recruitment" class="tab-panel">
+
+            <!-- Sub-tab navigation -->
+            <nav class="rec-sub-nav">
+                <button class="rec-subtab active" data-rec="candidates" type="button" onclick="switchRecTab('candidates')">Candidates</button>
+                <button class="rec-subtab" data-rec="interviewers" type="button" onclick="switchRecTab('interviewers')">Interviewers</button>
+                <button class="rec-subtab" data-rec="slots" type="button" onclick="switchRecTab('slots')">Slots</button>
+                <button class="rec-subtab" data-rec="config" type="button" onclick="switchRecTab('config')">Stage Config</button>
+                <button class="rec-subtab" data-rec="emaillog" type="button" onclick="switchRecTab('emaillog')">Email Log</button>
+            </nav>
+
+            <!-- ── Candidates ─────────────────────────────────────── -->
+            <div class="rec-subpanel active" id="rec-sub-candidates">
+                <div class="card">
+                    <div class="rec-search">
+                        <input id="recSearchStage" class="rec-ctrl" style="max-width:200px" placeholder="Filter by stage…" oninput="loadRecCandidates(1)">
+                        <select id="recSearchFlagged" class="rec-ctrl" style="max-width:180px" onchange="loadRecCandidates(1)">
+                            <option value="">All candidates</option>
+                            <option value="1">Flagged only</option>
+                        </select>
+                        <button class="btn btn-primary" type="button" onclick="loadRecCandidates(1)">Refresh</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="recCandTable">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Stage</th>
+                                    <th>Score</th>
+                                    <th>Flag</th>
+                                    <th>Applied</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="recCandTbody">
+                                <tr><td colspan="7" style="text-align:center;color:#888;padding:24px">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-row" id="recCandPagination"></div>
+                </div>
+            </div>
+
+            <!-- ── Interviewers ────────────────────────────────────── -->
+            <div class="rec-subpanel" id="rec-sub-interviewers">
+                <div class="card">
+                    <h3 style="margin:0 0 16px;font-size:1rem">Add Interviewer</h3>
+                    <div class="rec-row">
+                        <div class="form-group">
+                            <label for="iName">Full Name</label>
+                            <input class="rec-ctrl" id="iName" placeholder="e.g. Adaeze Okafor">
+                        </div>
+                        <div class="form-group">
+                            <label for="iEmail">Email Address</label>
+                            <input class="rec-ctrl" id="iEmail" type="email" placeholder="interviewer@example.com">
+                        </div>
+                    </div>
+                    <div id="iError" style="display:none;background:#fff5f5;border:1px solid #fed7d7;color:#c53030;border-radius:6px;padding:8px 12px;font-size:.85rem;margin-bottom:12px"></div>
+                    <button class="btn btn-primary" type="button" onclick="addRecInterviewer()">Add Interviewer</button>
+                </div>
+                <div class="card">
+                    <h3 style="margin:0 0 16px;font-size:1rem">Interviewers</h3>
+                    <div class="table-container">
+                        <table class="data-table" id="recInterviewerTable">
+                            <thead><tr><th>Name</th><th>Email</th><th>Active</th><th></th></tr></thead>
+                            <tbody id="recInterviewerTbody">
+                                <tr><td colspan="4" style="text-align:center;color:#888;padding:24px">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Slots ───────────────────────────────────────────── -->
+            <div class="rec-subpanel" id="rec-sub-slots">
+                <div class="card">
+                    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px">
+                        <div class="form-group">
+                            <label for="slotsFrom">From</label>
+                            <input class="rec-ctrl" style="width:160px" type="date" id="slotsFrom">
+                        </div>
+                        <div class="form-group">
+                            <label for="slotsTo">To</label>
+                            <input class="rec-ctrl" style="width:160px" type="date" id="slotsTo">
+                        </div>
+                        <button class="btn btn-primary" type="button" onclick="loadRecSlots()">Load Slots</button>
+                        <button class="btn btn-primary" type="button" style="background:#276749" onclick="triggerRecGenerate()">↻ Generate Slots</button>
+                    </div>
+                    <div class="table-container" id="recSlotsTableWrap">
+                        <p style="color:#888;padding:12px 0">Set date range and click Load Slots.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 style="margin:0 0 16px;font-size:1rem">Add Availability Rule</h3>
+                    <div class="rec-row">
+                        <div class="form-group">
+                            <label>Interviewer</label>
+                            <select class="rec-ctrl" id="arInterviewer"></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Rule Type</label>
+                            <select class="rec-ctrl" id="arType" onchange="toggleArType()">
+                                <option value="recurring">Recurring (day of week)</option>
+                                <option value="date_range">Date Range</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="arRecurring" class="rec-row">
+                        <div class="form-group">
+                            <label>Day of Week</label>
+                            <select class="rec-ctrl" id="arDow">
+                                <option value="0">Monday</option><option value="1">Tuesday</option>
+                                <option value="2">Wednesday</option><option value="3">Thursday</option>
+                                <option value="4">Friday</option><option value="5">Saturday</option>
+                                <option value="6">Sunday</option>
+                            </select>
+                        </div>
+                        <div></div>
+                    </div>
+                    <div id="arDateRange" class="rec-row" style="display:none">
+                        <div class="form-group">
+                            <label>From Date</label>
+                            <input class="rec-ctrl" type="date" id="arDateFrom">
+                        </div>
+                        <div class="form-group">
+                            <label>To Date</label>
+                            <input class="rec-ctrl" type="date" id="arDateTo">
+                        </div>
+                    </div>
+                    <div class="rec-row">
+                        <div class="form-group">
+                            <label>Start Time</label>
+                            <input class="rec-ctrl" type="time" id="arStart" value="09:00">
+                        </div>
+                        <div class="form-group">
+                            <label>End Time</label>
+                            <input class="rec-ctrl" type="time" id="arEnd" value="17:00">
+                        </div>
+                    </div>
+                    <div class="rec-row">
+                        <div class="form-group">
+                            <label>Slot Duration (min)</label>
+                            <input class="rec-ctrl" type="number" id="arDuration" value="30" min="15">
+                        </div>
+                        <div class="form-group">
+                            <label>Buffer (min)</label>
+                            <input class="rec-ctrl" type="number" id="arBuffer" value="10" min="0">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:14px">
+                        <label>Lead Time (hours)</label>
+                        <input class="rec-ctrl" style="max-width:180px" type="number" id="arLead" value="24" min="0">
+                    </div>
+                    <button class="btn btn-primary" type="button" onclick="addArRule()">Save Rule</button>
+                </div>
+            </div>
+
+            <!-- ── Stage Config ────────────────────────────────────── -->
+            <div class="rec-subpanel" id="rec-sub-config">
+                <div class="card">
+                    <h3 style="margin:0 0 4px;font-size:1rem">Stage Configuration</h3>
+                    <p style="font-size:.85rem;color:#888;margin:0 0 16px">Changes take effect immediately. Opens At / Closes At control when candidates can access each stage.</p>
+                    <div id="recConfigGrid"><p style="color:#888">Loading…</p></div>
+                </div>
+            </div>
+
+            <!-- ── Email Log ───────────────────────────────────────── -->
+            <div class="rec-subpanel" id="rec-sub-emaillog">
+                <div class="card">
+                    <h3 style="margin:0 0 16px;font-size:1rem">Email Log</h3>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>To</th><th>Event</th><th>Status</th><th>Date</th><th></th></tr>
+                            </thead>
+                            <tbody id="recEmailTbody">
+                                <tr><td colspan="5" style="text-align:center;color:#888;padding:24px">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-row" id="recEmailPagination"></div>
+                </div>
+            </div>
+
+        </section><!-- end recruitment panel -->
+
     </div>
 </div>
 
@@ -329,11 +521,11 @@
                 </button>
             </div>
         </div>
-        
+
         <form id="question-editor-form" style="padding: 0 4px;">
             <input type="hidden" id="editor-q-id">
             <input type="hidden" id="editor-q-position">
-            
+
             <div class="form-group">
                 <label>Section</label>
                 <div class="segmented-control">
@@ -430,16 +622,54 @@
     </div>
 </div>
 
-<!-- Image Lightbox Modal Overlay (Only place where position fixed is used) -->
+<!-- Image Lightbox Modal Overlay -->
 <div id="lightbox-modal" class="lightbox-modal hidden">
     <div class="lightbox-content">
         <img id="lightbox-img" src="" alt="Enlarged Document View">
         <p class="lightbox-caption">Click outside the image to close.</p>
     </div>
 </div>
+
+<!-- ── Recruitment candidate detail modal ────────────────────── -->
+<div id="recCandModal" class="modal-overlay hidden" style="align-items:flex-start;padding-top:40px">
+    <div class="card modal-card" style="max-width:860px;width:100%;padding:28px;max-height:90vh;overflow-y:auto">
+        <div class="modal-header">
+            <h2 id="recCandModalName" style="font-size:1.2rem;margin:0">Candidate</h2>
+            <button type="button" class="btn-icon" onclick="closeRecCandModal()" title="Close">
+                <i class="ti ti-x"></i>
+            </button>
+        </div>
+        <div id="recCandModalContent">Loading…</div>
+    </div>
+</div>
+
+<!-- ── Slot panelists modal ───────────────────────────────────── -->
+<div id="recPanelistModal" class="modal-overlay hidden" style="align-items:flex-start;padding-top:80px">
+    <div class="card modal-card" style="max-width:500px;width:100%;padding:24px">
+        <div class="modal-header">
+            <h3 style="margin:0;font-size:1rem">Manage Panelists — Slot <span id="panelistSlotId"></span></h3>
+            <button type="button" class="btn-icon" onclick="closePanelistModal()" title="Close">
+                <i class="ti ti-x"></i>
+            </button>
+        </div>
+        <div id="panelistList" style="margin:16px 0;min-height:40px">Loading…</div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+            <select id="panelistAddSel" class="rec-ctrl">
+                <option value="">— Select interviewer —</option>
+            </select>
+            <button class="btn btn-primary" type="button" onclick="addPanelist()">Add</button>
+        </div>
+        <div id="panelistMsg" style="font-size:.82rem;margin-top:8px"></div>
+    </div>
+</div>
+
 {% endif %}
 
 <!-- Client-side Toasts Container -->
 <div id="toast-container" class="toast-container"></div>
 
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='admin_recruitment.js') }}"></script>
 {% endblock %}

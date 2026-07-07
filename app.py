@@ -7,20 +7,21 @@ import csv
 import io
 import json
 import requests
-from flask import Flask, request, jsonify, render_template, session, redirect, url_for, Response
-from psycopg2 import pool
+from flask import Flask, request, jsonify, render_template, session, redirect, url_for, Response, g
 from dotenv import load_dotenv
 import cloudinary
 import cloudinary.uploader
 import cloudinary.utils
 
-# Load environment variables
+# Load environment variables before importing db (which reads NEON_DATABASE_URL)
 load_dotenv()
+
+# Single connection pool — defined in db.py, imported here so all modules share it
+from db import DBConnection, connection_pool  # noqa: E402
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
 if not app.secret_key:
-    # Fallback to random key for testing/dev, log a warning
     print("WARNING: FLASK_SECRET_KEY not set. Generating ephemeral key.")
     app.secret_key = secrets.token_hex(32)
 
@@ -32,17 +33,6 @@ app.config.update(
 ADMIN_SESSION_TIMEOUT_MINUTES = 30
 MAX_ADMIN_DEVICES = 2
 
-# Initialize PostgreSQL Connection Pool
-db_url = os.environ.get("NEON_DATABASE_URL")
-connection_pool = None
-try:
-    if db_url:
-        connection_pool = pool.ThreadedConnectionPool(1, 20, db_url)
-    else:
-        print("ERROR: NEON_DATABASE_URL is not set.")
-except Exception as e:
-    print(f"Error creating connection pool: {e}")
-
 
 # Initialize Cloudinary
 cloudinary.config(
@@ -51,18 +41,6 @@ cloudinary.config(
     api_secret=os.environ.get("CLOUDINARY_API_SECRET"),
     secure=True
 )
-
-# Database helper context manager
-class DBConnection:
-    def __enter__(self):
-        if not connection_pool:
-            raise Exception("Database connection pool is not initialized. Check NEON_DATABASE_URL.")
-        self.conn = connection_pool.getconn()
-        return self.conn
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if hasattr(self, 'conn') and self.conn:
-            connection_pool.putconn(self.conn)
 
 def init_db():
     with DBConnection() as conn:
@@ -166,6 +144,23 @@ def init_db():
                 );
             """)
 
+            # Create quizzes table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS quizzes (
+                    id             SERIAL PRIMARY KEY,
+                    number         INTEGER NOT NULL UNIQUE,
+                    title          TEXT NOT NULL DEFAULT '',
+                    active         BOOLEAN DEFAULT FALSE,
+                    opens_at       TIMESTAMPTZ,
+                    closes_at      TIMESTAMPTZ,
+                    duration_minutes INTEGER,
+                    pass_mark      NUMERIC(5,2) DEFAULT 50.0,
+                    created_at     TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+            cur.execute("ALTER TABLE questions ADD COLUMN IF NOT EXISTS quiz_id INTEGER REFERENCES quizzes(id);")
+            cur.execute("ALTER TABLE exam_results ADD COLUMN IF NOT EXISTS quiz_id INTEGER REFERENCES quizzes(id);")
+
             # Create admin_sessions table for device tracking and inactivity timeouts
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS admin_sessions (
@@ -221,6 +216,13 @@ def init_db():
                         VALUES (%s)
                         ON CONFLICT (email) DO NOTHING;
                     """, (email.lower().strip(),))
+
+            # Seed Quiz 1 from default questions if no quizzes exist
+            cur.execute("SELECT COUNT(*) FROM quizzes;")
+            if cur.fetchone()[0] == 0:
+                cur.execute("INSERT INTO quizzes (number, title, active) VALUES (1, 'Quiz 1', TRUE) RETURNING id;")
+                quiz1_id = cur.fetchone()[0]
+                cur.execute("UPDATE questions SET quiz_id = %s WHERE quiz_id IS NULL;", (quiz1_id,))
         conn.commit()
 
 # Custom CSRF Protection
@@ -338,17 +340,25 @@ def check_email():
             cur.execute("SELECT 1 FROM whitelist WHERE LOWER(email) = LOWER(%s);", (email,))
             if not cur.fetchone():
                 return jsonify({"error": "This email is not registered for this exam. Please contact HR."}), 400
-                
-            # 3. Check already submitted
+
+            # 3. Determine active quiz
+            cur.execute("SELECT id, number FROM quizzes WHERE active = TRUE ORDER BY number ASC LIMIT 1;")
+            quiz_row = cur.fetchone()
+            if not quiz_row:
+                return jsonify({"error": "No quiz is currently active. Please contact HR."}), 400
+            active_quiz_id, active_quiz_num = quiz_row[0], quiz_row[1]
+
+            # 4. Check already submitted (per-quiz)
             cur.execute("""
                 SELECT 1 FROM exam_results ER
                 JOIN candidates C ON ER.candidate_id = C.id
-                WHERE LOWER(C.email) = LOWER(%s);
-            """, (email,))
+                WHERE LOWER(C.email) = LOWER(%s) AND ER.quiz_id = %s;
+            """, (email, active_quiz_id))
             if cur.fetchone():
-                return jsonify({"error": "A submission for this email has already been recorded."}), 400
-                
-    return jsonify({"status": "success", "message": "Email verified successfully."})
+                return jsonify({"error": f"You have already completed Quiz {active_quiz_num}. Please wait for the next quiz."}), 400
+
+    session['active_quiz_id'] = active_quiz_id
+    return jsonify({"status": "success", "message": "Email verified successfully.", "quiz_number": active_quiz_num})
 
 @app.route('/api/exam-summary', methods=['GET'])
 def exam_summary():
@@ -471,13 +481,20 @@ def get_candidate_questions():
             if not settings or not settings[0]:
                 return jsonify({"error": "The exam portal is currently closed."}), 403
                 
-            # Fetch active questions
-            cur.execute("""
-                SELECT id, section, stem, option_a, option_b, option_c, option_d, position
-                FROM questions
-                WHERE active = TRUE
-                ORDER BY section, position ASC;
-            """)
+            # Fetch active questions (filtered by active quiz if available)
+            quiz_id = session.get('active_quiz_id')
+            if quiz_id:
+                cur.execute("""
+                    SELECT id, section, stem, option_a, option_b, option_c, option_d, position
+                    FROM questions
+                    WHERE active = TRUE AND quiz_id = %s
+                    ORDER BY section, position ASC;
+                """, (quiz_id,))
+            else:
+                cur.execute("""
+                    SELECT id, section, stem, option_a, option_b, option_c, option_d, position
+                    FROM questions WHERE active = TRUE ORDER BY section, position ASC;
+                """)
             rows = cur.fetchall()
             
     # Structure questions
@@ -515,13 +532,15 @@ def submit_results():
     if not session_cand_id or session_cand_id != candidate_id:
         return jsonify({"error": "Invalid candidate session."}), 401
         
+    quiz_id = session.get('active_quiz_id')
+
     with DBConnection() as conn:
         with conn.cursor() as cur:
-            # Check if already submitted
-            cur.execute("SELECT id FROM exam_results WHERE candidate_id = %s;", (candidate_id,))
+            # Check if already submitted (per-quiz)
+            cur.execute("SELECT id FROM exam_results WHERE candidate_id = %s AND quiz_id IS NOT DISTINCT FROM %s;", (candidate_id, quiz_id))
             if cur.fetchone():
                 return jsonify({"error": "A submission for this candidate has already been recorded."}), 400
-                
+
             # Fetch active questions to score
             cur.execute("""
                 SELECT id, section, answer
@@ -529,10 +548,17 @@ def submit_results():
                 WHERE active = TRUE;
             """)
             questions_db = cur.fetchall()
-            
-            # Fetch passing rules
-            cur.execute("SELECT pass_mark_percent FROM exam_settings WHERE id = 1;")
-            pass_mark = float(cur.fetchone()[0])
+
+            # Fetch passing rules — use quiz pass_mark if available, else fall back to exam_settings
+            pass_mark = None
+            if quiz_id:
+                cur.execute("SELECT pass_mark FROM quizzes WHERE id = %s;", (quiz_id,))
+                qrow = cur.fetchone()
+                if qrow and qrow[0] is not None:
+                    pass_mark = float(qrow[0])
+            if pass_mark is None:
+                cur.execute("SELECT pass_mark_percent FROM exam_settings WHERE id = 1;")
+                pass_mark = float(cur.fetchone()[0])
             
             # Map database questions
             q_map = {q[0]: {"section": q[1], "answer": q[2]} for q in questions_db}
@@ -587,8 +613,8 @@ def submit_results():
             
             # Insert result
             cur.execute("""
-                INSERT INTO exam_results (candidate_id, score_percent, score_fraction, pass_fail, time_taken_secs, tab_switches, breakdown_json)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO exam_results (candidate_id, score_percent, score_fraction, pass_fail, time_taken_secs, tab_switches, breakdown_json, quiz_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
             """, (
                 candidate_id,
@@ -597,7 +623,8 @@ def submit_results():
                 pass_fail,
                 time_taken_secs,
                 tab_switches,
-                json.dumps(breakdown)
+                json.dumps(breakdown),
+                quiz_id
             ))
             
             # Fetch candidate info for response certificate
@@ -609,11 +636,12 @@ def submit_results():
     # Clear candidate session on success
     session.pop('candidate_id', None)
     session.pop('candidate_email', None)
-    
+    session.pop('active_quiz_id', None)
+
     # Generate reference number: MMFB-YYYYMMDD-XXXX
     submitted_date = datetime.datetime.now()
     ref_num = f"MMFB-{submitted_date.strftime('%Y%m%d')}-{candidate_id:04d}"
-    
+
     return jsonify({
         "score_percent": score_percent,
         "score_fraction": score_fraction,
@@ -622,7 +650,8 @@ def submit_results():
         "candidate_name": cand_info[0] if cand_info else "Candidate",
         "candidate_email": cand_info[1] if cand_info else "",
         "ref_number": ref_num,
-        "submitted_at": submitted_date.isoformat()
+        "submitted_at": submitted_date.isoformat(),
+        "quiz_number": quiz_id
     })
 
 
@@ -986,6 +1015,148 @@ def admin_clear_whitelist():
     return jsonify({"status": "success", "message": "All whitelisted emails removed successfully."})
 
 
+@app.route('/api/admin/quizzes', methods=['GET', 'POST'])
+def admin_quizzes():
+    auth_err = require_admin()
+    if auth_err: return auth_err
+
+    if request.method == 'GET':
+        with DBConnection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT q.id, q.number, q.title, q.active, q.opens_at, q.closes_at,
+                           q.duration_minutes, q.pass_mark, q.created_at,
+                           COUNT(qs.id) AS question_count,
+                           COUNT(DISTINCT er.candidate_id) AS attempts
+                    FROM quizzes q
+                    LEFT JOIN questions qs ON qs.quiz_id = q.id AND qs.active = TRUE
+                    LEFT JOIN exam_results er ON er.quiz_id = q.id
+                    GROUP BY q.id ORDER BY q.number;
+                """)
+                rows = cur.fetchall()
+        return jsonify([{
+            "id": r[0], "number": r[1], "title": r[2], "active": r[3],
+            "opens_at": r[4].isoformat() if r[4] else None,
+            "closes_at": r[5].isoformat() if r[5] else None,
+            "duration_minutes": r[6], "pass_mark": float(r[7]) if r[7] else None,
+            "created_at": r[8].isoformat() if r[8] else None,
+            "question_count": r[9], "attempts": r[10],
+        } for r in rows])
+
+    data = request.json or {}
+    number = data.get('number')
+    title  = data.get('title', '').strip() or f"Quiz {number}"
+    if not number:
+        return jsonify({"error": "number required"}), 400
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO quizzes (number, title, pass_mark, duration_minutes, opens_at, closes_at)
+                VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;
+            """, (number, title,
+                  data.get('pass_mark', 50.0),
+                  data.get('duration_minutes'),
+                  data.get('opens_at') or None,
+                  data.get('closes_at') or None))
+            new_id = cur.fetchone()[0]
+        conn.commit()
+    return jsonify({"status": "success", "id": new_id})
+
+
+@app.route('/api/admin/quizzes/<int:qid>', methods=['PUT', 'DELETE'])
+def admin_quiz_detail(qid):
+    auth_err = require_admin()
+    if auth_err: return auth_err
+
+    if request.method == 'DELETE':
+        with DBConnection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM quizzes WHERE id = %s;", (qid,))
+            conn.commit()
+        return jsonify({"status": "success"})
+
+    data = request.json or {}
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE quizzes SET
+                    title = COALESCE(%s, title),
+                    pass_mark = COALESCE(%s, pass_mark),
+                    duration_minutes = COALESCE(%s, duration_minutes),
+                    opens_at = COALESCE(%s::timestamptz, opens_at),
+                    closes_at = COALESCE(%s::timestamptz, closes_at)
+                WHERE id = %s;
+            """, (data.get('title'), data.get('pass_mark'),
+                  data.get('duration_minutes'),
+                  data.get('opens_at'), data.get('closes_at'), qid))
+        conn.commit()
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/admin/quizzes/<int:qid>/activate', methods=['POST'])
+def admin_quiz_activate(qid):
+    auth_err = require_admin()
+    if auth_err: return auth_err
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE quizzes SET active = FALSE;")
+            cur.execute("UPDATE quizzes SET active = TRUE WHERE id = %s;", (qid,))
+        conn.commit()
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/admin/quiz-results')
+def admin_quiz_results():
+    auth_err = require_admin()
+    if auth_err: return auth_err
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            # Per-candidate averages across all quizzes
+            cur.execute("""
+                SELECT c.id, c.full_name, c.email,
+                       COUNT(er.id) AS quizzes_taken,
+                       ROUND(AVG(er.score_percent), 2) AS avg_score,
+                       ARRAY_AGG(
+                           q.number || ':' || er.score_percent::text
+                           ORDER BY q.number
+                       ) AS quiz_scores
+                FROM candidates c
+                JOIN exam_results er ON er.candidate_id = c.id
+                JOIN quizzes q ON q.id = er.quiz_id
+                GROUP BY c.id, c.full_name, c.email
+                ORDER BY avg_score DESC;
+            """)
+            rows = cur.fetchall()
+    return jsonify([{
+        "candidate_id": r[0], "name": r[1], "email": r[2],
+        "quizzes_taken": r[3], "avg_score": float(r[4]),
+        "quiz_scores": r[5],
+    } for r in rows])
+
+
+@app.route('/api/admin/cv-view')
+def admin_cv_view():
+    """Proxy Cloudinary CV PDF to browser with inline Content-Disposition."""
+    if not session.get('admin'):
+        return "Unauthorized", 401
+    url = request.args.get('url', '').strip()
+    if not url or 'cloudinary.com' not in url:
+        return "Invalid URL", 400
+    try:
+        r = requests.get(url, timeout=20)
+        return Response(
+            r.content,
+            mimetype='application/pdf',
+            headers={'Content-Disposition': 'inline; filename="cv.pdf"'}
+        )
+    except Exception as e:
+        print(f"[cv-view] Error: {e}")
+        return "Failed to fetch CV", 502
+
+
 @app.route('/api/admin/results/clear', methods=['POST'])
 def admin_clear_results():
     auth_err = require_admin()
@@ -1165,11 +1336,76 @@ def admin_get_image(candidate_id, image_type):
         return "Internal server error reading document bytes", 500
 
 
-if __name__ == '__main__':
-    # Initialise Tables & Seeding
+def _bootstrap():
+    """Run all DB migrations and register blueprints. Called once at startup."""
     try:
         init_db()
     except Exception as e:
-        print(f"Database initialization error on boot: {e}")
-        
+        print(f"[init_db] Error: {e}")
+
+    try:
+        from migrations import init_recruitment_db
+        init_recruitment_db()
+    except Exception as e:
+        print(f"[init_recruitment_db] Error: {e}")
+
+    # Register recruitment blueprints
+    try:
+        from blueprints.recruitment import recruitment
+        from blueprints.admin_recruitment import admin_rec
+        app.register_blueprint(recruitment)
+        app.register_blueprint(admin_rec)
+    except Exception as e:
+        print(f"[blueprint registration] Error: {e}")
+
+    # Start background scheduler for slot generation and deadline expiry
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from jobs.slot_generator import generate_slots
+        from jobs.deadline_expiry import expire_past_deadlines
+
+        scheduler = BackgroundScheduler()
+        # Generate slots daily at 01:00
+        scheduler.add_job(generate_slots, "cron", hour=1, minute=0,
+                          id="slot_gen", replace_existing=True)
+        # Expire overdue candidates every 30 minutes
+        scheduler.add_job(expire_past_deadlines, "interval", minutes=30,
+                          id="deadline_expiry", replace_existing=True)
+        scheduler.start()
+        print("[scheduler] Background scheduler started.")
+    except ImportError:
+        print("[scheduler] apscheduler not installed — periodic jobs disabled.")
+    except Exception as e:
+        print(f"[scheduler] Error starting: {e}")
+
+
+# ── Job endpoints (callable by Vercel Cron or external scheduler) ──────────────
+
+@app.route("/api/jobs/generate-slots", methods=["POST"])
+def job_generate_slots():
+    secret = os.environ.get("JOB_SECRET", "")
+    provided = request.headers.get("X-Job-Secret", "")
+    if secret and not hmac.compare_digest(secret.encode(), provided.encode()):
+        return jsonify({"error": "Unauthorized"}), 401
+    from jobs.slot_generator import generate_slots
+    count = generate_slots(weeks_ahead=4)
+    return jsonify({"created": count})
+
+
+@app.route("/api/jobs/expire-deadlines", methods=["POST"])
+def job_expire_deadlines():
+    secret = os.environ.get("JOB_SECRET", "")
+    provided = request.headers.get("X-Job-Secret", "")
+    if secret and not hmac.compare_digest(secret.encode(), provided.encode()):
+        return jsonify({"error": "Unauthorized"}), 401
+    from jobs.deadline_expiry import expire_past_deadlines
+    count = expire_past_deadlines()
+    return jsonify({"transitioned": count})
+
+
+if __name__ == '__main__':
+    _bootstrap()
     app.run(host='127.0.0.1', port=5000, debug=True)
+else:
+    # Running under gunicorn / Vercel
+    _bootstrap()
