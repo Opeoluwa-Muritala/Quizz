@@ -98,6 +98,10 @@ def apply_screening(candidate_id: int) -> str:
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT stage FROM candidates WHERE id = %s FOR UPDATE;", (candidate_id,))
+            row = cur.fetchone()
+            old_stage = row[0] if row else None
+
             cur.execute("""
                 UPDATE candidates
                 SET stage = %s,
@@ -112,10 +116,10 @@ def apply_screening(candidate_id: int) -> str:
                 candidate_id,
             ))
             cur.execute("""
-                INSERT INTO candidate_stage_history (candidate_id, from_stage, to_stage, reason)
-                SELECT %s, stage, %s, %s
-                FROM candidates WHERE id = %s;
-            """, (candidate_id, new_stage, reason or "auto-screening", candidate_id))
+                INSERT INTO candidate_stage_history
+                    (candidate_id, from_stage, to_stage, changed_by, reason)
+                VALUES (%s, %s, %s, 'system', %s);
+            """, (candidate_id, old_stage, new_stage, reason or "auto-screening"))
         conn.commit()
 
     if new_stage == 'screening_passed':

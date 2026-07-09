@@ -65,7 +65,8 @@ def init_db():
                 ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
                 ADD COLUMN IF NOT EXISTS phone_number TEXT,
                 ADD COLUMN IF NOT EXISTS role TEXT,
-                ADD COLUMN IF NOT EXISTS location TEXT;
+                ADD COLUMN IF NOT EXISTS location TEXT,
+                ADD COLUMN IF NOT EXISTS pre_test_responses JSONB DEFAULT '{}'::jsonb;
             """)
             # Create questions table
             cur.execute("""
@@ -140,8 +141,15 @@ def init_db():
                     exam_open            BOOLEAN DEFAULT FALSE,
                     seconds_per_question INTEGER DEFAULT 60,
                     pass_mark_percent    NUMERIC(5,2) DEFAULT 50,
+                    require_identity_verification BOOLEAN DEFAULT TRUE,
+                    pre_test_fields       JSONB DEFAULT '[]'::jsonb,
                     updated_at           TIMESTAMPTZ DEFAULT NOW()
                 );
+            """)
+            cur.execute("""
+                ALTER TABLE exam_settings
+                    ADD COLUMN IF NOT EXISTS require_identity_verification BOOLEAN DEFAULT TRUE,
+                    ADD COLUMN IF NOT EXISTS pre_test_fields JSONB DEFAULT '[]'::jsonb;
             """)
 
             # Create quizzes table
@@ -325,8 +333,8 @@ def check_email():
     role = data.get('role', '').strip()
     location = data.get('location', '').strip()
     
-    if not email or not full_name or not phone_number or not role or not location:
-        return jsonify({"error": "All registration fields are required"}), 400
+    if not email or not full_name:
+        return jsonify({"error": "Full name and email are required"}), 400
         
     with DBConnection() as conn:
         with conn.cursor() as cur:
@@ -357,15 +365,28 @@ def check_email():
             if cur.fetchone():
                 return jsonify({"error": f"You have already completed Quiz {active_quiz_num}. Please wait for the next quiz."}), 400
 
+            cur.execute("""
+                SELECT require_identity_verification, pre_test_fields
+                FROM exam_settings WHERE id = 1;
+            """)
+            verification_row = cur.fetchone()
+
     session['active_quiz_id'] = active_quiz_id
-    return jsonify({"status": "success", "message": "Email verified successfully.", "quiz_number": active_quiz_num})
+    return jsonify({
+        "status": "success",
+        "message": "Email verified successfully.",
+        "quiz_number": active_quiz_num,
+        "require_identity_verification": verification_row[0] if verification_row else True,
+        "pre_test_fields": (verification_row[1] if verification_row else []) or [],
+    })
 
 @app.route('/api/exam-summary', methods=['GET'])
 def exam_summary():
     with DBConnection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT exam_open, seconds_per_question, pass_mark_percent
+                SELECT exam_open, seconds_per_question, pass_mark_percent,
+                       require_identity_verification, pre_test_fields
                 FROM exam_settings
                 WHERE id = 1;
             """)
@@ -380,7 +401,9 @@ def exam_summary():
         "exam_open": settings[0],
         "seconds_per_question": settings[1],
         "pass_mark_percent": float(settings[2]),
-        "total_questions": active_question_count
+        "total_questions": active_question_count,
+        "require_identity_verification": settings[3],
+        "pre_test_fields": settings[4] or []
     })
 
 @app.route('/api/upload-photos', methods=['POST'])
@@ -393,17 +416,22 @@ def upload_photos():
     location = data.get('location', '').strip()
     selfie_b64 = data.get('selfie_b64')
     id_card_b64 = data.get('id_card_b64')
+    pre_test_responses = data.get('pre_test_responses') or {}
     
-    if not email or not full_name or not phone_number or not role or not location or not selfie_b64 or not id_card_b64:
+    if not email or not full_name:
         return jsonify({"error": "Missing registration details or images"}), 400
         
     with DBConnection() as conn:
         with conn.cursor() as cur:
             # Run same checks as check-email
-            cur.execute("SELECT exam_open FROM exam_settings WHERE id = 1;")
+            cur.execute("SELECT exam_open, require_identity_verification FROM exam_settings WHERE id = 1;")
             settings = cur.fetchone()
             if not settings or not settings[0]:
                 return jsonify({"error": "The exam portal is currently closed. Please contact HR."}), 400
+            require_identity = bool(settings[1])
+
+            if require_identity and (not selfie_b64 or not id_card_b64):
+                return jsonify({"error": "Missing verification images"}), 400
                 
             cur.execute("SELECT 1 FROM whitelist WHERE LOWER(email) = LOWER(%s);", (email,))
             if not cur.fetchone():
@@ -417,29 +445,34 @@ def upload_photos():
             if cur.fetchone():
                 return jsonify({"error": "A submission for this email has already been recorded."}), 400
                 
-            # Perform Cloudinary Uploads
+            selfie_url = None
+            id_card_url = None
+            folder_name = None
+
+            # Perform Cloudinary uploads only when identity verification is enabled.
             now_str = datetime.datetime.now().strftime("%Y%m%d-%H%M")
             folder_name = f"exams/{email}-{now_str}"
             
-            try:
-                selfie_upload = cloudinary.uploader.upload(
-                    selfie_b64,
-                    folder=folder_name,
-                    public_id="selfie",
-                    type="authenticated"
-                )
-                selfie_url = selfie_upload.get('secure_url')
-                
-                id_card_upload = cloudinary.uploader.upload(
-                    id_card_b64,
-                    folder=folder_name,
-                    public_id="id_card",
-                    type="authenticated"
-                )
-                id_card_url = id_card_upload.get('secure_url')
-            except Exception as e:
-                print(f"Cloudinary upload error: {e}")
-                return jsonify({"error": "Failed to upload verification documents. Please try again."}), 500
+            if require_identity:
+                try:
+                    selfie_upload = cloudinary.uploader.upload(
+                        selfie_b64,
+                        folder=folder_name,
+                        public_id="selfie",
+                        type="authenticated"
+                    )
+                    selfie_url = selfie_upload.get('secure_url')
+
+                    id_card_upload = cloudinary.uploader.upload(
+                        id_card_b64,
+                        folder=folder_name,
+                        public_id="id_card",
+                        type="authenticated"
+                    )
+                    id_card_url = id_card_upload.get('secure_url')
+                except Exception as e:
+                    print(f"Cloudinary upload error: {e}")
+                    return jsonify({"error": "Failed to upload verification documents. Please try again."}), 500
                 
             # Upsert Candidate record
             cur.execute("SELECT id FROM candidates WHERE LOWER(email) = LOWER(%s);", (email,))
@@ -448,15 +481,26 @@ def upload_photos():
                 candidate_id = cand_row[0]
                 cur.execute("""
                     UPDATE candidates
-                    SET full_name = %s, phone_number = %s, role = %s, location = %s, selfie_url = %s, id_card_url = %s, cloudinary_folder = %s
+                    SET full_name = %s,
+                        phone_number = %s,
+                        role = %s,
+                        location = %s,
+                        selfie_url = COALESCE(%s, selfie_url),
+                        id_card_url = COALESCE(%s, id_card_url),
+                        cloudinary_folder = COALESCE(%s, cloudinary_folder),
+                        pre_test_responses = %s
                     WHERE id = %s;
-                """, (full_name, phone_number, role, location, selfie_url, id_card_url, folder_name, candidate_id))
+                """, (full_name, phone_number, role, location, selfie_url, id_card_url,
+                      folder_name, json.dumps(pre_test_responses), candidate_id))
             else:
                 cur.execute("""
-                    INSERT INTO candidates (full_name, email, phone_number, role, location, selfie_url, id_card_url, cloudinary_folder)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO candidates
+                        (full_name, email, phone_number, role, location,
+                         selfie_url, id_card_url, cloudinary_folder, pre_test_responses)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id;
-                """, (full_name, email, phone_number, role, location, selfie_url, id_card_url, folder_name))
+                """, (full_name, email, phone_number, role, location, selfie_url, id_card_url,
+                      folder_name, json.dumps(pre_test_responses)))
                 candidate_id = cur.fetchone()[0]
                 
         conn.commit()
@@ -748,7 +792,11 @@ def admin_settings():
     if request.method == 'GET':
         with DBConnection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT exam_open, seconds_per_question, pass_mark_percent, updated_at FROM exam_settings WHERE id = 1;")
+                cur.execute("""
+                    SELECT exam_open, seconds_per_question, pass_mark_percent, updated_at,
+                           require_identity_verification, pre_test_fields
+                    FROM exam_settings WHERE id = 1;
+                """)
                 row = cur.fetchone()
         if not row:
             return jsonify({"error": "Settings not initialized"}), 500
@@ -756,7 +804,9 @@ def admin_settings():
             "exam_open": row[0],
             "seconds_per_question": row[1],
             "pass_mark_percent": float(row[2]),
-            "updated_at": row[3].isoformat()
+            "updated_at": row[3].isoformat(),
+            "require_identity_verification": row[4],
+            "pre_test_fields": row[5] or []
         })
         
     # Update settings
@@ -764,14 +814,21 @@ def admin_settings():
     exam_open = data.get('exam_open', False)
     seconds_per_q = int(data.get('seconds_per_question', 60))
     pass_mark = float(data.get('pass_mark_percent', 50))
+    require_identity = bool(data.get('require_identity_verification', True))
+    pre_test_fields = data.get('pre_test_fields', [])
     
     with DBConnection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 UPDATE exam_settings
-                SET exam_open = %s, seconds_per_question = %s, pass_mark_percent = %s, updated_at = NOW()
+                SET exam_open = %s,
+                    seconds_per_question = %s,
+                    pass_mark_percent = %s,
+                    require_identity_verification = %s,
+                    pre_test_fields = %s,
+                    updated_at = NOW()
                 WHERE id = 1;
-            """, (exam_open, seconds_per_q, pass_mark))
+            """, (exam_open, seconds_per_q, pass_mark, require_identity, json.dumps(pre_test_fields)))
         conn.commit()
         
     return jsonify({"status": "success", "message": "Settings updated successfully."})

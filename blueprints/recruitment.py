@@ -6,6 +6,7 @@ import json
 import random
 import datetime
 import threading
+from zoneinfo import ZoneInfo
 from functools import wraps
 
 from flask import (Blueprint, request, jsonify, render_template,
@@ -19,6 +20,7 @@ from services.screening import apply_screening
 from services.meetings import create_meeting
 
 recruitment = Blueprint("recruitment", __name__)
+LOCAL_TZ = ZoneInfo("Africa/Lagos")
 
 # ── Stage → route mapping ─────────────────────────────────────────────────────
 
@@ -50,6 +52,44 @@ REQUIRED_DOCUMENTS = [
     "birth_certificate",
     "passport",
 ]
+
+
+def get_role_document_requirements(role: str | None) -> list[dict]:
+    """Return the configured five employment-document requirements for a role."""
+    role = (role or "").strip() or "General"
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT document_type, label, accepted_formats, required, position
+                FROM role_document_requirements
+                WHERE role = %s
+                ORDER BY position ASC;
+            """, (role,))
+            rows = cur.fetchall()
+            if not rows and role != "General":
+                cur.execute("""
+                    SELECT document_type, label, accepted_formats, required, position
+                    FROM role_document_requirements
+                    WHERE role = 'General'
+                    ORDER BY position ASC;
+                """)
+                rows = cur.fetchall()
+
+    if not rows:
+        return [
+            {"document_type": d, "label": d.replace("_", " ").title(),
+             "accepted_formats": ["PDF", "DOC", "DOCX", "JPG", "PNG"],
+             "required": True, "position": idx}
+            for idx, d in enumerate(REQUIRED_DOCUMENTS, 1)
+        ]
+
+    return [{
+        "document_type": r[0],
+        "label": r[1],
+        "accepted_formats": list(r[2] or ["PDF", "DOC", "DOCX", "JPG", "PNG"]),
+        "required": r[3],
+        "position": r[4],
+    } for r in rows]
 
 
 def _stage_redirect(stage: str):
@@ -140,7 +180,7 @@ def dashboard():
             cur.execute("""
                 SELECT full_name, email, phone_number, dob, nysc_status,
                        cv_url, eligibility_flag, eligibility_flag_reason,
-                       stage_updated_at, created_at
+                       stage_updated_at, created_at, role
                 FROM candidates WHERE id = %s;
             """, (candidate_id,))
             cand = cur.fetchone()
@@ -184,6 +224,15 @@ def dashboard():
             """)
             stage_configs = cur.fetchall()
 
+            cur.execute("""
+                SELECT from_stage, to_stage, changed_at, changed_by, reason
+                FROM candidate_stage_history
+                WHERE candidate_id = %s
+                ORDER BY changed_at DESC
+                LIMIT 20;
+            """, (candidate_id,))
+            stage_history = cur.fetchall()
+
     return render_template(
         "candidate_dashboard.html",
         candidate=cand,
@@ -192,7 +241,8 @@ def dashboard():
         latest_score=latest_score,
         docs=docs,
         stage_configs=stage_configs,
-        required_docs=REQUIRED_DOCUMENTS,
+        stage_history=stage_history,
+        required_docs=get_role_document_requirements(cand[10] if cand else None),
         now=datetime.datetime.utcnow(),
     )
 
@@ -216,16 +266,19 @@ def documents():
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT role FROM candidates WHERE id = %s;", (candidate_id,))
+            cand_role = (cur.fetchone() or [None])[0]
             cur.execute("""
-                SELECT doc_type, url, verified, upload_status, uploaded_at
+                SELECT doc_type, url, verified, upload_status, uploaded_at, rejection_note
                 FROM candidate_documents WHERE candidate_id = %s;
             """, (candidate_id,))
             uploaded = cur.fetchall()
 
+    required_docs = get_role_document_requirements(cand_role)
     submitted = {row[0]: row for row in uploaded}
     return render_template(
         "upload_documents.html",
-        required_docs=REQUIRED_DOCUMENTS,
+        required_docs=required_docs,
         submitted=submitted,
     )
 
@@ -440,7 +493,13 @@ def assessment_start():
                 # Resume: return questions in original order
                 cur.execute("SELECT question_order FROM scores WHERE id = %s;", (score_id,))
                 q_order_row = cur.fetchone()
-                question_ids = json.loads(q_order_row[0]) if q_order_row and q_order_row[0] else None
+                question_ids = None
+                if q_order_row and q_order_row[0]:
+                    question_ids = (
+                        q_order_row[0]
+                        if isinstance(q_order_row[0], list)
+                        else json.loads(q_order_row[0])
+                    )
 
                 questions = _fetch_ordered_questions(cur, question_ids)
                 remaining_secs = int(allowed_secs - elapsed)
@@ -841,7 +900,7 @@ def book_slot(slot_id):
 
         conn.commit()
 
-    interview_time = slot_row[1].strftime("%A %d %B %Y at %H:%M WAT")
+    interview_time = slot_row[1].astimezone(LOCAL_TZ).strftime("%A %d %B %Y at %H:%M WAT")
     threading.Thread(
         target=send_notification,
         args=(candidate_id, "interview_scheduled", "interview_booked",
@@ -868,17 +927,17 @@ def upload_document():
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT stage FROM candidates WHERE id = %s;", (candidate_id,))
+            cur.execute("SELECT stage, role FROM candidates WHERE id = %s;", (candidate_id,))
             row = cur.fetchone()
 
-    if not row or row[0] not in ("documents_pending", "documents_submitted",
-                                  "interview_slot_pending", "interview_scheduled"):
+    if not row or row[0] not in ("documents_pending", "documents_submitted"):
         return jsonify({"error": "Document uploads are not open at your current stage."}), 403
+    allowed_docs = [d["document_type"] for d in get_role_document_requirements(row[1])]
 
     doc_type  = request.form.get("doc_type", "").strip()
     doc_file  = request.files.get("file")
 
-    if not doc_type or doc_type not in REQUIRED_DOCUMENTS + ["other"]:
+    if not doc_type or doc_type not in allowed_docs:
         return jsonify({"error": f"Invalid document type '{doc_type}'."}), 400
 
     if not doc_file:
@@ -896,31 +955,12 @@ def upload_document():
             cur.execute("""
                 INSERT INTO candidate_documents (candidate_id, doc_type, upload_status)
                 VALUES (%s, %s, 'pending')
-                ON CONFLICT DO NOTHING;
+                ON CONFLICT (candidate_id, doc_type) DO UPDATE
+                SET upload_status = 'pending',
+                    verified = FALSE,
+                    rejection_note = NULL,
+                    rejected_at = NULL;
             """, (candidate_id, doc_type))
-            # Ensure we have a row to update
-            cur.execute("""
-                SELECT id FROM candidate_documents
-                WHERE candidate_id = %s AND doc_type = %s LIMIT 1;
-            """, (candidate_id, doc_type))
-            if not cur.fetchone():
-                cur.execute("""
-                    INSERT INTO candidate_documents (candidate_id, doc_type, upload_status)
-                    VALUES (%s, %s, 'pending');
-                """, (candidate_id, doc_type))
-
-            # Advance to documents_pending if not already in a later stage
-            cur.execute("""
-                UPDATE candidates
-                SET stage = CASE
-                    WHEN stage IN ('assessment_passed', 'interview_slot_pending',
-                                   'interview_scheduled')
-                    THEN 'documents_pending'
-                    ELSE stage
-                END,
-                stage_updated_at = NOW()
-                WHERE id = %s;
-            """, (candidate_id,))
         conn.commit()
 
     folder = f"candidates/documents/{candidate_id}"
@@ -952,6 +992,18 @@ def submit_documents():
             row = cur.fetchone()
             if not row or row[0] != "documents_pending":
                 return jsonify({"error": "Cannot submit documents at this stage."}), 403
+
+            cur.execute("SELECT role FROM candidates WHERE id = %s;", (candidate_id,))
+            role = (cur.fetchone() or [None])[0]
+            required = [d["document_type"] for d in get_role_document_requirements(role) if d["required"]]
+            cur.execute("""
+                SELECT doc_type FROM candidate_documents
+                WHERE candidate_id = %s AND upload_status = 'done' AND url IS NOT NULL;
+            """, (candidate_id,))
+            uploaded = {r[0] for r in cur.fetchall()}
+            missing = [d for d in required if d not in uploaded]
+            if missing:
+                return jsonify({"error": "Upload all required employment documents before submitting."}), 400
 
             cur.execute("""
                 UPDATE candidates

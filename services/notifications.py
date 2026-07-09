@@ -8,10 +8,13 @@ import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from dotenv import load_dotenv
 from db import DBConnection
 
-GMAIL_USER     = os.environ.get("GMAIL_USER", "muritalaopeoluwa10@gmail.com")
-GMAIL_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
+load_dotenv()
+
+GMAIL_USER     = os.environ.get("GMAIL_USER", "").strip()
+GMAIL_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "").strip()
 FROM_EMAIL     = f"Mainstreet MFB HR <{GMAIL_USER}>"
 APP_BASE_URL   = os.environ.get("APP_BASE_URL", "https://quizz-xi-two.vercel.app")
 
@@ -160,7 +163,7 @@ def _build_email(name: str, event_type: str, data: dict) -> tuple[str, str]:
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def send_notification(candidate_id: int, stage: str, event_type: str,
-                      extra_data: dict = None) -> bool:
+                      extra_data: dict = None) -> tuple[bool, int | None]:
     """Send an email for a stage transition and log the attempt."""
     extra_data = extra_data or {}
 
@@ -170,7 +173,7 @@ def send_notification(candidate_id: int, stage: str, event_type: str,
             row = cur.fetchone()
 
     if not row:
-        return False
+        return False, None
 
     name, email = row
     subject, html = _build_email(name, event_type, extra_data)
@@ -178,7 +181,7 @@ def send_notification(candidate_id: int, stage: str, event_type: str,
     status = "sent"
     error_message = None
 
-    if GMAIL_PASSWORD:
+    if GMAIL_USER and GMAIL_PASSWORD:
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
@@ -193,6 +196,8 @@ def send_notification(candidate_id: int, stage: str, event_type: str,
             status = "failed"
             error_message = str(exc)[:500]
     else:
+        status = "skipped"
+        error_message = "GMAIL_USER or GMAIL_APP_PASSWORD is not configured."
         print(f"[EMAIL] {event_type} → {email} | {subject}")
 
     with DBConnection() as conn:
@@ -209,7 +214,7 @@ def send_notification(candidate_id: int, stage: str, event_type: str,
     return status == "sent", log_id
 
 
-def resend_notification(log_id: int) -> bool:
+def resend_notification(log_id: int) -> tuple[bool, int | None]:
     """Resend a previously failed notification."""
     with DBConnection() as conn:
         with conn.cursor() as cur:
@@ -220,7 +225,7 @@ def resend_notification(log_id: int) -> bool:
             row = cur.fetchone()
 
     if not row:
-        return False
+        return False, None
 
     candidate_id, stage, event_type = row
     return send_notification(candidate_id, stage, event_type)

@@ -4,8 +4,11 @@ All routes require admin authentication via require_admin() from app.py.
 """
 import threading
 import datetime
+import time
+import requests
+import cloudinary.utils
 
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, jsonify, session, Response
 
 from db import DBConnection
 from services.notifications import send_notification, resend_notification
@@ -135,7 +138,8 @@ def get_candidate(cand_id):
             scores = cur.fetchall()
 
             cur.execute("""
-                SELECT id, doc_type, url, verified, upload_status, uploaded_at
+                SELECT id, doc_type, verified, upload_status, uploaded_at, public_id,
+                       rejection_note
                 FROM candidate_documents WHERE candidate_id = %s;
             """, (cand_id,))
             docs = cur.fetchall()
@@ -175,9 +179,12 @@ def get_candidate(cand_id):
             "duration_s": s[7], "tab_switches": s[8],
         } for s in scores],
         "documents": [{
-            "id": d[0], "doc_type": d[1], "url": d[2],
-            "verified": d[3], "status": d[4],
-            "uploaded_at": d[5].isoformat() if d[5] else None,
+            "id": d[0], "doc_type": d[1],
+            "url": f"/api/admin/recruitment/documents/file/{d[0]}" if d[5] else None,
+            "verified": d[2],
+            "status": "rejected" if d[6] else d[3],
+            "uploaded_at": d[4].isoformat() if d[4] else None,
+            "rejection_note": d[6],
         } for d in docs],
         "interview_slots": [{
             "id": sl[0],
@@ -682,8 +689,8 @@ def resend_email(log_id):
     err = _require_admin()
     if err: return err
 
-    ok = resend_notification(log_id)
-    return jsonify({"status": "success" if ok else "failed"})
+    ok, new_log_id = resend_notification(log_id)
+    return jsonify({"status": "success" if ok else "failed", "log_id": new_log_id})
 
 
 # ── Documents admin view ──────────────────────────────────────────────────────
@@ -695,18 +702,109 @@ def candidate_documents(cand_id):
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT role FROM candidates WHERE id = %s;", (cand_id,))
+            cand = cur.fetchone()
+            role = cand[0] if cand else None
+
             cur.execute("""
-                SELECT id, doc_type, url, verified, upload_status, uploaded_at, public_id
+                SELECT document_type, label, accepted_formats, required, position
+                FROM role_document_requirements
+                WHERE role = %s
+                ORDER BY position, id;
+            """, (role,))
+            requirements = cur.fetchall()
+            if not requirements and role != "General":
+                cur.execute("""
+                    SELECT document_type, label, accepted_formats, required, position
+                    FROM role_document_requirements
+                    WHERE role = 'General'
+                    ORDER BY position, id;
+                """)
+                requirements = cur.fetchall()
+
+            cur.execute("""
+                SELECT id, doc_type, verified, upload_status, uploaded_at, public_id,
+                       rejection_note, rejected_at
                 FROM candidate_documents WHERE candidate_id = %s;
             """, (cand_id,))
             rows = cur.fetchall()
 
-    return jsonify([{
-        "id": r[0], "doc_type": r[1], "url": r[2],
-        "verified": r[3], "status": r[4],
-        "uploaded_at": r[5].isoformat() if r[5] else None,
-        "public_id": r[6],
-    } for r in rows])
+    by_type = {r[1]: r for r in rows}
+    doc_types = [r[0] for r in requirements] or list(by_type.keys())
+    payload = []
+    for doc_type in doc_types:
+        req = next((r for r in requirements if r[0] == doc_type), None)
+        row = by_type.get(doc_type)
+        if row:
+            payload.append({
+                "id": row[0],
+                "doc_type": row[1],
+                "label": req[1] if req else row[1].replace("_", " ").title(),
+                "accepted_formats": req[2] if req else [],
+                "required": req[3] if req else True,
+                "verified": row[2],
+                "status": "rejected" if row[6] else row[3],
+                "uploaded_at": row[4].isoformat() if row[4] else None,
+                "public_id": row[5],
+                "rejection_note": row[6],
+                "rejected_at": row[7].isoformat() if row[7] else None,
+                "view_url": f"/api/admin/recruitment/documents/file/{row[0]}" if row[5] else None,
+            })
+        else:
+            payload.append({
+                "id": None,
+                "doc_type": doc_type,
+                "label": req[1] if req else doc_type.replace("_", " ").title(),
+                "accepted_formats": req[2] if req else [],
+                "required": req[3] if req else True,
+                "verified": False,
+                "status": "not_uploaded",
+                "uploaded_at": None,
+                "public_id": None,
+                "rejection_note": None,
+                "rejected_at": None,
+                "view_url": None,
+            })
+    return jsonify(payload)
+
+
+@admin_rec.route("/api/admin/recruitment/documents/file/<int:doc_id>")
+def proxy_candidate_document(doc_id):
+    err = _require_admin()
+    if err: return err
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT public_id, url FROM candidate_documents
+                WHERE id = %s AND public_id IS NOT NULL;
+            """, (doc_id,))
+            row = cur.fetchone()
+
+    if not row:
+        return "Document not found", 404
+
+    public_id, stored_url = row
+    resource_type = "raw" if stored_url and "/raw/upload/" in stored_url else "image"
+    try:
+        signed_url, _ = cloudinary.utils.cloudinary_url(
+            public_id,
+            resource_type=resource_type,
+            type="authenticated",
+            sign_url=True,
+            expires_at=int(time.time()) + 300,
+        )
+        resp = requests.get(signed_url, timeout=20)
+        if resp.status_code != 200:
+            return "Failed to fetch file", resp.status_code
+        return Response(
+            resp.content,
+            mimetype=resp.headers.get("Content-Type", "application/octet-stream"),
+            headers={"Content-Disposition": "inline"},
+        )
+    except Exception as exc:
+        print(f"[document-proxy] Error: {exc}")
+        return "Failed to load file", 502
 
 
 @admin_rec.route("/api/admin/recruitment/documents/<int:doc_id>/verify", methods=["POST"])
@@ -715,16 +813,88 @@ def verify_document(doc_id):
     if err: return err
 
     data = request.json or {}
-    verified = bool(data.get("verified", True))
+    action = data.get("action", "approve")
+    verified = bool(data.get("verified", action == "approve"))
+    rejection_note = (data.get("rejection_note") or "").strip()
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE candidate_documents SET verified = %s WHERE id = %s;
-            """, (verified, doc_id))
+            if action == "reject" or not verified:
+                cur.execute("""
+                    UPDATE candidate_documents
+                    SET verified = FALSE,
+                        rejection_note = %s,
+                        rejected_at = NOW()
+                    WHERE id = %s;
+                """, (rejection_note or "Document rejected. Please replace and resubmit.", doc_id))
+            else:
+                cur.execute("""
+                    UPDATE candidate_documents
+                    SET verified = TRUE,
+                        rejection_note = NULL,
+                        rejected_at = NULL
+                    WHERE id = %s;
+                """, (doc_id,))
         conn.commit()
 
     return jsonify({"status": "success", "verified": verified})
+
+
+@admin_rec.route("/api/admin/recruitment/role-document-requirements", methods=["GET", "POST", "PUT"])
+def role_document_requirements():
+    err = _require_admin()
+    if err: return err
+
+    if request.method == "GET":
+        role = request.args.get("role", "").strip()
+        with DBConnection() as conn:
+            with conn.cursor() as cur:
+                if not role:
+                    cur.execute("SELECT DISTINCT role FROM role_document_requirements ORDER BY role;")
+                    roles = [r[0] for r in cur.fetchall()]
+                    return jsonify({"roles": roles})
+                cur.execute("""
+                    SELECT id, role, document_type, label, accepted_formats, required, position
+                    FROM role_document_requirements
+                    WHERE role = %s
+                    ORDER BY position ASC;
+                """, (role,))
+                rows = cur.fetchall()
+        return jsonify({"role": role, "documents": [{
+            "id": r[0],
+            "role": r[1],
+            "document_type": r[2],
+            "label": r[3],
+            "accepted_formats": list(r[4] or []),
+            "required": r[5],
+            "position": r[6],
+        } for r in rows]})
+
+    data = request.json or {}
+    role = (data.get("role") or "").strip()
+    docs = data.get("documents") or []
+    if not role:
+        return jsonify({"error": "role is required"}), 400
+    if len(docs) != 5:
+        return jsonify({"error": "Exactly 5 documents are required per role."}), 400
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM role_document_requirements WHERE role = %s;", (role,))
+            for idx, doc in enumerate(docs, 1):
+                label = (doc.get("label") or "").strip()
+                document_type = (doc.get("document_type") or label.lower().replace(" ", "_")).strip()
+                formats = doc.get("accepted_formats") or ["PDF", "DOC", "DOCX", "JPG", "PNG"]
+                if not label or not document_type:
+                    return jsonify({"error": "Each document needs a label."}), 400
+                cur.execute("""
+                    INSERT INTO role_document_requirements
+                        (role, document_type, label, accepted_formats, required, position)
+                    VALUES (%s, %s, %s, %s, TRUE, %s);
+                """, (role, document_type, label, formats, idx))
+        conn.commit()
+
+    return jsonify({"status": "success", "role": role})
 
 
 # ── Admin recruitment dashboard page ─────────────────────────────────────────

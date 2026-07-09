@@ -3,7 +3,11 @@ Generates interview slots from availability_rules for a rolling window.
 Called by the scheduler and by admin_recruitment.trigger_slot_generation.
 """
 import datetime
+from zoneinfo import ZoneInfo
 from db import DBConnection
+
+LOCAL_TZ = ZoneInfo("Africa/Lagos")
+UTC = datetime.timezone.utc
 
 
 def generate_slots(weeks_ahead: int = 4) -> int:
@@ -11,7 +15,7 @@ def generate_slots(weeks_ahead: int = 4) -> int:
     Expand all active availability_rules into generated_slots rows
     for the next `weeks_ahead` weeks. Returns the number of new slots created.
     """
-    today    = datetime.date.today()
+    today    = datetime.datetime.now(LOCAL_TZ).date()
     end_date = today + datetime.timedelta(weeks=weeks_ahead)
     created  = 0
 
@@ -50,14 +54,14 @@ def generate_slots(weeks_ahead: int = 4) -> int:
                             continue
 
                     # Generate slots within start_time → end_time
-                    slot_start = datetime.datetime.combine(current, start_t,
-                                 tzinfo=datetime.timezone.utc)
-                    day_end    = datetime.datetime.combine(current, end_t,
-                                 tzinfo=datetime.timezone.utc)
+                    slot_start = datetime.datetime.combine(current, start_t, tzinfo=LOCAL_TZ)
+                    day_end = datetime.datetime.combine(current, end_t, tzinfo=LOCAL_TZ)
                     step = datetime.timedelta(minutes=slot_dur + buffer_min)
 
                     while slot_start + datetime.timedelta(minutes=slot_dur) <= day_end:
                         slot_end = slot_start + datetime.timedelta(minutes=slot_dur)
+                        slot_start_utc = slot_start.astimezone(UTC)
+                        slot_end_utc = slot_end.astimezone(UTC)
 
                         try:
                             cur.execute("""
@@ -66,7 +70,7 @@ def generate_slots(weeks_ahead: int = 4) -> int:
                                      start_time, end_time)
                                 VALUES (%s, %s, %s, %s)
                                 ON CONFLICT (availability_rule_id, start_time) DO NOTHING;
-                            """, (rule_id, interviewer_id, slot_start, slot_end))
+                            """, (rule_id, interviewer_id, slot_start_utc, slot_end_utc))
                             if cur.rowcount:
                                 created += 1
                         except Exception as exc:

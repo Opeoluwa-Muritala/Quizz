@@ -38,6 +38,7 @@
       loadRecInterviewerSelect('panelistAddSel');
     }
     if (name === 'config')   loadRecStageConfig();
+    if (name === 'employmentdocs') loadEmploymentDocRoles();
     if (name === 'emaillog') loadRecEmailLog(1);
   };
 
@@ -589,6 +590,125 @@
   };
 
   // ── Email Log ─────────────────────────────────────────────────────────
+  const EMP_DOC_FORMATS = ['PDF', 'DOC', 'DOCX', 'JPG', 'PNG'];
+  const EMP_DOC_DEFAULTS = [
+    ['nysc_certificate', 'NYSC certificate', ['PDF', 'JPG', 'PNG']],
+    ['guarantor_form', 'Guarantor form', ['PDF', 'DOC', 'DOCX']],
+    ['utility_bill', 'Utility bill', ['PDF', 'JPG', 'PNG']],
+    ['bank_statement', 'Bank statement', ['PDF']],
+    ['passport_photograph', 'Passport photograph', ['JPG', 'PNG']],
+  ];
+  let employmentDocRoles = [];
+
+  window.loadEmploymentDocRoles = async function () {
+    const select = document.getElementById('empDocRole');
+    if (!select) return;
+    const data = await recApiGet('/api/admin/recruitment/role-document-requirements');
+    if (!data) {
+      select.innerHTML = '<option value="">Could not load roles</option>';
+      return;
+    }
+    employmentDocRoles = data.roles || ['General'];
+    select.innerHTML = employmentDocRoles.map(role => `<option value="${esc(role)}">${esc(role)}</option>`).join('');
+    await loadEmploymentDocsForRole(select.value || employmentDocRoles[0]);
+  };
+
+  window.loadEmploymentDocsForRole = async function (role) {
+    const rows = document.getElementById('empDocRows');
+    const status = document.getElementById('empDocStatus');
+    if (!rows || !role) return;
+    rows.innerHTML = '<p style="color:#888">Loading...</p>';
+    if (status) status.textContent = '';
+    const data = await recApiGet(`/api/admin/recruitment/role-document-requirements?role=${encodeURIComponent(role)}`);
+    renderEmploymentDocRows((data?.documents?.length ? data.documents : defaultEmploymentDocs()).slice(0, 5));
+  };
+
+  window.addEmploymentDocRole = function () {
+    const input = document.getElementById('empDocNewRole');
+    const select = document.getElementById('empDocRole');
+    const role = (input?.value || '').trim();
+    if (!role || !select) return;
+    if (!employmentDocRoles.includes(role)) {
+      employmentDocRoles.push(role);
+      const opt = document.createElement('option');
+      opt.value = role;
+      opt.textContent = role;
+      select.appendChild(opt);
+    }
+    select.value = role;
+    input.value = '';
+    renderEmploymentDocRows(defaultEmploymentDocs());
+    const status = document.getElementById('empDocStatus');
+    if (status) status.textContent = 'New role ready. Save to create it.';
+  };
+
+  window.saveEmploymentDocs = async function () {
+    const role = document.getElementById('empDocRole')?.value;
+    const status = document.getElementById('empDocStatus');
+    if (!role) return;
+    const docs = Array.from(document.querySelectorAll('.emp-doc-row')).map((row, idx) => {
+      const label = row.querySelector('[data-field="label"]')?.value.trim() || '';
+      const documentType = (row.querySelector('[data-field="document_type"]')?.value.trim() || label)
+        .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      const formats = Array.from(row.querySelectorAll('[data-field="format"]:checked')).map(cb => cb.value);
+      return {
+        document_type: documentType || `document_${idx + 1}`,
+        label: label || `Document ${idx + 1}`,
+        accepted_formats: formats.length ? formats : ['PDF'],
+        required: true,
+        position: idx + 1,
+      };
+    });
+    if (docs.length !== 5) {
+      if (status) status.textContent = 'Exactly five document rows are required.';
+      return;
+    }
+    const data = await recApiPost('/api/admin/recruitment/role-document-requirements', { role, documents: docs }, 'PUT');
+    if (status) {
+      status.textContent = data?.status === 'success' ? 'Saved.' : (data?.message || 'Save failed.');
+      status.style.color = data?.status === 'success' ? '#1E7A45' : '#B3261E';
+    }
+  };
+
+  function defaultEmploymentDocs() {
+    return EMP_DOC_DEFAULTS.map((d, idx) => ({
+      document_type: d[0],
+      label: d[1],
+      accepted_formats: d[2],
+      required: true,
+      position: idx + 1,
+    }));
+  }
+
+  function renderEmploymentDocRows(docs) {
+    const rows = document.getElementById('empDocRows');
+    if (!rows) return;
+    rows.innerHTML = docs.map((doc, idx) => {
+      const formats = doc.accepted_formats || [];
+      return `<div class="emp-doc-row" style="border:1px solid var(--color-border);border-radius:8px;padding:12px;background:#fff">
+        <div style="display:grid;grid-template-columns:56px 1fr 1fr;gap:12px;align-items:end">
+          <div style="font-weight:700;color:var(--mfb-purple)">#${idx + 1}</div>
+          <div class="form-group" style="margin:0">
+            <label>Label</label>
+            <input class="rec-ctrl" data-field="label" type="text" value="${esc(doc.label || '')}">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Document type</label>
+            <input class="rec-ctrl" data-field="document_type" type="text" value="${esc(doc.document_type || '')}">
+          </div>
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:.85rem;color:#555">
+          ${EMP_DOC_FORMATS.map(fmt => `<label style="display:flex;align-items:center;gap:6px">
+            <input data-field="format" type="checkbox" value="${fmt}" ${formats.includes(fmt) ? 'checked' : ''}> ${fmt}
+          </label>`).join('')}
+          <label style="display:flex;align-items:center;gap:6px;color:#888">
+            <input type="checkbox" checked disabled> Required
+          </label>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
   window.loadRecEmailLog = async function (page) {
     recEmailPage = page;
     const tbody = document.getElementById('recEmailTbody');

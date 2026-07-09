@@ -164,14 +164,14 @@
 }
 
 .stg-num {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.65rem;
   color: #3A3A42;
   min-width: 20px;
 }
 
 .stg-name {
-  font-family: 'Syne', 'IBM Plex Sans', sans-serif;
+  font-family: var(--font-body);
   font-size: 0.9rem;
   font-weight: 800;
   color: #E0E0E6;
@@ -181,7 +181,7 @@
 }
 
 .stg-badge {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.62rem;
   color: #3A3A42;
   letter-spacing: 0.1em;
@@ -190,7 +190,7 @@
 .stg-row.is-live .stg-badge { color: #00FFA3; }
 
 .stg-toggle {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.65rem;
   color: #44444C;
   background: none;
@@ -224,7 +224,7 @@
 }
 
 .stg-section {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.58rem;
   font-weight: 600;
   color: #3A3A46;
@@ -243,7 +243,7 @@
 .stg-field { display: flex; flex-direction: column; gap: 5px; }
 
 .stg-field label {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.6rem;
   color: #484852;
   text-transform: uppercase;
@@ -257,7 +257,7 @@
   border: 1px solid #222226;
   border-radius: 5px;
   padding: 8px 10px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem;
   color: #D0D0D8;
   outline: none;
@@ -287,7 +287,7 @@
   border: none;
   border-radius: 5px;
   padding: 8px 18px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.74rem;
   font-weight: 600;
   cursor: pointer;
@@ -298,7 +298,7 @@
 .stg-save-btn:hover { opacity: 0.82; }
 
 .stg-save-msg {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.68rem;
   letter-spacing: 0.06em;
   display: none;
@@ -329,3 +329,60 @@
 }
 
 @media (max-width: 640px) { .rec-row { grid-template-columns: 1fr; } }
+.rec-sub-nav {
+  border-bottom-color: var(--mfb-gray-300);
+}
+
+.rec-subtab {
+  color: var(--mfb-gray-600);
+  border-radius: 8px 8px 0 0;
+}
+
+.rec-subtab:hover {
+  color: var(--mfb-purple);
+  background: var(--mfb-purple-tint);
+}
+
+.rec-subtab.active {
+  color: var(--mfb-purple);
+  border-bottom-color: var(--mfb-purple);
+}
+
+.rec-pill-pass {
+  background: var(--mfb-success-tint);
+  color: var(--mfb-success);
+}
+
+.rec-pill-fail {
+  background: var(--mfb-error-tint);
+  color: var(--mfb-error);
+}
+
+.rec-pill-pending,
+.rec-pill-active {
+  background: var(--mfb-warning-tint);
+  color: var(--mfb-warning);
+}
+
+.rec-ctrl,
+.rec-search input,
+.rec-search select {
+  border-color: var(--mfb-gray-300);
+  color: var(--mfb-ink);
+  border-radius: 8px;
+}
+
+.rec-ctrl:focus,
+.rec-search input:focus,
+.rec-search select:focus {
+  border-color: var(--mfb-purple);
+  box-shadow: 0 0 0 3px var(--mfb-purple-tint);
+}
+
+.cv-preview-wrap {
+  border-color: var(--mfb-gray-300);
+}
+
+.cv-nav-bar {
+  background: var(--mfb-purple-deepest);
+}

@@ -49,8 +49,26 @@ def init_recruitment_db():
                     public_id     TEXT,
                     uploaded_at   TIMESTAMPTZ DEFAULT NOW(),
                     verified      BOOLEAN DEFAULT FALSE,
-                    upload_status TEXT DEFAULT 'pending'
+                    upload_status TEXT DEFAULT 'pending',
+                    rejection_note TEXT,
+                    rejected_at   TIMESTAMPTZ
                 );
+            """)
+            cur.execute("""
+                ALTER TABLE candidate_documents
+                    ADD COLUMN IF NOT EXISTS rejection_note TEXT,
+                    ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
+            """)
+            cur.execute("""
+                DELETE FROM candidate_documents a
+                USING candidate_documents b
+                WHERE a.candidate_id = b.candidate_id
+                  AND a.doc_type = b.doc_type
+                  AND a.id < b.id;
+            """)
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_candidate_documents_candidate_doc_type
+                ON candidate_documents (candidate_id, doc_type);
             """)
 
             # ── interviewers ────────────────────────────────────────────
@@ -180,6 +198,22 @@ def init_recruitment_db():
                 );
             """)
 
+            # ── role_document_requirements – 5 configurable employment docs per role ──
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS role_document_requirements (
+                    id               SERIAL PRIMARY KEY,
+                    role             TEXT NOT NULL,
+                    document_type    TEXT NOT NULL,
+                    label            TEXT NOT NULL,
+                    accepted_formats TEXT[] NOT NULL DEFAULT ARRAY['PDF','DOC','DOCX','JPG','PNG'],
+                    required         BOOLEAN NOT NULL DEFAULT TRUE,
+                    position         INTEGER NOT NULL,
+                    created_at       TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at       TIMESTAMPTZ DEFAULT NOW(),
+                    UNIQUE (role, document_type)
+                );
+            """)
+
             # ── slot_interviewers – panel members for each slot ─────────
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS slot_interviewers (
@@ -224,5 +258,27 @@ def init_recruitment_db():
                         VALUES (1, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (cycle_id, stage_name) DO NOTHING;
                     """, row)
+
+            cur.execute("SELECT COUNT(*) FROM role_document_requirements;")
+            if cur.fetchone()[0] == 0:
+                default_roles = [
+                    "Loan Officer", "Operations", "IT&S", "Audit", "Credit Risk",
+                    "HR", "Recovery", "General"
+                ]
+                default_docs = [
+                    ("nysc_certificate", "NYSC certificate", 1),
+                    ("guarantor_form", "Guarantor form", 2),
+                    ("utility_bill", "Utility bill", 3),
+                    ("bank_statement", "Bank statement", 4),
+                    ("passport_photograph", "Passport photograph", 5),
+                ]
+                for role in default_roles:
+                    for doc_type, label, position in default_docs:
+                        cur.execute("""
+                            INSERT INTO role_document_requirements
+                                (role, document_type, label, accepted_formats, required, position)
+                            VALUES (%s, %s, %s, ARRAY['PDF','DOC','DOCX','JPG','PNG'], TRUE, %s)
+                            ON CONFLICT (role, document_type) DO NOTHING;
+                        """, (role, doc_type, label, position))
 
         conn.commit()
