@@ -54,6 +54,8 @@ function initCandidatePortal() {
     let candidatePhone = "";
     let candidateRole = "";
     let candidateLocation = "";
+    let requireIdentityVerification = true;
+    let preTestFields = [];
     let candidateId = null;
     let idCardBase64 = null;
     let selfieBase64 = null;
@@ -102,18 +104,6 @@ function initCandidatePortal() {
         window.location.reload(); // Wipes JS state, returns to Step 1 cleanly
     });
 
-    // Initialize intl-tel-input
-    let iti = null;
-    const phoneInput = document.getElementById("phone-number");
-    if (phoneInput && window.intlTelInput) {
-        iti = window.intlTelInput(phoneInput, {
-            initialCountry: "ng",
-            separateDialCode: true,
-            preferredCountries: ["ng", "gh", "gb", "us"],
-            utilsScript: "https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/utils.js"
-        });
-    }
-
     // ── Step 1: Registration ──
     const regForm = document.getElementById("reg-form");
     regForm.addEventListener("submit", async (e) => {
@@ -123,38 +113,105 @@ function initCandidatePortal() {
         
         const name = document.getElementById("full-name").value.trim();
         const email = document.getElementById("email").value.trim();
-        const phone = document.getElementById("phone-number").value.trim();
-        const role = document.getElementById("role").value.trim();
-        const location = document.getElementById("location").value.trim();
         
-        if (!name || !email || !phone || !role || !location) {
-            errorEl.textContent = "Please fill in all fields.";
+        if (!name || !email) {
+            errorEl.textContent = "Please enter your full name and email.";
             errorEl.classList.remove("hidden");
             return;
         }
 
-        // Validate phone number using intl-tel-input
-        if (iti && !iti.isValidNumber()) {
-            errorEl.textContent = "Please enter a valid phone number for the selected country.";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            errorEl.textContent = "Please enter a valid email address.";
             errorEl.classList.remove("hidden");
             return;
         }
-
-        const fullPhone = iti ? iti.getNumber() : phone;
         
         try {
-            const res = await apiRequest("/api/check-email", "POST", { email, full_name: name, phone_number: fullPhone, role: role, location: location });
+            const res = await apiRequest("/api/check-email", "POST", { email, full_name: name });
             candidateName = name;
             candidateEmail = email;
-            candidatePhone = fullPhone;
-            candidateRole = role;
-            candidateLocation = location;
-            goToStep(2);
+            candidatePhone = "";
+            candidateRole = "";
+            candidateLocation = "";
+            requireIdentityVerification = res.require_identity_verification !== false;
+            preTestFields = res.pre_test_fields || [];
+            if (requireIdentityVerification) {
+                goToStep(2);
+            } else {
+                renderPreTestStep(preTestFields);
+                goToStep(2);
+            }
         } catch (err) {
             errorEl.textContent = err.message;
             errorEl.classList.remove("hidden");
         }
     });
+
+    function renderPreTestStep(fields) {
+        const step = document.getElementById("step-2");
+        const enabled = (fields || []).filter(f => f.enabled !== false);
+        const customFields = enabled.length ? enabled : [
+            { key: "full_name", label: "Full name", required: true },
+            { key: "email", label: "Email", required: true },
+        ];
+        step.innerHTML = `
+            <div class="card upload-card">
+                <h1 class="step-heading">A few details before you start</h1>
+                <p class="step-subtext">Complete these fields before beginning the assessment.</p>
+                <div id="pretest-error" class="alert alert-danger hidden"></div>
+                <form id="pretest-form" novalidate>
+                    ${customFields.map(field => `
+                        <div class="form-group">
+                            <label for="pretest-${field.key}">${field.label}${field.required ? ' *' : ''}</label>
+                            <input type="${field.key === 'dob' ? 'date' : field.key === 'email' ? 'email' : 'text'}"
+                                id="pretest-${field.key}"
+                                data-key="${field.key}"
+                                data-required="${field.required ? 'true' : 'false'}"
+                                value="${field.key === 'full_name' ? candidateName : field.key === 'email' ? candidateEmail : ''}">
+                            <div class="help-text hidden" id="pretest-${field.key}-error">This field is required.</div>
+                        </div>
+                    `).join('')}
+                    <button type="submit" class="btn btn-primary btn-full">Start assessment</button>
+                </form>
+            </div>
+        `;
+        document.getElementById("pretest-form").addEventListener("submit", submitPreTestFields);
+    }
+
+    async function submitPreTestFields(e) {
+        e.preventDefault();
+        const errorEl = document.getElementById("pretest-error");
+        errorEl.classList.add("hidden");
+        const responses = {};
+        let valid = true;
+        document.querySelectorAll("#pretest-form [data-key]").forEach(input => {
+            const key = input.dataset.key;
+            const required = input.dataset.required === "true";
+            const value = input.value.trim();
+            responses[key] = value;
+            const fieldError = document.getElementById(`pretest-${key}-error`);
+            if (required && !value) {
+                valid = false;
+                if (fieldError) fieldError.classList.remove("hidden");
+            } else if (fieldError) {
+                fieldError.classList.add("hidden");
+            }
+        });
+        if (!valid) return;
+
+        try {
+            const result = await apiRequest("/api/upload-photos", "POST", {
+                email: candidateEmail,
+                full_name: candidateName,
+                pre_test_responses: responses,
+            });
+            candidateId = result.candidate_id;
+            goToStep(4);
+        } catch (err) {
+            errorEl.textContent = err.message;
+            errorEl.classList.remove("hidden");
+        }
+    }
 
     // ── Step 2: ID Upload ──
     const idDropzone = document.getElementById("id-dropzone");
@@ -861,6 +918,66 @@ function initAdminOperations() {
     const settingsForm = document.getElementById("settings-form");
     const switchOpen = document.getElementById("setting-exam-open");
     const statusText = document.getElementById("setting-status-text");
+    const requireIdentityToggle = document.getElementById("setting-require-identity");
+    const identityStatusText = document.getElementById("identity-status-text");
+    const pretestPanel = document.getElementById("pretest-fields-panel");
+    const pretestList = document.getElementById("pretestFieldsList");
+    const pretestFieldTypes = [
+        { key: "full_name", label: "Full name", locked: true, required: true },
+        { key: "email", label: "Email", locked: true, required: true },
+        { key: "phone_number", label: "Phone number" },
+        { key: "dob", label: "Date of birth" },
+        { key: "staff_id", label: "Employee/Staff ID" },
+        { key: "department", label: "Department" },
+        { key: "location", label: "Location/Branch" },
+    ];
+
+    function normalizePretestFields(fields) {
+        const map = new Map((fields || []).map(f => [f.key, f]));
+        return pretestFieldTypes.map(base => ({
+            key: base.key,
+            label: map.get(base.key)?.label || base.label,
+            enabled: base.locked || Boolean(map.get(base.key)?.enabled),
+            required: base.locked || Boolean(map.get(base.key)?.required),
+            locked: Boolean(base.locked),
+        })).concat((fields || []).filter(f => f.key?.startsWith("custom_")));
+    }
+
+    function renderPretestFields(fields) {
+        const normalized = normalizePretestFields(fields);
+        pretestList.innerHTML = normalized.map((f, idx) => `
+            <div class="card" style="padding:12px;display:grid;grid-template-columns:24px 1fr auto auto;gap:10px;align-items:center">
+                <span class="font-mono" style="color:var(--mfb-gray-600)">::</span>
+                <input class="form-control pretest-label" data-key="${f.key}" value="${f.label}" ${f.locked ? 'readonly' : ''}>
+                <label style="font-size:13px;color:var(--mfb-gray-600)">
+                    <input type="checkbox" class="pretest-enabled" data-key="${f.key}" ${f.enabled ? 'checked' : ''} ${f.locked ? 'disabled' : ''}> Show
+                </label>
+                <label style="font-size:13px;color:var(--mfb-gray-600)">
+                    <input type="checkbox" class="pretest-required" data-key="${f.key}" ${f.required ? 'checked' : ''} ${f.locked ? 'disabled' : ''}> Required
+                </label>
+            </div>
+        `).join("");
+    }
+
+    function readPretestFields() {
+        return Array.from(pretestList.querySelectorAll(".pretest-label")).map(input => {
+            const key = input.dataset.key;
+            const enabled = pretestList.querySelector(`.pretest-enabled[data-key="${key}"]`);
+            const required = pretestList.querySelector(`.pretest-required[data-key="${key}"]`);
+            return {
+                key,
+                label: input.value.trim(),
+                enabled: enabled ? enabled.checked || enabled.disabled : true,
+                required: required ? required.checked || required.disabled : true,
+            };
+        }).filter(f => f.enabled);
+    }
+
+    function syncIdentityPanel() {
+        if (!requireIdentityToggle) return;
+        identityStatusText.textContent = requireIdentityToggle.checked ? "Verification on" : "Verification off";
+        pretestPanel.style.display = requireIdentityToggle.checked ? "none" : "block";
+    }
 
     async function loadSettingsTab() {
         try {
@@ -869,6 +986,11 @@ function initAdminOperations() {
             statusText.textContent = s.exam_open ? "Exam open" : "Exam closed";
             document.getElementById("setting-seconds-per-q").value = s.seconds_per_question;
             document.getElementById("setting-pass-mark").value = s.pass_mark_percent;
+            if (requireIdentityToggle) {
+                requireIdentityToggle.checked = s.require_identity_verification !== false;
+                renderPretestFields(s.pre_test_fields || []);
+                syncIdentityPanel();
+            }
             document.getElementById("settings-last-updated").textContent = `Last updated: ${new Date(s.updated_at).toLocaleString()}`;
         } catch (err) {
             toastError("Failed to fetch settings.");
@@ -878,13 +1000,28 @@ function initAdminOperations() {
     switchOpen.addEventListener("change", () => {
         statusText.textContent = switchOpen.checked ? "Exam open" : "Exam closed";
     });
+    if (requireIdentityToggle) {
+        requireIdentityToggle.addEventListener("change", syncIdentityPanel);
+    }
+    document.getElementById("btn-add-pretest-field")?.addEventListener("click", () => {
+        const current = readPretestFields();
+        current.push({
+            key: `custom_${Date.now()}`,
+            label: "Custom text field",
+            enabled: true,
+            required: false,
+        });
+        renderPretestFields(current);
+    });
 
     settingsForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const payload = {
             exam_open: switchOpen.checked,
             seconds_per_question: parseInt(document.getElementById("setting-seconds-per-q").value),
-            pass_mark_percent: parseFloat(document.getElementById("setting-pass-mark").value)
+            pass_mark_percent: parseFloat(document.getElementById("setting-pass-mark").value),
+            require_identity_verification: requireIdentityToggle ? requireIdentityToggle.checked : true,
+            pre_test_fields: pretestList ? readPretestFields() : []
         };
         try {
             await apiRequest("/api/admin/settings", "POST", payload);

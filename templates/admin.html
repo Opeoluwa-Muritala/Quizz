@@ -91,6 +91,29 @@
 
                 <p id="settings-last-updated" class="settings-timestamp">Last updated: -</p>
             </div>
+
+            <div class="card settings-card" style="margin-top:24px">
+                <h2>Candidate Verification</h2>
+                <p class="step-subtext">Control whether candidates upload ID and selfie photos or answer a short pre-test form.</p>
+
+                <div class="form-group toggle-group">
+                    <span class="toggle-label">Require identity verification (ID + selfie)</span>
+                    <label class="switch-container">
+                        <input type="checkbox" id="setting-require-identity" checked>
+                        <span class="switch-slider"></span>
+                    </label>
+                    <span id="identity-status-text" class="toggle-status-text">Verification on</span>
+                </div>
+
+                <div id="pretest-fields-panel" style="display:none">
+                    <h3 style="font-family:var(--font-body);font-size:18px;margin:20px 0 12px">Pre-test fields</h3>
+                    <div id="pretestFieldsList" style="display:grid;gap:10px"></div>
+                    <button type="button" id="btn-add-pretest-field" class="btn btn-ghost" style="margin-top:12px">
+                        Add custom text field
+                    </button>
+                    <p class="help-text">Full name and email are always required and locked on.</p>
+                </div>
+            </div>
         </section>
 
         <!-- Panel 2: Question Editor -->
@@ -324,6 +347,7 @@
                 <button class="rec-subtab" data-rec="interviewers" type="button" onclick="switchRecTab('interviewers')">Interviewers</button>
                 <button class="rec-subtab" data-rec="slots" type="button" onclick="switchRecTab('slots')">Slots</button>
                 <button class="rec-subtab" data-rec="config" type="button" onclick="switchRecTab('config')">Stage Config</button>
+                <button class="rec-subtab" data-rec="employmentdocs" type="button" onclick="switchRecTab('employmentdocs')">Employment Documents</button>
                 <button class="rec-subtab" data-rec="emaillog" type="button" onclick="switchRecTab('emaillog')">Email Log</button>
             </nav>
 
@@ -485,6 +509,35 @@
             </div>
 
             <!-- ── Email Log ───────────────────────────────────────── -->
+            <div class="rec-subpanel" id="rec-sub-employmentdocs">
+                <div class="card">
+                    <h3 style="margin:0 0 4px;font-size:1rem">Employment Documents</h3>
+                    <p style="font-size:.85rem;color:#888;margin:0 0 16px">Configure exactly five required post-acceptance documents for each role.</p>
+                    <div class="rec-row" style="align-items:end">
+                        <div class="form-group">
+                            <label>Role</label>
+                            <select class="rec-ctrl" id="empDocRole" onchange="loadEmploymentDocsForRole(this.value)">
+                                <option value="">Loading roles...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Add role</label>
+                            <div style="display:flex;gap:8px">
+                                <input class="rec-ctrl" id="empDocNewRole" type="text" placeholder="Role name">
+                                <button class="btn btn-secondary" type="button" onclick="addEmploymentDocRole()">Add</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="empDocRows" style="display:grid;gap:12px;margin-top:14px">
+                        <p style="color:#888">Choose a role to edit its document requirements.</p>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;margin-top:16px">
+                        <button class="btn btn-primary" type="button" onclick="saveEmploymentDocs()">Save role documents</button>
+                        <span id="empDocStatus" style="font-size:.85rem;color:#666"></span>
+                    </div>
+                </div>
+            </div>
+
             <div class="rec-subpanel" id="rec-sub-emaillog">
                 <div class="card">
                     <h3 style="margin:0 0 16px;font-size:1rem">Email Log</h3>

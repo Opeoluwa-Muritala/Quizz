@@ -1,105 +1,113 @@
 {% extends "base.html" %}
 {% block extra_head %}
 <style>
-  .apply-wrap { max-width: 560px; margin: 48px auto; padding: 0 16px 80px; }
-  .apply-card { background: var(--card-bg, #fff); border: 1px solid var(--border, #e5e5ef);
-                border-radius: 12px; padding: 36px 32px; }
-  .apply-card h1 { font-family: 'DM Serif Display', serif; font-size: 1.75rem;
-                   margin: 0 0 4px; color: #1a1a2e; }
-  .apply-card p.sub { color: #666; margin: 0 0 28px; font-size: 0.92rem; }
-  .form-group { margin-bottom: 20px; }
-  .form-group label { display: block; font-size: 0.85rem; font-weight: 600;
-                      color: #1a1a2e; margin-bottom: 6px; }
-  .form-group label span.req { color: #e53e3e; }
-  .form-control { width: 100%; box-sizing: border-box; border: 1px solid #d0d0df;
-                  border-radius: 8px; padding: 10px 14px; font-size: 0.95rem;
-                  font-family: inherit; outline: none; transition: border-color .15s; }
-  .form-control:focus { border-color: #1a1a2e; }
+  .apply-wrap { max-width: 720px; margin: 40px auto; padding: 0 16px 80px; }
+  .apply-card { background: var(--mfb-white); border: 1px solid var(--mfb-gray-300);
+    border-radius: 8px; box-shadow: var(--mfb-shadow-soft); padding: 24px; }
+  .apply-card h1 { font-family: var(--font-heading); font-size: 32px; line-height: 40px;
+    font-weight: 600; color: var(--mfb-ink); margin: 0 0 4px; }
+  .apply-card .sub { color: var(--mfb-gray-600); margin: 0 0 28px; font-size: 15px; line-height: 22px; }
+  .apply-section { padding-top: 24px; margin-top: 24px; border-top: 1px solid var(--mfb-gray-300); }
+  .apply-section:first-of-type { padding-top: 0; margin-top: 0; border-top: 0; }
+  .apply-section h3 { font-family: var(--font-body); font-size: 18px; line-height: 24px;
+    font-weight: 700; color: var(--mfb-ink); margin: 0 0 16px; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .cv-drop { border: 2px dashed #d0d0df; border-radius: 8px; padding: 28px;
-             text-align: center; cursor: pointer; transition: border-color .2s; position: relative; }
-  .cv-drop:hover, .cv-drop.over { border-color: #1a1a2e; background: #f4f4fb; }
+  .form-group { margin-bottom: 20px; }
+  .form-group label { display: block; color: var(--mfb-ink); font-size: 13px;
+    line-height: 18px; font-weight: 600; margin-bottom: 6px; }
+  .req { color: var(--mfb-error); }
+  .form-control { width: 100%; height: 48px; border: 1px solid var(--mfb-gray-300);
+    border-radius: 8px; padding: 0 14px; color: var(--mfb-ink); font: inherit; outline: none; }
+  .form-control:focus { border-color: var(--mfb-purple); box-shadow: 0 0 0 3px var(--mfb-purple-tint); }
+  .cv-drop { position: relative; border: 2px dashed var(--mfb-gray-300); border-radius: 8px;
+    padding: 28px; text-align: center; cursor: pointer; background: var(--mfb-white); }
+  .cv-drop:hover, .cv-drop.over { border-color: var(--mfb-purple); background: var(--mfb-purple-tint); }
   .cv-drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-  .cv-drop .icon { font-size: 2rem; color: #aaa; }
-  .cv-drop p { margin: 8px 0 0; color: #777; font-size: 0.88rem; }
-  .cv-name { font-size: 0.88rem; color: #1a1a2e; margin-top: 8px; font-weight: 600; }
-  .btn-submit { width: 100%; background: #1a1a2e; color: #fff; border: none;
-                border-radius: 8px; padding: 14px; font-size: 1rem; font-weight: 700;
-                cursor: pointer; font-family: inherit; transition: opacity .2s; margin-top: 8px; }
-  .btn-submit:hover { opacity: .85; }
-  .btn-submit:disabled { opacity: .5; cursor: not-allowed; }
-  .error-msg { background: #fff5f5; border: 1px solid #fed7d7; border-radius: 6px;
-               padding: 10px 14px; color: #c53030; font-size: 0.88rem; margin-top: 16px;
-               display: none; }
-  .progress-bar { height: 4px; background: #e5e5ef; border-radius: 2px; margin-bottom: 28px; }
-  .progress-bar-fill { height: 100%; background: #1a1a2e; border-radius: 2px;
-                       transition: width .4s ease; }
-  .step-label { display: flex; justify-content: space-between; font-size: 0.78rem;
-                color: #888; margin-bottom: 6px; }
-  .existing-banner { background: #fffbeb; border: 1px solid #f6e05e;
-                     border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;
-                     font-size: 0.88rem; color: #744210; display: none; }
+  .cv-drop .icon { font-size: 28px; color: var(--mfb-gray-600); }
+  .cv-drop p { margin: 8px 0 0; color: var(--mfb-gray-600); font-size: 13px; line-height: 18px; }
+  .cv-name { margin-top: 8px; color: var(--mfb-ink); font-size: 13px; font-weight: 600; }
+  .btn-submit { width: 100%; border: 0; border-radius: 8px; background: var(--mfb-purple);
+    color: var(--mfb-white); padding: 14px 16px; font: inherit; font-weight: 700; cursor: pointer; }
+  .btn-submit:hover { background: var(--mfb-purple-dark); }
+  .btn-submit:disabled { background: var(--mfb-gray-300); color: var(--mfb-gray-600); cursor: not-allowed; }
+  .error-msg, .field-error { display: none; color: var(--mfb-error); font-size: 13px; line-height: 18px; }
+  .error-msg { background: var(--mfb-error-tint); border: 1px solid var(--mfb-error);
+    border-radius: 8px; padding: 10px 14px; margin-top: 16px; }
+  .field-error { margin-top: 6px; }
+  .existing-banner { display: none; background: var(--mfb-warning-tint); border: 1px solid var(--mfb-warning);
+    border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; color: var(--mfb-warning); font-size: 13px; }
+  @media(max-width:640px){ .form-row { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="apply-wrap">
-  <div class="apply-card">
-    <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo"
-         style="height:36px;margin-bottom:20px;display:block;">
-    <h1>Executive Trainee Program</h1>
-    <p class="sub">Application Form — 2026 Cohort</p>
+<div class="apply-wrap candidate-page mfb-page">
+  <div class="mfb-stage-rail" aria-label="Application stage">
+    <div class="mfb-stage-step current"><div class="mfb-stage-dot"></div><span>Applied</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Screening</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Assessment</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Interview</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Documents</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Decision</span></div>
+  </div>
 
-    <div class="progress-bar">
-      <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
-    </div>
-    <div class="step-label">
-      <span id="stepLabel">Step 1 of 2 — Personal Details</span>
-      <span id="stepPct">0%</span>
-    </div>
+  <div class="apply-card">
+    <img src="{{ url_for('static', filename='logo.png') }}" alt="Mainstreet MFB Logo"
+      style="height:36px;margin-bottom:20px;display:block;">
+    <h1>Apply to Mainstreet MFB</h1>
+    <p class="sub">Submit your details for the Executive Trainee recruitment process.</p>
 
     <div class="existing-banner" id="existingBanner">
       An account with this email already exists.
-      <a href="/dashboard" style="color:#92400e;font-weight:700;">Go to your dashboard →</a>
+      <a href="/dashboard" style="color:var(--mfb-warning);font-weight:700;">Go to your dashboard</a>
     </div>
 
-    <!-- Step 1 -->
-    <div id="step1">
+    <div class="apply-section">
+      <h3>Personal details</h3>
       <div class="form-group">
-        <label>Full Name <span class="req">*</span></label>
-        <input class="form-control" id="fullName" type="text" placeholder="e.g. Adaeze Okonkwo" autocomplete="name">
+        <label for="fullName">Full name <span class="req">*</span></label>
+        <input class="form-control" id="fullName" type="text" autocomplete="name" placeholder="e.g. Adaeze Okonkwo" data-required="true">
+        <div class="field-error" id="fullNameError">Full name is required.</div>
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label>Email Address <span class="req">*</span></label>
-          <input class="form-control" id="email" type="email" placeholder="you@example.com">
+          <label for="email">Email address <span class="req">*</span></label>
+          <input class="form-control" id="email" type="email" autocomplete="email" placeholder="you@example.com" data-required="true">
+          <div class="field-error" id="emailError">Enter a valid email address.</div>
         </div>
         <div class="form-group">
-          <label>Phone Number <span class="req">*</span></label>
-          <input class="form-control" id="phone" type="tel" placeholder="+234 800 000 0000">
+          <label for="phone">Phone number <span class="req">*</span></label>
+          <input class="form-control" id="phone" type="tel" autocomplete="tel" placeholder="+234 800 000 0000" data-required="true">
+          <div class="field-error" id="phoneError">Phone number is required.</div>
         </div>
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label>Date of Birth <span class="req">*</span></label>
-          <input class="form-control" id="dob" type="date">
+          <label for="dob">Date of birth <span class="req">*</span></label>
+          <input class="form-control" id="dob" type="date" data-required="true">
+          <div class="field-error" id="dobError">Date of birth is required.</div>
         </div>
         <div class="form-group">
-          <label>NYSC Status <span class="req">*</span></label>
-          <select class="form-control" id="nyscStatus">
-            <option value="">Select…</option>
+          <label for="nyscStatus">NYSC status <span class="req">*</span></label>
+          <select class="form-control" id="nyscStatus" data-required="true">
+            <option value="">Select</option>
             <option value="completed">Completed</option>
             <option value="exempted">Exempted</option>
-            <option value="serving">Currently Serving</option>
-            <option value="not_started">Not Started</option>
+            <option value="serving">Currently serving</option>
+            <option value="not_started">Not started</option>
           </select>
+          <div class="field-error" id="nyscStatusError">NYSC status is required.</div>
         </div>
       </div>
+    </div>
+
+    <div class="apply-section">
+      <h3>Role &amp; location</h3>
       <div class="form-row">
         <div class="form-group">
-          <label>Role Applied For</label>
+          <label for="role">Role applied for</label>
           <select class="form-control" id="role">
-            <option value="">Select…</option>
+            <option value="">Select</option>
             <option>Loan Officer</option>
             <option>Operations</option>
             <option>IT&amp;S</option>
@@ -110,9 +118,9 @@
           </select>
         </div>
         <div class="form-group">
-          <label>Location Preference</label>
+          <label for="location">Location preference</label>
           <select class="form-control" id="location">
-            <option value="">Select…</option>
+            <option value="">Select</option>
             <option>Ikeja</option>
             <option>Victoria Island</option>
             <option>Lekki</option>
@@ -125,28 +133,22 @@
           </select>
         </div>
       </div>
-      <button class="btn-submit" id="nextBtn" onclick="goToStep2()">Continue →</button>
     </div>
 
-    <!-- Step 2 -->
-    <div id="step2" style="display:none">
+    <div class="apply-section">
+      <h3>CV</h3>
       <div class="form-group">
-        <label>Upload CV / Resume <span class="req">*</span></label>
-        <p style="font-size:0.82rem;color:#888;margin:0 0 10px">
-          PDF or Word (.doc/.docx) · Max 10 MB
-        </p>
+        <label for="cvFile">Upload CV or resume <span class="req">*</span></label>
+        <p style="font-size:13px;color:var(--mfb-gray-600);margin:0 0 10px">PDF or Word document, max 10 MB.</p>
         <div class="cv-drop" id="cvDrop">
           <input type="file" id="cvFile" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onchange="handleCvSelect(this)">
-          <div class="icon">📄</div>
-          <p>Drag &amp; drop or click to browse</p>
+          <div class="icon"><i class="ti ti-file-upload"></i></div>
+          <p>Drag and drop, or click to browse</p>
           <div class="cv-name" id="cvName" style="display:none"></div>
         </div>
+        <div class="field-error" id="cvError">Upload your CV before submitting.</div>
       </div>
-      <button class="btn-submit" id="backBtn" onclick="goToStep1()"
-              style="background:#f5f5f9;color:#1a1a2e;margin-bottom:8px;">← Back</button>
-      <button class="btn-submit" id="submitBtn" onclick="submitApplication()">
-        Submit Application
-      </button>
+      <button class="btn-submit" id="submitBtn" onclick="submitApplication()">Submit application</button>
     </div>
 
     <div class="error-msg" id="errorMsg"></div>
@@ -158,92 +160,88 @@
 <script>
 let cvFileData = null;
 
-function setProgress(pct, label) {
-  document.getElementById('progressFill').style.width = pct + '%';
-  document.getElementById('stepLabel').textContent = label;
-  document.getElementById('stepPct').textContent = pct + '%';
-}
-
 function showError(msg) {
   const el = document.getElementById('errorMsg');
   el.textContent = msg;
   el.style.display = 'block';
   el.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
+
 function clearError() {
   document.getElementById('errorMsg').style.display = 'none';
 }
 
-function goToStep2() {
-  clearError();
-  const full_name    = document.getElementById('fullName').value.trim();
-  const email        = document.getElementById('email').value.trim().toLowerCase();
-  const phone        = document.getElementById('phone').value.trim();
-  const dob          = document.getElementById('dob').value;
-  const nysc_status  = document.getElementById('nyscStatus').value;
-
-  if (!full_name || !email || !phone || !dob || !nysc_status) {
-    showError('Please fill in all required fields before continuing.');
-    return;
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    showError('Please enter a valid email address.');
-    return;
-  }
-
-  document.getElementById('step1').style.display = 'none';
-  document.getElementById('step2').style.display = 'block';
-  setProgress(50, 'Step 2 of 2 — Upload CV');
+function setFieldError(id, show) {
+  const el = document.getElementById(`${id}Error`);
+  if (el) el.style.display = show ? 'block' : 'none';
 }
 
-function goToStep1() {
-  document.getElementById('step2').style.display = 'none';
-  document.getElementById('step1').style.display = 'block';
-  setProgress(0, 'Step 1 of 2 — Personal Details');
+function validateField(id) {
+  const el = document.getElementById(id);
+  if (!el) return true;
+  let valid = true;
+  if (el.dataset.required === 'true') valid = Boolean(el.value.trim());
+  if (id === 'email' && el.value.trim()) valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(el.value.trim());
+  setFieldError(id, !valid);
+  return valid;
+}
+
+document.querySelectorAll('[data-required="true"]').forEach(el => {
+  el.addEventListener('blur', () => validateField(el.id));
+  el.addEventListener('change', () => validateField(el.id));
+});
+
+function validateForm() {
+  const fieldsOk = ['fullName', 'email', 'phone', 'dob', 'nyscStatus'].every(validateField);
+  const cvOk = Boolean(cvFileData);
+  setFieldError('cv', !cvOk);
+  return fieldsOk && cvOk;
 }
 
 function handleCvSelect(input) {
   const file = input.files[0];
   if (!file) return;
   cvFileData = file;
-  document.getElementById('cvName').textContent = '✓ ' + file.name;
+  document.getElementById('cvName').textContent = file.name;
   document.getElementById('cvName').style.display = 'block';
   document.getElementById('cvDrop').querySelector('p').style.display = 'none';
+  setFieldError('cv', false);
 }
 
-// Drag & drop
 const drop = document.getElementById('cvDrop');
 drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
 drop.addEventListener('dragleave', () => drop.classList.remove('over'));
 drop.addEventListener('drop', e => {
   e.preventDefault(); drop.classList.remove('over');
   const file = e.dataTransfer.files[0];
-  if (file) { document.getElementById('cvFile').files = e.dataTransfer.files; handleCvSelect(document.getElementById('cvFile')); }
+  if (file) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    document.getElementById('cvFile').files = dt.files;
+    handleCvSelect(document.getElementById('cvFile'));
+  }
 });
 
 async function submitApplication() {
   clearError();
-  const full_name   = document.getElementById('fullName').value.trim();
-  const email       = document.getElementById('email').value.trim().toLowerCase();
-  const phone       = document.getElementById('phone').value.trim();
-  const dob         = document.getElementById('dob').value;
-  const nysc_status = document.getElementById('nyscStatus').value;
-  const role        = document.getElementById('role').value;
-  const location    = document.getElementById('location').value;
+  if (!validateForm()) {
+    showError('Please complete the required fields before submitting.');
+    return;
+  }
 
   const btn = document.getElementById('submitBtn');
   btn.disabled = true;
-  btn.textContent = 'Submitting…';
+  btn.textContent = 'Submitting...';
 
   const formData = new FormData();
-  formData.append('full_name',    full_name);
-  formData.append('email',        email);
-  formData.append('phone_number', phone);
-  formData.append('dob',          dob);
-  formData.append('nysc_status',  nysc_status);
-  formData.append('role',         role);
-  formData.append('location',     location);
-  if (cvFileData) formData.append('cv_file', cvFileData);
+  formData.append('full_name', document.getElementById('fullName').value.trim());
+  formData.append('email', document.getElementById('email').value.trim().toLowerCase());
+  formData.append('phone_number', document.getElementById('phone').value.trim());
+  formData.append('dob', document.getElementById('dob').value);
+  formData.append('nysc_status', document.getElementById('nyscStatus').value);
+  formData.append('role', document.getElementById('role').value);
+  formData.append('location', document.getElementById('location').value);
+  formData.append('cv_file', cvFileData);
 
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
@@ -262,16 +260,15 @@ async function submitApplication() {
         showError(data.error || 'Submission failed. Please try again.');
       }
       btn.disabled = false;
-      btn.textContent = 'Submit Application';
+      btn.textContent = 'Submit application';
       return;
     }
 
-    setProgress(100, 'Application submitted!');
     window.location.href = '/dashboard';
   } catch (e) {
     showError('Network error. Please check your connection and try again.');
     btn.disabled = false;
-    btn.textContent = 'Submit Application';
+    btn.textContent = 'Submit application';
   }
 }
 </script>

@@ -1,32 +1,40 @@
 {% extends "base.html" %}
 {% block extra_head %}
 <style>
-  .interview-wrap { max-width: 600px; margin: 60px auto; padding: 0 16px 80px; text-align: center; }
-  .interview-wrap h1 { font-family:'DM Serif Display',serif; font-size:1.75rem; color:#1a1a2e; margin:0 0 8px; }
-  .interview-wrap .sub { color:#666; margin:0 0 32px; }
-  .interview-card { background:#fff; border:1px solid #e5e5ef; border-radius:14px; padding:32px; }
+  .interview-wrap { max-width: 720px; margin: 40px auto; padding: 0 16px 80px; text-align: center; }
+  .interview-wrap h1 { font-family:var(--font-heading); font-size:32px; line-height:40px; font-weight:600; color:var(--mfb-ink); margin:0 0 8px; }
+  .interview-wrap .sub { color:var(--mfb-gray-600); margin:0 0 32px; }
+  .interview-card { background:var(--mfb-white); border:1px solid var(--mfb-gray-300); border-radius:8px; padding:24px; box-shadow:var(--mfb-shadow-soft); }
   .info-row { display:flex; justify-content:space-between; padding:10px 0;
-              border-bottom:1px solid #f0f0f7; font-size:0.92rem; }
+              border-bottom:1px solid var(--mfb-gray-300); font-size:0.92rem; }
   .info-row:last-of-type { border:none; }
-  .info-row label { color:#888; }
-  .info-row span { font-weight:700; color:#1a1a2e; }
+  .info-row label { color:var(--mfb-gray-600); }
+  .info-row span { font-weight:700; color:var(--mfb-ink); }
   .join-btn { display:inline-flex; align-items:center; gap:10px; margin-top:24px;
-              background:#1a1a2e; color:#fff; padding:14px 32px; border-radius:10px;
+              background:var(--mfb-purple); color:#fff; padding:14px 32px; border-radius:8px;
               text-decoration:none; font-weight:700; font-size:1rem;
               transition:opacity .2s; }
   .join-btn:hover { opacity:.85; }
-  .join-btn.inactive { background:#aaa; cursor:not-allowed; pointer-events:none; }
-  .countdown { font-size:0.85rem; color:#888; margin-top:10px; }
-  .instructions-block { background:#f9f9fb; border:1px solid #e5e5ef; border-radius:8px;
+  .join-btn.inactive { background:var(--mfb-gray-300); color:var(--mfb-gray-600); cursor:not-allowed; pointer-events:none; }
+  .countdown { font-size:0.85rem; color:var(--mfb-gray-600); margin-top:10px; }
+  .instructions-block { background:var(--mfb-purple-tint); border:1px solid var(--mfb-gray-300); border-radius:8px;
                          padding:16px; margin-top:24px; text-align:left;
-                         font-size:0.88rem; color:#555; line-height:1.6; }
-  .instructions-block h3 { font-size:0.85rem; color:#888; text-transform:uppercase;
+                         font-size:0.88rem; color:var(--mfb-ink); line-height:1.6; }
+  .instructions-block h3 { font-family:var(--font-body); font-size:0.85rem; color:var(--mfb-gray-600); text-transform:uppercase;
                              letter-spacing:.05em; margin:0 0 8px; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="interview-wrap">
+<div class="interview-wrap candidate-page mfb-page">
+  <div class="mfb-stage-rail" aria-label="Application stage">
+    <div class="mfb-stage-step done"><div class="mfb-stage-dot"></div><span>Applied</span></div>
+    <div class="mfb-stage-step done"><div class="mfb-stage-dot"></div><span>Screening</span></div>
+    <div class="mfb-stage-step done"><div class="mfb-stage-dot"></div><span>Assessment</span></div>
+    <div class="mfb-stage-step current"><div class="mfb-stage-dot"></div><span>Interview</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Documents</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Decision</span></div>
+  </div>
   <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo"
        style="height:32px;display:block;margin:0 auto 24px;">
   <h1>Your Interview</h1>

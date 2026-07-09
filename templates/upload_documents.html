@@ -1,68 +1,82 @@
 {% extends "base.html" %}
 {% block extra_head %}
 <style>
-  .docs-wrap { max-width: 640px; margin: 40px auto; padding: 0 16px 80px; }
-  .docs-wrap h1 { font-family:'DM Serif Display',serif; font-size:1.5rem; color:#1a1a2e; margin:0 0 6px; }
-  .docs-wrap .sub { color:#666; font-size:0.9rem; margin:0 0 28px; }
-  .doc-item { background:#fff; border:1px solid #e5e5ef; border-radius:10px;
-              padding:18px 20px; margin-bottom:12px; }
+  .docs-wrap { max-width: 720px; margin: 40px auto; padding: 0 16px 80px; }
+  .docs-wrap h1 { font-family:var(--font-heading); font-size:24px; line-height:32px; font-weight:600; color:var(--mfb-ink); margin:0 0 6px; }
+  .docs-wrap .sub { color:var(--mfb-gray-600); font-size:0.9rem; margin:0 0 28px; }
+  .doc-item { background:var(--mfb-white); border:1px solid var(--mfb-gray-300); border-radius:8px;
+              padding:18px 20px; margin-bottom:12px; box-shadow:var(--mfb-shadow-soft); }
   .doc-item-header { display:flex; align-items:center; gap:12px; }
   .doc-status-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
-  .dot-done { background:#48bb78; }
-  .dot-pending { background:#ed8936; }
-  .dot-none { background:#e2e8f0; }
-  .doc-label { font-weight:700; font-size:0.95rem; color:#1a1a2e; flex:1;
+  .dot-done { background:var(--mfb-success); }
+  .dot-pending { background:var(--mfb-warning); }
+  .dot-none { background:var(--mfb-gray-300); }
+  .doc-label { font-weight:700; font-size:0.95rem; color:var(--mfb-ink); flex:1;
                text-transform:capitalize; }
   .doc-tag { font-size:0.75rem; padding:2px 8px; border-radius:100px; font-weight:700; }
-  .tag-verified { background:#f0fff4; color:#276749; }
-  .tag-uploaded { background:#ebf8ff; color:#2b6cb0; }
-  .tag-processing { background:#fffbeb; color:#92400e; }
+  .tag-verified { background:var(--mfb-success-tint); color:var(--mfb-success); }
+  .tag-uploaded { background:var(--mfb-purple-tint); color:var(--mfb-purple); }
+  .tag-processing { background:var(--mfb-warning-tint); color:var(--mfb-warning); }
   .doc-body { margin-top:12px; display:none; }
   .doc-item.expanded .doc-body { display:block; }
-  .drop-zone { border:2px dashed #d0d0df; border-radius:8px; padding:20px;
+  .drop-zone { border:2px dashed var(--mfb-gray-300); border-radius:8px; padding:20px;
                text-align:center; cursor:pointer; position:relative;
                transition: border-color .2s, background .2s; }
-  .drop-zone:hover, .drop-zone.over { border-color:#1a1a2e; background:#f4f4fb; }
+  .drop-zone:hover, .drop-zone.over { border-color:var(--mfb-purple); background:var(--mfb-purple-tint); }
   .drop-zone input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; }
   .drop-zone p { margin:4px 0 0; font-size:0.82rem; color:#888; }
-  .drop-zone .file-name { font-size:0.85rem; color:#1a1a2e; font-weight:600; margin-top:6px; }
-  .upload-btn { display:block; width:100%; background:#1a1a2e; color:#fff; border:none;
+  .drop-zone .file-name { font-size:0.85rem; color:var(--mfb-ink); font-weight:600; margin-top:6px; }
+  .upload-btn { display:block; width:100%; background:var(--mfb-purple); color:#fff; border:none;
                 border-radius:7px; padding:10px; font-size:0.9rem; font-weight:700;
                 cursor:pointer; font-family:inherit; margin-top:10px;
                 transition:opacity .2s; }
   .upload-btn:disabled { opacity:.45; cursor:not-allowed; }
   .upload-progress { font-size:0.82rem; color:#888; margin-top:6px; text-align:center; display:none; }
-  .upload-done { font-size:0.82rem; color:#276749; margin-top:6px; text-align:center; display:none; }
-  .upload-err { font-size:0.82rem; color:#c53030; margin-top:6px; text-align:center; display:none; }
+  .upload-done { font-size:0.82rem; color:var(--mfb-success); margin-top:6px; text-align:center; display:none; }
+  .upload-err { font-size:0.82rem; color:var(--mfb-error); margin-top:6px; text-align:center; display:none; }
 
-  .submit-all-btn { width:100%; background:#276749; color:#fff; border:none;
+  .submit-all-btn { width:100%; background:var(--mfb-purple); color:#fff; border:none;
                     border-radius:8px; padding:14px; font-size:1rem; font-weight:700;
                     cursor:pointer; font-family:inherit; transition:opacity .2s; margin-top:8px; }
   .submit-all-btn:disabled { opacity:.4; cursor:not-allowed; }
-  .instructions { background:#ebf8ff; border:1px solid #bee3f8; border-radius:8px;
-                  padding:14px 16px; font-size:0.88rem; color:#2b6cb0; margin-bottom:24px; }
+  .instructions { background:var(--mfb-purple-tint); border:1px solid var(--mfb-purple); border-radius:8px;
+                  padding:14px 16px; font-size:0.88rem; color:var(--mfb-purple-dark); margin-bottom:24px; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="docs-wrap">
+<div class="docs-wrap candidate-page mfb-page">
+  <div class="mfb-stage-rail" aria-label="Application stage">
+    <div class="mfb-stage-step done"><div class="mfb-stage-dot"></div><span>Applied</span></div>
+    <div class="mfb-stage-step done"><div class="mfb-stage-dot"></div><span>Screening</span></div>
+    <div class="mfb-stage-step done"><div class="mfb-stage-dot"></div><span>Assessment</span></div>
+    <div class="mfb-stage-step done"><div class="mfb-stage-dot"></div><span>Interview</span></div>
+    <div class="mfb-stage-step current"><div class="mfb-stage-dot"></div><span>Documents</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Decision</span></div>
+  </div>
   <a href="/dashboard" style="font-size:0.88rem;color:#888;text-decoration:none;">← Back to dashboard</a>
-  <h1 style="margin-top:16px">Upload Documents</h1>
-  <p class="sub">Upload all required documents to complete your application. Files must be PDF, Word, JPEG, or PNG (max 10 MB each).</p>
+  <h1 style="margin-top:16px">Employment documents</h1>
+  <p class="sub">Upload the five required employment documents for your role. Verification happens after submission.</p>
 
   <div class="instructions">
     💡 Upload each document by clicking on it. Documents are saved immediately — you can upload them one at a time.
   </div>
 
-  {% for doc_type in required_docs %}
+  {% set completion = namespace(all_uploaded=true) %}
+  {% for doc_req in required_docs %}
+    {% set doc_type = doc_req.document_type %}
+    {% set doc_label = doc_req.label %}
+    {% set accepted_formats = doc_req.accepted_formats or ['PDF','DOC','DOCX','JPG','PNG'] %}
     {% set doc_info = submitted.get(doc_type) %}
     {% set is_done = doc_info and doc_info[1] %}
+    {% if doc_req.required and not is_done %}{% set completion.all_uploaded = false %}{% endif %}
     {% set is_processing = doc_info and doc_info[3] == 'processing' %}
     {% set is_verified = doc_info and doc_info[2] %}
+    {% set rejection_note = doc_info[5] if doc_info and doc_info|length > 5 else None %}
     <div class="doc-item" id="docItem-{{ doc_type }}">
       <div class="doc-item-header" onclick="toggleDoc('{{ doc_type }}')" style="cursor:pointer">
         <div class="doc-status-dot {% if is_done %}dot-done{% elif is_processing %}dot-pending{% else %}dot-none{% endif %}"></div>
-        <span class="doc-label">{{ doc_type.replace('_', ' ') }}</span>
+        <span class="doc-label">{{ doc_label }}</span>
         {% if is_verified %}
           <span class="doc-tag tag-verified">✓ Verified</span>
         {% elif is_done %}
@@ -78,12 +92,18 @@
           Document uploaded. You can replace it by uploading again.
         </p>
         {% endif %}
+        {% if rejection_note %}
+        <p style="font-size:0.85rem;color:var(--mfb-error);background:var(--mfb-error-tint);border:1px solid var(--mfb-error);border-radius:8px;padding:10px 12px;margin:0 0 10px">
+          {{ rejection_note }}
+        </p>
+        {% endif %}
         <div class="drop-zone" id="drop-{{ doc_type }}">
           <input type="file" id="file-{{ doc_type }}"
                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                  onchange="handleFileSelect('{{ doc_type }}', this)">
           <div style="font-size:1.5rem">📎</div>
           <p>Click or drag &amp; drop a file here</p>
+          <p>Accepted: {{ accepted_formats|join(', ') }}</p>
           <div class="file-name" id="fname-{{ doc_type }}" style="display:none"></div>
         </div>
         <button class="upload-btn" id="uploadBtn-{{ doc_type }}"
@@ -97,11 +117,11 @@
     </div>
   {% endfor %}
 
-  <button class="submit-all-btn" id="submitAllBtn" onclick="submitAll()">
-    Mark All Documents as Submitted
+  <button class="submit-all-btn" id="submitAllBtn" onclick="submitAll()" {% if not completion.all_uploaded %}disabled{% endif %}>
+    Submit for review
   </button>
   <p style="font-size:0.8rem;color:#888;text-align:center;margin-top:8px">
-    Click this after uploading all required documents.
+    This button is available after all required documents are uploaded.
   </p>
 </div>
 {% endblock %}
@@ -204,6 +224,8 @@ function pollUploadStatus(docType, jobId) {
         prog.style.display = 'none';
         done.style.display = 'block';
         if (dot) { dot.className = 'doc-status-dot dot-done'; }
+        const remaining = document.querySelectorAll('.doc-status-dot:not(.dot-done)').length;
+        if (remaining === 0) document.getElementById('submitAllBtn').disabled = false;
         // Update tag
         const header = document.querySelector(`#docItem-${docType} .doc-item-header`);
         const oldTag = header.querySelector('.doc-tag');
