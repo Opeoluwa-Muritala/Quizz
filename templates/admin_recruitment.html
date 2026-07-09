@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% block extra_head %}
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
   .rec-wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 80px; }
   .rec-tabs { display: flex; gap: 4px; margin-bottom: 24px; flex-wrap: wrap; }
@@ -65,6 +64,20 @@
   .inline-edit { display: flex; gap: 6px; align-items: center; }
   .inline-edit input { flex: 1; border: 1px solid #d0d0df; border-radius: 6px;
                         padding: 5px 10px; font-size: 0.88rem; font-family: inherit; }
+  .rec-wrap { max-width:1280px; }
+  .rec-tab.active { background:var(--mfb-purple); border-color:var(--mfb-purple); }
+  .rec-tab:hover { border-color:var(--mfb-purple); color:var(--mfb-purple); }
+  th { background:#FBFAFC; color:var(--mfb-gray-600); }
+  td { color:var(--mfb-ink); }
+  tr:hover td { background:var(--mfb-purple-tint); }
+  .card { border-color:var(--mfb-gray-300); border-radius:8px; box-shadow:var(--mfb-shadow-soft); }
+  .form-control:focus { border-color:var(--mfb-purple); box-shadow:0 0 0 3px var(--mfb-purple-tint); }
+  .btn-primary { background:var(--mfb-purple); }
+  .btn-primary:hover { background:var(--mfb-purple-dark); opacity:1; }
+  .btn-danger { background:var(--mfb-error); }
+  .pill-pass { background:var(--mfb-success-tint); color:var(--mfb-success); }
+  .pill-fail { background:var(--mfb-error-tint); color:var(--mfb-error); }
+  .pill-pending, .pill-active { background:var(--mfb-warning-tint); color:var(--mfb-warning); }
   @media(max-width:640px){ .form-row { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
@@ -74,7 +87,7 @@
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
     <div>
       <a href="/admin" style="font-size:0.85rem;color:#888;text-decoration:none">← Exam Dashboard</a>
-      <h1 style="font-family:'DM Serif Display',serif;font-size:1.5rem;color:#1a1a2e;margin:4px 0 0">
+      <h1 style="font-family:var(--font-body);font-size:1.5rem;color:var(--mfb-ink);margin:4px 0 0">
         Recruitment Pipeline
       </h1>
     </div>
@@ -206,9 +219,9 @@
           <h3 style="margin:0 0 3px">Pipeline Configuration</h3>
           <p style="margin:0;font-size:0.78rem;color:#9CA3AF">Tap a stage to configure its window, gates &amp; eligibility</p>
         </div>
-        <span style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;color:#B0B0B8;letter-spacing:0.08em;background:#F3F4F6;padding:4px 10px;border-radius:4px">LIVE · NO RESTART</span>
+        <span style="font-family:var(--font-mono);font-size:0.65rem;color:#B0B0B8;letter-spacing:0.08em;background:#F3F4F6;padding:4px 10px;border-radius:4px">LIVE · NO RESTART</span>
       </div>
-      <div id="stageConfigGrid"><p style="color:#9CA3AF;font-size:0.85rem;font-family:'IBM Plex Mono',monospace">loading…</p></div>
+      <div id="stageConfigGrid"><p style="color:#9CA3AF;font-size:0.85rem;font-family:var(--font-mono)">loading…</p></div>
     </div>
   </div>
 
@@ -227,7 +240,7 @@
      z-index:100;overflow-y:auto;padding:40px 16px;">
   <div style="max-width:700px;margin:0 auto;background:#fff;border-radius:12px;padding:28px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 id="candModalName" style="margin:0;font-family:'DM Serif Display',serif"></h2>
+      <h2 id="candModalName" style="margin:0;font-family:var(--font-body)"></h2>
       <button onclick="closeCandModal()" style="background:none;border:none;font-size:1.5rem;
               cursor:pointer;color:#888">✕</button>
     </div>
@@ -511,9 +524,9 @@ function cfgStageIsOpen(cfg) {
 
 async function loadStageConfig() {
   const wrap = document.getElementById('stageConfigGrid');
-  wrap.innerHTML = '<p style="color:#555;font-family:\'IBM Plex Mono\',monospace;font-size:0.78rem">loading…</p>';
+  wrap.innerHTML = '<p style="color:#555;font-family:var(--font-mono);font-size:0.78rem">loading…</p>';
   const data = await apiGet('/api/admin/recruitment/stage-config');
-  if (!data) { wrap.innerHTML = '<p style="color:#FF5555;font-family:\'IBM Plex Mono\',monospace;font-size:0.78rem">error loading config</p>'; return; }
+  if (!data) { wrap.innerHTML = '<p style="color:#FF5555;font-family:var(--font-mono);font-size:0.78rem">error loading config</p>'; return; }
 
   const ordered = [...data].sort((a, b) => {
     const ai = STAGE_ORDER.indexOf(a.stage_name), bi = STAGE_ORDER.indexOf(b.stage_name);
