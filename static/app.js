@@ -39,6 +39,12 @@ async function apiRequest(url, method = "GET", body = null) {
     }
     
     const response = await fetch(url, options);
+    if (response.status === 401) {
+        if (window.location.pathname.startsWith('/admin') || url.includes('/api/admin/')) {
+            window.location.href = '/admin/login';
+            return new Promise(() => {}); // hang/stop execution
+        }
+    }
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `HTTP error ${response.status}`);
@@ -901,6 +907,21 @@ function initAdminOperations() {
             document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
             const panelId = `tab-${tab.dataset.tab}`;
             document.getElementById(panelId).classList.add("active");
+
+            // Reset fullscreen/collapsed calendar modes when switching tabs
+            const dashboardContainer = document.querySelector('.admin-dashboard-container');
+            if (dashboardContainer) {
+                if (tab.dataset.tab !== "recruitment") {
+                    dashboardContainer.classList.remove('fullscreen-slots');
+                    dashboardContainer.classList.remove('sidebar-collapsed');
+                } else {
+                    const activeSub = document.querySelector('.rec-subtab.active');
+                    if (activeSub && activeSub.dataset.rec === 'slots') {
+                        dashboardContainer.classList.add('fullscreen-slots');
+                        dashboardContainer.classList.add('sidebar-collapsed');
+                    }
+                }
+            }
             
             // Tab specific triggers
             if (tab.dataset.tab === "settings") loadSettingsTab();

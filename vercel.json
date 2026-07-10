@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/jobs/generate-slots",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/jobs/expire-deadlines",
+      "schedule": "*/30 * * * *"
+    }
+  ]
+}

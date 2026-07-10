@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="rec-wrap" style="max-width: 600px; margin: 80px auto; text-align: center;">
+  <div class="card" style="padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08);">
+    <div style="font-size: 4rem; margin-bottom: 20px;">
+      {% if closed %}🔒{% else %}⏳{% endif %}
+    </div>
+    
+    <h2 style="color: var(--mfb-purple, #89268B); font-family: 'DM Sans', sans-serif; font-size: 1.8rem; margin-bottom: 12px;">
+      {{ stage_label }} Stage {% if closed %}Closed{% else %}Not Yet Open{% endif %}
+    </h2>
+    
+    <p style="color: var(--mfb-gray-600, #6B6470); font-size: 1.05rem; line-height: 1.6; margin-bottom: 30px;">
+      {% if closed %}
+        The window for this recruitment stage has closed. If you believe this is an error, please reach out to our talent acquisition team.
+      {% else %}
+        This recruitment stage is not yet open. It is scheduled to open on:
+        <br>
+        <strong style="color: #1a1a2e; display: inline-block; margin-top: 10px; font-size: 1.15rem;">{{ opens_at }}</strong>
+      {% endif %}
+    </p>
+    
+    <div style="border-top: 1px solid var(--mfb-gray-300, #D9D4DC); padding-top: 24px;">
+      <a href="mailto:recruitment@mainstreetmfb.com" style="color: var(--mfb-purple, #89268B); text-decoration: none; font-weight: 700; font-size: 0.95rem;">
+        Contact HR: recruitment@mainstreetmfb.com
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

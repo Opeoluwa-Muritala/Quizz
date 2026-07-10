@@ -17,7 +17,7 @@ import cloudinary.utils
 load_dotenv()
 
 # Single connection pool — defined in db.py, imported here so all modules share it
-from db import DBConnection, connection_pool  # noqa: E402
+from db import DBConnection  # noqa: E402
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
@@ -322,7 +322,25 @@ def inject_csrf():
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    if session.get("candidate_id"):
+        return redirect(url_for("recruitment.dashboard"))
+        
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT stage_name FROM stage_config
+                WHERE opens_at IS NOT NULL AND opens_at <= NOW()
+                  AND (closes_at IS NULL OR closes_at >= NOW())
+                ORDER BY id ASC;
+            """)
+            row = cur.fetchone()
+            
+    active_stage = row[0] if row else "application"
+    
+    if active_stage == "application":
+        return redirect(url_for("recruitment.apply"))
+    else:
+        return redirect(url_for("recruitment.login"))
 
 @app.route('/api/check-email', methods=['POST'])
 def check_email():
@@ -1415,25 +1433,7 @@ def _bootstrap():
     except Exception as e:
         print(f"[blueprint registration] Error: {e}")
 
-    # Start background scheduler for slot generation and deadline expiry
-    try:
-        from apscheduler.schedulers.background import BackgroundScheduler
-        from jobs.slot_generator import generate_slots
-        from jobs.deadline_expiry import expire_past_deadlines
 
-        scheduler = BackgroundScheduler()
-        # Generate slots daily at 01:00
-        scheduler.add_job(generate_slots, "cron", hour=1, minute=0,
-                          id="slot_gen", replace_existing=True)
-        # Expire overdue candidates every 30 minutes
-        scheduler.add_job(expire_past_deadlines, "interval", minutes=30,
-                          id="deadline_expiry", replace_existing=True)
-        scheduler.start()
-        print("[scheduler] Background scheduler started.")
-    except ImportError:
-        print("[scheduler] apscheduler not installed — periodic jobs disabled.")
-    except Exception as e:
-        print(f"[scheduler] Error starting: {e}")
 
 
 # ── Job endpoints (callable by Vercel Cron or external scheduler) ──────────────

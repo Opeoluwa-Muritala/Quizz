@@ -63,6 +63,12 @@ def generate_slots(weeks_ahead: int = 4) -> int:
                         slot_start_utc = slot_start.astimezone(UTC)
                         slot_end_utc = slot_end.astimezone(UTC)
 
+                        from db import check_interviewer_overlap
+                        conflict = check_interviewer_overlap(conn, interviewer_id, slot_start_utc, slot_end_utc)
+                        if conflict:
+                            slot_start += step
+                            continue
+
                         try:
                             cur.execute("""
                                 INSERT INTO generated_slots
