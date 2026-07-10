@@ -444,7 +444,8 @@ def upload_photos():
             # Run same checks as check-email
             cur.execute("SELECT exam_open, require_identity_verification FROM exam_settings WHERE id = 1;")
             settings = cur.fetchone()
-            if not settings or not settings[0]:
+            # Allow recruitment candidates with active sessions to upload even if the global exam is closed
+            if not settings or (not settings[0] and not session.get('candidate_id')):
                 return jsonify({"error": "The exam portal is currently closed. Please contact HR."}), 400
             require_identity = bool(settings[1])
 
