@@ -302,7 +302,36 @@ def apply():
                 row = cur.fetchone()
         stage = row[0] if row else "applied"
         return _stage_redirect(stage)
-    return render_template("apply.html")
+
+    # Fetch settings from DB
+    DEFAULT_FIELDS = {
+        "full_name": {"enabled": True, "required": True},
+        "email": {"enabled": True, "required": True},
+        "phone_number": {"enabled": True, "required": True},
+        "dob": {"enabled": True, "required": True},
+        "location": {"enabled": True, "required": False},
+        "department": {"enabled": True, "required": False},
+    }
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pre_test_fields FROM exam_settings WHERE id = 1;")
+            db_row = cur.fetchone()
+            pre_test_fields = db_row[0] if db_row and db_row[0] else []
+
+    fields_config = {**DEFAULT_FIELDS}
+    for f in pre_test_fields:
+        key = f.get("key")
+        if key in fields_config:
+            # Full name and email are always enabled and required
+            if key in ("full_name", "email"):
+                continue
+            fields_config[key] = {
+                "enabled": bool(f.get("enabled", True)),
+                "required": bool(f.get("required", True))
+            }
+
+    return render_template("apply.html", fields_config=fields_config)
 
 
 @recruitment.route("/dashboard")
@@ -404,7 +433,29 @@ def dashboard():
 @recruitment.route("/assessment")
 @require_stage("screening_passed", "screening_flagged", "assessment_in_progress")
 def assessment():
-    return render_template("assessment.html")
+    candidate_id = g.candidate_id
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT email, full_name, phone_number, role, location
+                FROM candidates WHERE id = %s;
+            """, (candidate_id,))
+            cand = cur.fetchone()
+
+    if cand:
+        email, full_name, phone_number, role, location = cand
+    else:
+        email, full_name, phone_number, role, location = "", "", "", "", ""
+
+    return render_template(
+        "assessment.html",
+        stage=g.candidate_stage,
+        email=email,
+        full_name=full_name,
+        phone_number=phone_number,
+        role=role,
+        location=location
+    )
 
 
 @recruitment.route("/schedule")
@@ -497,17 +548,73 @@ def api_apply():
     role         = data.get("role", "").strip()
     location     = data.get("location", "").strip()
 
-    if not all([full_name, email, phone_number, dob_str, nysc_status]):
-        return jsonify({"error": "All fields are required."}), 400
+    # Fetch settings from DB to enforce dynamic validation
+    DEFAULT_FIELDS = {
+        "full_name": {"enabled": True, "required": True},
+        "email": {"enabled": True, "required": True},
+        "phone_number": {"enabled": True, "required": True},
+        "dob": {"enabled": True, "required": True},
+        "location": {"enabled": True, "required": False},
+        "department": {"enabled": True, "required": False},
+    }
 
-    try:
-        dob = datetime.date.fromisoformat(dob_str)
-    except ValueError:
-        return jsonify({"error": "Invalid date of birth format. Use YYYY-MM-DD."}), 400
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pre_test_fields FROM exam_settings WHERE id = 1;")
+            db_row = cur.fetchone()
+            pre_test_fields = db_row[0] if db_row and db_row[0] else []
 
+    fields_config = {**DEFAULT_FIELDS}
+    for f in pre_test_fields:
+        key = f.get("key")
+        if key in fields_config:
+            if key in ("full_name", "email"):
+                continue
+            fields_config[key] = {
+                "enabled": bool(f.get("enabled", True)),
+                "required": bool(f.get("required", True))
+            }
+
+    # Core required fields validation
+    if not full_name or not email:
+        return jsonify({"error": "Full name and email are required."}), 400
+
+    # Dynamic validations
+    if fields_config["phone_number"]["enabled"]:
+        if fields_config["phone_number"]["required"] and not phone_number:
+            return jsonify({"error": "Phone number is required."}), 400
+    else:
+        phone_number = None
+
+    dob = None
+    if fields_config["dob"]["enabled"]:
+        if fields_config["dob"]["required"] and not dob_str:
+            return jsonify({"error": "Date of birth is required."}), 400
+        if dob_str:
+            try:
+                dob = datetime.date.fromisoformat(dob_str)
+            except ValueError:
+                return jsonify({"error": "Invalid date of birth format. Use YYYY-MM-DD."}), 400
+    else:
+        dob_str = None
+
+    if not nysc_status:
+        return jsonify({"error": "NYSC status is required."}), 400
     valid_nysc = ["exempted", "completed", "serving", "not_started"]
     if nysc_status not in valid_nysc:
         return jsonify({"error": f"NYSC status must be one of: {', '.join(valid_nysc)}"}), 400
+
+    if fields_config["department"]["enabled"]:
+        if fields_config["department"]["required"] and not role:
+            return jsonify({"error": "Role applied for is required."}), 400
+    else:
+        role = None
+
+    if fields_config["location"]["enabled"]:
+        if fields_config["location"]["required"] and not location:
+            return jsonify({"error": "Location preference is required."}), 400
+    else:
+        location = None
 
     # Validate CV file
     cv_file_bytes = None
@@ -607,6 +714,11 @@ def assessment_start():
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
+            # Fetch seconds_per_question from settings
+            cur.execute("SELECT seconds_per_question FROM exam_settings WHERE id = 1;")
+            settings_row = cur.fetchone()
+            seconds_per_q = settings_row[0] if settings_row else 60
+
             cur.execute("SELECT stage FROM candidates WHERE id = %s FOR UPDATE;",
                         (candidate_id,))
             row = cur.fetchone()
@@ -665,6 +777,7 @@ def assessment_start():
                     "questions": questions,
                     "remaining_seconds": remaining_secs,
                     "started_at": started_at.isoformat(),
+                    "seconds_per_question": seconds_per_q,
                 })
 
             # Fetch stage config for duration
@@ -727,6 +840,7 @@ def assessment_start():
         "score_id": score_id,
         "questions": questions,
         "duration_seconds": duration_mins * 60,
+        "seconds_per_question": seconds_per_q,
     })
 
 

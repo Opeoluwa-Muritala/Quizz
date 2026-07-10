@@ -75,18 +75,24 @@
           <input class="form-control" id="email" type="email" autocomplete="email" placeholder="you@example.com" data-required="true">
           <div class="field-error" id="emailError">Enter a valid email address.</div>
         </div>
+        {% if not fields_config or fields_config.get('phone_number', {}).get('enabled', True) %}
+        {% set phone_req = not fields_config or fields_config.get('phone_number', {}).get('required', True) %}
         <div class="form-group">
-          <label for="phone">Phone number <span class="req">*</span></label>
-          <input class="form-control" id="phone" type="tel" autocomplete="tel" placeholder="+234 800 000 0000" data-required="true">
+          <label for="phone">Phone number {% if phone_req %}<span class="req">*</span>{% endif %}</label>
+          <input class="form-control" id="phone" type="tel" autocomplete="tel" placeholder="+234 800 000 0000" data-required="{% if phone_req %}true{% else %}false{% endif %}">
           <div class="field-error" id="phoneError">Phone number is required.</div>
         </div>
+        {% endif %}
       </div>
       <div class="form-row">
+        {% if not fields_config or fields_config.get('dob', {}).get('enabled', True) %}
+        {% set dob_req = not fields_config or fields_config.get('dob', {}).get('required', True) %}
         <div class="form-group">
-          <label for="dob">Date of birth <span class="req">*</span></label>
-          <input class="form-control" id="dob" type="date" data-required="true">
+          <label for="dob">Date of birth {% if dob_req %}<span class="req">*</span>{% endif %}</label>
+          <input class="form-control" id="dob" type="date" data-required="{% if dob_req %}true{% else %}false{% endif %}">
           <div class="field-error" id="dobError">Date of birth is required.</div>
         </div>
+        {% endif %}
         <div class="form-group">
           <label for="nyscStatus">NYSC status <span class="req">*</span></label>
           <select class="form-control" id="nyscStatus" data-required="true">
@@ -101,12 +107,15 @@
       </div>
     </div>
 
+    {% if not fields_config or fields_config.get('department', {}).get('enabled', True) or fields_config.get('location', {}).get('enabled', True) %}
     <div class="apply-section">
       <h3>Role &amp; location</h3>
       <div class="form-row">
+        {% if not fields_config or fields_config.get('department', {}).get('enabled', True) %}
+        {% set dept_req = fields_config and fields_config.get('department', {}).get('required', False) %}
         <div class="form-group">
-          <label for="role">Role applied for</label>
-          <select class="form-control" id="role">
+          <label for="role">Role applied for {% if dept_req %}<span class="req">*</span>{% endif %}</label>
+          <select class="form-control" id="role" data-required="{% if dept_req %}true{% else %}false{% endif %}">
             <option value="">Select</option>
             <option>Loan Officer</option>
             <option>Operations</option>
@@ -116,10 +125,14 @@
             <option>HR</option>
             <option>Recovery</option>
           </select>
+          <div class="field-error" id="roleError">Role applied for is required.</div>
         </div>
+        {% endif %}
+        {% if not fields_config or fields_config.get('location', {}).get('enabled', True) %}
+        {% set loc_req = fields_config and fields_config.get('location', {}).get('required', False) %}
         <div class="form-group">
-          <label for="location">Location preference</label>
-          <select class="form-control" id="location">
+          <label for="location">Location preference {% if loc_req %}<span class="req">*</span>{% endif %}</label>
+          <select class="form-control" id="location" data-required="{% if loc_req %}true{% else %}false{% endif %}">
             <option value="">Select</option>
             <option>Ikeja</option>
             <option>Victoria Island</option>
@@ -131,9 +144,12 @@
             <option>Oshodi</option>
             <option>Festac</option>
           </select>
+          <div class="field-error" id="locationError">Location preference is required.</div>
         </div>
+        {% endif %}
       </div>
     </div>
+    {% endif %}
 
     <div class="apply-section">
       <h3>CV</h3>
