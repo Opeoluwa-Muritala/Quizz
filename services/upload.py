@@ -1,11 +1,9 @@
 """
-Background Cloudinary upload service.
-Uploads run in a daemon thread so the request returns immediately.
-Callers poll /api/upload-status/<job_id> to learn when it's done.
+Synchronous Cloudinary upload service for Serverless compatibility.
+Uploads run inline in the request handler so they block until completed.
 """
 import os
 import uuid
-import threading
 import cloudinary
 import cloudinary.uploader
 from db import DBConnection
@@ -25,10 +23,21 @@ def validate_file(file_bytes: bytes, mimetype: str, allowed: set) -> str | None:
     return None
 
 
-def _do_upload(job_id: str, file_bytes: bytes, folder: str, public_id: str,
-               resource_type: str, candidate_id: int, doc_type: str | None,
-               target_field: str | None):
-    """Runs in a background thread. Updates upload_jobs on completion."""
+def enqueue_upload(file_bytes: bytes, folder: str, public_id: str,
+                   candidate_id: int, resource_type: str = "auto",
+                   doc_type: str | None = None,
+                   target_field: str | None = None) -> str:
+    """
+    Perform the upload synchronously. Registers the job as 'done' or 'failed' immediately,
+    persisting the results to candidates or candidate_documents.
+    Returns job_id.
+    """
+    job_id = str(uuid.uuid4())
+    url = None
+    pid = None
+    error_msg = None
+    status = "done"
+
     try:
         result = cloudinary.uploader.upload(
             file_bytes,
@@ -39,77 +48,42 @@ def _do_upload(job_id: str, file_bytes: bytes, folder: str, public_id: str,
         )
         url = result.get("secure_url", "")
         pid = result.get("public_id", "")
+    except Exception as exc:
+        status = "failed"
+        error_msg = str(exc)
 
-        with DBConnection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE upload_jobs
-                    SET status = 'done', url = %s, public_id = %s, updated_at = NOW()
-                    WHERE id = %s;
-                """, (url, pid, job_id))
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            # Insert completed/failed upload job record
+            cur.execute("""
+                INSERT INTO upload_jobs (id, candidate_id, doc_type, target_field, status, url, public_id, error, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW());
+            """, (job_id, candidate_id, doc_type, target_field, status, url, pid, error_msg))
 
+            if status == "done":
                 # Persist URL to candidates or candidate_documents
                 if target_field == "cv_url":
                     cur.execute("UPDATE candidates SET cv_url = %s WHERE id = %s;",
                                 (url, candidate_id))
                 elif doc_type:
+                    # Check if candidate_document row exists, if not insert it, else update it
                     cur.execute("""
-                        UPDATE candidate_documents
-                        SET url = %s, public_id = %s, upload_status = 'done', uploaded_at = NOW()
-                        WHERE candidate_id = %s AND doc_type = %s
-                          AND upload_status = 'processing';
-                    """, (url, pid, candidate_id, doc_type))
-            conn.commit()
-
-    except Exception as exc:
-        with DBConnection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE upload_jobs
-                    SET status = 'failed', error = %s, updated_at = NOW()
-                    WHERE id = %s;
-                """, (str(exc)[:500], job_id))
+                        INSERT INTO candidate_documents (candidate_id, doc_type, url, public_id, upload_status, uploaded_at)
+                        VALUES (%s, %s, %s, %s, 'done', NOW())
+                        ON CONFLICT (candidate_id, doc_type)
+                        DO UPDATE SET url = EXCLUDED.url, public_id = EXCLUDED.public_id, upload_status = 'done', uploaded_at = NOW();
+                    """, (candidate_id, doc_type, url, pid))
+            else:
+                # Mark as failed in documents if doc_type was passed
                 if doc_type:
                     cur.execute("""
-                        UPDATE candidate_documents
-                        SET upload_status = 'failed'
-                        WHERE candidate_id = %s AND doc_type = %s AND upload_status = 'processing';
+                        INSERT INTO candidate_documents (candidate_id, doc_type, upload_status, uploaded_at)
+                        VALUES (%s, %s, 'failed', NOW())
+                        ON CONFLICT (candidate_id, doc_type)
+                        DO UPDATE SET upload_status = 'failed', uploaded_at = NOW();
                     """, (candidate_id, doc_type))
-            conn.commit()
-
-
-def enqueue_upload(file_bytes: bytes, folder: str, public_id: str,
-                   candidate_id: int, resource_type: str = "auto",
-                   doc_type: str | None = None,
-                   target_field: str | None = None) -> str:
-    """
-    Register an upload job in the DB and start it in a background thread.
-    Returns job_id for the caller to track status.
-    """
-    job_id = str(uuid.uuid4())
-
-    with DBConnection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO upload_jobs (id, candidate_id, doc_type, target_field, status)
-                VALUES (%s, %s, %s, %s, 'processing');
-            """, (job_id, candidate_id, doc_type, target_field))
-            if doc_type:
-                # Mark the document row as processing
-                cur.execute("""
-                    UPDATE candidate_documents
-                    SET upload_status = 'processing'
-                    WHERE candidate_id = %s AND doc_type = %s AND upload_status = 'pending';
-                """, (candidate_id, doc_type))
         conn.commit()
 
-    t = threading.Thread(
-        target=_do_upload,
-        args=(job_id, file_bytes, folder, public_id, resource_type,
-              candidate_id, doc_type, target_field),
-        daemon=True,
-    )
-    t.start()
     return job_id
 
 

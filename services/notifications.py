@@ -21,7 +21,7 @@ APP_BASE_URL   = os.environ.get("APP_BASE_URL", "https://quizz-xi-two.vercel.app
 
 # ── Email template builder ────────────────────────────────────────────────────
 
-def _build_email(name: str, event_type: str, data: dict) -> tuple[str, str]:
+def _build_email(name: str, event_type: str, data: dict, ref_token: str = None) -> tuple[str, str]:
     base_style = """
         font-family: 'IBM Plex Sans', Arial, sans-serif;
         color: #1a1a2e; max-width: 600px; margin: 0 auto; padding: 32px 24px;
@@ -111,6 +111,17 @@ def _build_email(name: str, event_type: str, data: dict) -> tuple[str, str]:
             border-radius:6px;text-decoration:none;display:inline-block;margin-top:12px;">
             View Dashboard</a></p>"""
         ),
+        "interview_rescheduled": (
+            "Interview Rescheduled",
+            f"""<p>Dear {name},</p>
+            <p>Your interview has been rescheduled to
+            <strong>{data.get('interview_time', 'the new scheduled time')}</strong>.</p>
+            <p>Meeting link: <a href="{data.get('meeting_link', '#')}">{data.get('meeting_link', 'See dashboard')}</a></p>
+            <p>Please update your calendar and join 5 minutes early.</p>
+            <p><a href="{APP_BASE_URL}/dashboard" style="background:#1a1a2e;color:#fff;padding:12px 24px;
+            border-radius:6px;text-decoration:none;display:inline-block;margin-top:12px;">
+            View Dashboard</a></p>"""
+        ),
         "documents_required": (
             "Action Required – Upload Supporting Documents",
             f"""<p>Dear {name},</p>
@@ -157,6 +168,10 @@ def _build_email(name: str, event_type: str, data: dict) -> tuple[str, str]:
     </div>
     </body></html>
     """
+    if ref_token:
+        for path in ["/dashboard", "/schedule", "/documents", "/assessment", "/interview"]:
+            html = html.replace(f"{APP_BASE_URL}{path}", f"{APP_BASE_URL}{path}?ref={ref_token}")
+            html = html.replace(f"{APP_BASE_URL}{path}/", f"{APP_BASE_URL}{path}?ref={ref_token}")
     return subject, html
 
 
@@ -169,14 +184,14 @@ def send_notification(candidate_id: int, stage: str, event_type: str,
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT full_name, email FROM candidates WHERE id = %s", (candidate_id,))
+            cur.execute("SELECT full_name, email, ref_token FROM candidates WHERE id = %s", (candidate_id,))
             row = cur.fetchone()
 
     if not row:
         return False, None
 
-    name, email = row
-    subject, html = _build_email(name, event_type, extra_data)
+    name, email, ref_token = row
+    subject, html = _build_email(name, event_type, extra_data, ref_token)
 
     status = "sent"
     error_message = None

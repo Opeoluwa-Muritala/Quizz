@@ -115,16 +115,15 @@ def expire_past_deadlines() -> int:
                     transitioned += 1
         conn.commit()
 
-    # Send notifications for each expired candidate (fire-and-forget)
+    # Send notifications for each expired candidate (synchronously)
     for cand_id, old_stage in expired_candidates[:transitioned]:
         new_stage, _ = EXPIRY_MAP[old_stage]
         event = EXPIRY_NOTIFICATION.get(new_stage)
         if event:
-            threading.Thread(
-                target=send_notification,
-                args=(cand_id, new_stage, event),
-                daemon=True,
-            ).start()
+            try:
+                send_notification(cand_id, new_stage, event)
+            except Exception as e:
+                print(f"Error sending notification to {cand_id}: {e}")
 
     print(f"[deadline_expiry] Transitioned {transitioned} candidates to expired stages.")
     return transitioned
