@@ -97,13 +97,28 @@
 {% block extra_js %}
 {% if slot %}
 <script>
+function formatWAT(utcIso) {
+  if (!utcIso) return '—';
+  const d = new Date(utcIso);
+  if (isNaN(d.getTime())) return '—';
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Africa/Lagos',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+  const parts = formatter.formatToParts(d);
+  const m = {};
+  parts.forEach(p => m[p.type] = p.value);
+  return `${m.year}-${m.month}-${m.day} ${m.hour}:${m.minute} ${m.dayPeriod.toLowerCase()}`;
+}
+
 const timeEl = document.getElementById('interviewTime');
 if (timeEl && timeEl.dataset.utc) {
-  const d = new Date(timeEl.dataset.utc);
-  timeEl.textContent = d.toLocaleString('en-NG', {
-    weekday:'long', year:'numeric', month:'long', day:'numeric',
-    hour:'2-digit', minute:'2-digit', timeZone:'Africa/Lagos',
-  }) + ' WAT';
+  timeEl.textContent = formatWAT(timeEl.dataset.utc);
 }
 
 const joinBtn = document.getElementById('joinBtn');

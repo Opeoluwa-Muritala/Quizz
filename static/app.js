@@ -20,7 +20,47 @@ function showToast(message, type = "success") {
     }, 4000);
 }
 
+function formatWAT(dateOrStr) {
+  if (!dateOrStr) return '—';
+  const d = new Date(dateOrStr);
+  if (isNaN(d.getTime())) return '—';
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Africa/Lagos',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+  const parts = formatter.formatToParts(d);
+  const m = {};
+  parts.forEach(p => m[p.type] = p.value);
+  return `${m.year}-${m.month}-${m.day} ${m.hour}:${m.minute} ${m.dayPeriod.toLowerCase()}`;
+}
+
 // Global AJAX Request helper with CSRF Header support
+const adminPrefetchCache = new Map();
+const ADMIN_PREFETCH_TTL_MS = 30000;
+
+window.getAdminCached = async function (url, loader = () => fetch(url).then(r => {
+    if (!r.ok) throw new Error('Request failed');
+    return r.json();
+})) {
+    const cached = adminPrefetchCache.get(url);
+    if (cached && Date.now() - cached.at < ADMIN_PREFETCH_TTL_MS) return cached.value;
+    const promise = Promise.resolve().then(loader);
+    adminPrefetchCache.set(url, { at: Date.now(), value: promise });
+    try {
+        const value = await promise;
+        adminPrefetchCache.set(url, { at: Date.now(), value });
+        return value;
+    } catch (error) {
+        adminPrefetchCache.delete(url);
+        throw error;
+    }
+};
+
 async function apiRequest(url, method = "GET", body = null) {
     const headers = {};
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content");
@@ -38,6 +78,14 @@ async function apiRequest(url, method = "GET", body = null) {
         }
     }
     
+    if (method === "GET" && url.startsWith('/api/admin/')) {
+        return window.getAdminCached(url, async () => {
+            const response = await fetch(url, options);
+            if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'Request failed');
+            return response.json();
+        });
+    }
+    if (method !== "GET" && url.startsWith('/api/admin/')) adminPrefetchCache.clear();
     const response = await fetch(url, options);
     if (response.status === 401) {
         if (window.location.pathname.startsWith('/admin') || url.includes('/api/admin/')) {
@@ -731,7 +779,7 @@ function initCandidatePortal() {
             buildSectionBreakdownTable(res.breakdown);
             
             // Set print timestamp
-            document.getElementById("res-print-time").textContent = `Generated on: ${new Date(res.submitted_at).toLocaleString()}`;
+            document.getElementById("res-print-time").textContent = `Generated on: ${formatWAT(res.submitted_at)}`;
             
             // Show result
             spinner.classList.add("hidden");
@@ -1012,7 +1060,7 @@ function initAdminOperations() {
                 renderPretestFields(s.pre_test_fields || []);
                 syncIdentityPanel();
             }
-            document.getElementById("settings-last-updated").textContent = `Last updated: ${new Date(s.updated_at).toLocaleString()}`;
+            document.getElementById("settings-last-updated").textContent = `Last updated: ${formatWAT(s.updated_at)}`;
         } catch (err) {
             toastError("Failed to fetch settings.");
         }
@@ -1597,7 +1645,7 @@ function initAdminOperations() {
             tdSwitches.textContent = r.tab_switches;
             
             const tdDate = document.createElement("td");
-            tdDate.textContent = new Date(r.submitted_at).toLocaleString();
+            tdDate.textContent = formatWAT(r.submitted_at);
             
             const tdVerification = document.createElement("td");
             const btnSelfie = document.createElement("button");
@@ -1767,7 +1815,7 @@ function initAdminOperations() {
             tdEmail.textContent = item.email;
             
             const tdDate = document.createElement("td");
-            tdDate.textContent = new Date(item.added_at).toLocaleDateString();
+            tdDate.textContent = formatWAT(item.added_at);
             
             const tdAction = document.createElement("td");
             tdAction.className = "action-cell";
@@ -1881,6 +1929,18 @@ function initAdminOperations() {
 
     // ── Initial Tab Load ──
     loadSettingsTab();
+    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 300));
+    idle(async () => {
+        // Prefetch sequentially so a Neon/serverless deployment is not hit by
+        // a burst of simultaneous connection handshakes.
+        for (const url of [
+            '/api/admin/recruitment/candidates?page=1',
+            '/api/admin/whitelist',
+            '/api/admin/results?page=1',
+        ]) {
+            try { await window.getAdminCached(url); } catch (_) { /* Load on demand later. */ }
+        }
+    });
 }
 
 // Page Router Initialization
@@ -1891,3 +1951,32 @@ document.addEventListener("DOMContentLoaded", () => {
         initAdminDashboard();
     }
 });
+
+// Lightweight real-user measurements for the p95 performance target.
+(() => {
+    const metrics = { path: window.location.pathname };
+    try {
+        new PerformanceObserver((list) => {
+            const entries = list.getEntries();
+            if (entries.length) metrics.lcp = Math.round(entries[entries.length - 1].startTime);
+        }).observe({ type: 'largest-contentful-paint', buffered: true });
+        new PerformanceObserver((list) => {
+            const fcp = list.getEntries().find(entry => entry.name === 'first-contentful-paint');
+            if (fcp) metrics.fcp = Math.round(fcp.startTime);
+        }).observe({ type: 'paint', buffered: true });
+    } catch (_) { /* Older browsers still report navigation timing. */ }
+    window.addEventListener('load', () => setTimeout(() => {
+        const nav = performance.getEntriesByType('navigation')[0];
+        if (nav) {
+            metrics.ttfb = Math.round(nav.responseStart);
+            metrics.load = Math.round(nav.loadEventEnd || performance.now());
+            metrics.transfer_size = nav.transferSize || 0;
+        }
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        fetch('/api/performance', {
+            method: 'POST', keepalive: true,
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+            body: JSON.stringify(metrics),
+        }).catch(() => {});
+    }, 0), { once: true });
+})();
