@@ -17,7 +17,7 @@ import cloudinary.utils
 load_dotenv()
 
 # Single connection pool — defined in db.py, imported here so all modules share it
-from db import DBConnection  # noqa: E402
+from db import DBConnection, close_request_connection  # noqa: E402
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
@@ -236,6 +236,7 @@ def init_db():
 # Custom CSRF Protection
 @app.before_request
 def check_csrf():
+    g.request_started_at = time.perf_counter()
     # Generate CSRF token on GET request if not present
     if 'csrf_token' not in session:
         session['csrf_token'] = secrets.token_hex(32)
@@ -255,6 +256,26 @@ def check_csrf():
         expected = session.get('csrf_token')
         if not expected or not token or not secrets.compare_digest(token, expected):
             return jsonify({"error": "CSRF token missing or invalid"}), 400
+
+
+@app.after_request
+def add_performance_headers(response):
+    started = getattr(g, "request_started_at", None)
+    if started is not None:
+        duration_ms = (time.perf_counter() - started) * 1000
+        response.headers["Server-Timing"] = f'app;dur={duration_ms:.1f}'
+        response.headers["X-Response-Time"] = f'{duration_ms:.1f}ms'
+        app.logger.info("request method=%s path=%s status=%s duration_ms=%.1f bytes=%s",
+                        request.method, request.path, response.status_code,
+                        duration_ms, response.calculate_content_length() or 0)
+    if request.endpoint == "static":
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response
+
+
+@app.teardown_appcontext
+def release_database_connection(error=None):
+    close_request_connection(error)
 
 # Helper to check admin authentication
 
@@ -324,23 +345,16 @@ def inject_csrf():
 def index():
     if session.get("candidate_id"):
         return redirect(url_for("recruitment.dashboard"))
-        
-    with DBConnection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT stage_name FROM stage_config
-                WHERE opens_at IS NOT NULL AND opens_at <= NOW()
-                  AND (closes_at IS NULL OR closes_at >= NOW())
-                ORDER BY id ASC;
-            """)
-            row = cur.fetchone()
-            
-    active_stage = row[0] if row else "application"
-    
-    if active_stage == "application":
-        return redirect(url_for("recruitment.apply"))
-    else:
-        return redirect(url_for("recruitment.login"))
+    return render_template("index.html")
+
+
+@app.route('/api/performance', methods=['POST'])
+def record_browser_performance():
+    data = request.get_json(silent=True) or {}
+    allowed = {key: data.get(key) for key in
+               ('path', 'ttfb', 'fcp', 'lcp', 'load', 'transfer_size')}
+    app.logger.info("browser_performance %s", json.dumps(allowed, separators=(',', ':')))
+    return ('', 204)
 
 @app.route('/api/check-email', methods=['POST'])
 def check_email():
@@ -1414,16 +1428,13 @@ def admin_get_image(candidate_id, image_type):
 
 def _bootstrap():
     """Run all DB migrations and register blueprints. Called once at startup."""
-    try:
-        init_db()
-    except Exception as e:
-        print(f"[init_db] Error: {e}")
-
-    try:
-        from migrations import init_recruitment_db
-        init_recruitment_db()
-    except Exception as e:
-        print(f"[init_recruitment_db] Error: {e}")
+    if os.environ.get("RUN_DB_MIGRATIONS", "false").lower() == "true":
+        try:
+            init_db()
+            from migrations import init_recruitment_db
+            init_recruitment_db()
+        except Exception as e:
+            print(f"[database bootstrap] Error: {e}")
 
     # Register recruitment blueprints
     try:

@@ -2,6 +2,48 @@
   'use strict';
 
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  
+  function formatStageText(stage) {
+    if (!stage) return '—';
+    const map = {
+      'applied': 'Applied',
+      'screening_failed': 'Screening Failed',
+      'screening_flagged': 'Screening Flagged',
+      'screening_passed': 'Screening Passed',
+      'assessment_in_progress': 'Assessment In Progress',
+      'assessment_failed': 'Assessment Failed',
+      'assessment_passed': 'Assessment Passed',
+      'interview_slot_pending': 'Interview Slot Pending',
+      'interview_scheduled': 'Interview Scheduled',
+      'interview_completed': 'Interview Completed',
+      'documents_pending': 'Documents Pending',
+      'documents_submitted': 'Documents Submitted',
+      'offered': 'Offered',
+      'rejected': 'Rejected'
+    };
+    if (map[stage]) return map[stage];
+    return stage.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  function formatWAT(dateOrStr) {
+    if (!dateOrStr) return '—';
+    const d = new Date(dateOrStr);
+    if (isNaN(d.getTime())) return '—';
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Africa/Lagos',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    const parts = formatter.formatToParts(d);
+    const m = {};
+    parts.forEach(p => m[p.type] = p.value);
+    return `${m.year}-${m.month}-${m.day} ${m.hour}:${m.minute} ${m.dayPeriod.toLowerCase()}`;
+  }
+
   let recInitialized = false;
   let recCandPage = 1;
   let recEmailPage = 1;
@@ -29,7 +71,44 @@
         if (!recInitialized) { loadRecCandidates(1); recInitialized = true; }
       });
     }
+    document.addEventListener('click', (event) => {
+      const cvLink = event.target.closest('#cvOpenLink');
+      if (cvLink) {
+        event.preventDefault();
+        document.getElementById('cvPreviewWrap')?.classList.toggle('expanded-preview');
+        return;
+      }
+      const link = event.target.closest('a[href*="/documents/file/"]');
+      if (!link) return;
+      event.preventDefault();
+      showAdminDocument(link.href);
+    });
   });
+
+  window.showAdminDocument = function (url) {
+    let popup = document.getElementById('adminDocumentPopup');
+    if (!popup) {
+      popup = document.createElement('div');
+      popup.id = 'adminDocumentPopup';
+      popup.className = 'modal-overlay hidden';
+      popup.innerHTML = '<div class="card" style="width:min(1100px,96vw);height:92vh;padding:12px;display:flex;flex-direction:column">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 4px 10px"><strong>Candidate document</strong>' +
+        '<button type="button" class="btn btn-ghost" data-close-document>Close</button></div>' +
+        '<iframe title="Candidate document" style="width:100%;flex:1;border:0;background:#f5f5f5"></iframe></div>';
+      document.body.appendChild(popup);
+      popup.querySelector('[data-close-document]').addEventListener('click', closeAdminDocument);
+      popup.addEventListener('click', event => { if (event.target === popup) closeAdminDocument(); });
+    }
+    popup.querySelector('iframe').src = url;
+    popup.classList.remove('hidden');
+  };
+
+  window.closeAdminDocument = function () {
+    const popup = document.getElementById('adminDocumentPopup');
+    if (!popup) return;
+    popup.classList.add('hidden');
+    popup.querySelector('iframe').src = 'about:blank';
+  };
 
   // ── Sub-tab switching ─────────────────────────────────────────────────
   window.switchRecTab = function (name) {
@@ -88,7 +167,7 @@
       <tr>
         <td>${esc(c.name)}</td>
         <td style="color:#888">${esc(c.email)}</td>
-        <td><span class="rec-pill ${stagePill(c.stage)}">${esc(c.stage)}</span></td>
+        <td><span class="rec-pill ${stagePill(c.stage)}">${formatStageText(c.stage)}</span></td>
         <td>${c.latest_score !== null ? c.latest_score + '%' : '—'}</td>
         <td>${c.eligibility_flag
           ? `<span title="${esc(c.eligibility_flag_reason || '')}" style="color:#ed8936;cursor:help">⚠</span>`
@@ -130,7 +209,7 @@
       'assessment_in_progress', 'assessment_failed', 'assessment_passed',
       'interview_slot_pending', 'interview_scheduled', 'documents_pending',
       'documents_submitted', 'interview_completed', 'offered', 'rejected',
-    ].map(s => `<option value="${s}" ${s === c.stage ? 'selected' : ''}>${s}</option>`).join('');
+    ].map(s => `<option value="${s}" ${s === c.stage ? 'selected' : ''}>${formatStageText(s)}</option>`).join('');
 
     const cvHtml = c.cv_url ? `
       <div style="margin-top:8px">
@@ -162,7 +241,7 @@
               <td>${esc(s.label)}</td>
               <td>${s.score !== null ? s.score + '%' : '—'}</td>
               <td><span class="rec-pill ${s.pass_fail === 'pass' ? 'rec-pill-pass' : 'rec-pill-fail'}">${s.pass_fail || '—'}</span></td>
-              <td style="color:#888">${s.taken_at ? s.taken_at.slice(0, 16) : '—'}</td>
+              <td style="color:#888">${formatWAT(s.taken_at)}</td>
             </tr>`).join('')}</tbody>
           </table>
         </div>
@@ -198,9 +277,7 @@
           <table class="data-table">
             <thead><tr><th>Time</th><th>Interviewer</th><th>Meeting</th></tr></thead>
             <tbody>${data.interview_slots.map(s => `<tr>
-              <td>${s.start_time
-                ? new Date(s.start_time).toLocaleString('en-NG', { timeZone: 'Africa/Lagos' })
-                : '—'}</td>
+              <td>${formatWAT(s.start_time)}</td>
               <td>${esc(s.interviewer || '—')}</td>
               <td>${s.meeting_link
                 ? `<a href="${esc(s.meeting_link)}" target="_blank" style="color:#1a1a2e;font-size:.85rem">Join ↗</a>`
@@ -222,7 +299,7 @@
               <td>${esc(h.from || '—')}</td>
               <td>${esc(h.to)}</td>
               <td>${esc(h.by)}</td>
-              <td style="color:#888">${h.at ? h.at.slice(0, 16) : '—'}</td>
+              <td style="color:#888">${formatWAT(h.at)}</td>
             </tr>`).join('')}</tbody>
           </table>
         </div>
@@ -232,7 +309,7 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
         <div>
           <label style="font-size:.75rem;color:#888;display:block;margin-bottom:2px">Stage</label>
-          <span class="rec-pill ${stagePill(c.stage)}">${esc(c.stage)}</span>
+          <span class="rec-pill ${stagePill(c.stage)}">${formatStageText(c.stage)}</span>
         </div>
         <div>
           <label style="font-size:.75rem;color:#888;display:block;margin-bottom:2px">Email</label>
@@ -285,7 +362,7 @@
   window.toggleCVPreview = function (url) {
     const wrap = document.getElementById('cvPreviewWrap');
     if (wrap.style.display === 'none') {
-      cvBaseUrl = '/api/admin/cv-view?url=' + encodeURIComponent(url);
+      cvBaseUrl = url;
       cvCurrentPage = 1;
       renderCVPage();
       wrap.style.display = 'block';
@@ -1180,7 +1257,7 @@
     };
 
     if (slot.is_booked) {
-      const confirmStr = `Are you sure you want to reschedule this BOOKED slot?\nCandidate: ${slot.candidate_name}\nOriginal Time: ${new Date(slot.start_time).toLocaleString('en-NG')}\nNew Time: ${newStartLocal.toLocaleString('en-NG')}\n\nProceeding will automatically trigger an email notification to the candidate.`;
+      const confirmStr = `Are you sure you want to reschedule this BOOKED slot?\nCandidate: ${slot.candidate_name}\nOriginal Time: ${formatWAT(slot.start_time)}\nNew Time: ${formatWAT(newStartLocal)}\n\nProceeding will automatically trigger an email notification to the candidate.`;
       if (confirm(confirmStr)) {
         await doReschedule();
       }
@@ -1743,27 +1820,17 @@
   };
 
   // ── Email Log ─────────────────────────────────────────────────────────
-  const EMP_DOC_FORMATS = ['PDF', 'DOC', 'DOCX', 'JPG', 'PNG'];
+  const EMP_DOC_FORMATS = ['PDF', 'JPG', 'PNG'];
   const EMP_DOC_DEFAULTS = [
     ['nysc_certificate', 'NYSC certificate', ['PDF', 'JPG', 'PNG']],
-    ['guarantor_form', 'Guarantor form', ['PDF', 'DOC', 'DOCX']],
+    ['guarantor_form', 'Guarantor form', ['PDF', 'JPG', 'PNG']],
     ['utility_bill', 'Utility bill', ['PDF', 'JPG', 'PNG']],
     ['bank_statement', 'Bank statement', ['PDF']],
     ['passport_photograph', 'Passport photograph', ['JPG', 'PNG']],
   ];
-  let employmentDocRoles = [];
-
   window.loadEmploymentDocRoles = async function () {
-    const select = document.getElementById('empDocRole');
-    if (!select) return;
     const data = await recApiGet('/api/admin/recruitment/role-document-requirements');
-    if (!data) {
-      select.innerHTML = '<option value="">Could not load roles</option>';
-      return;
-    }
-    employmentDocRoles = data.roles || ['General'];
-    select.innerHTML = employmentDocRoles.map(role => `<option value="${esc(role)}">${esc(role)}</option>`).join('');
-    await loadEmploymentDocsForRole(select.value || employmentDocRoles[0]);
+    renderEmploymentDocRows((data?.documents?.length ? data.documents : defaultEmploymentDocs()).slice(0, 5));
   };
 
   window.loadEmploymentDocsForRole = async function (role) {
@@ -1776,29 +1843,8 @@
     renderEmploymentDocRows((data?.documents?.length ? data.documents : defaultEmploymentDocs()).slice(0, 5));
   };
 
-  window.addEmploymentDocRole = function () {
-    const input = document.getElementById('empDocNewRole');
-    const select = document.getElementById('empDocRole');
-    const role = (input?.value || '').trim();
-    if (!role || !select) return;
-    if (!employmentDocRoles.includes(role)) {
-      employmentDocRoles.push(role);
-      const opt = document.createElement('option');
-      opt.value = role;
-      opt.textContent = role;
-      select.appendChild(opt);
-    }
-    select.value = role;
-    input.value = '';
-    renderEmploymentDocRows(defaultEmploymentDocs());
-    const status = document.getElementById('empDocStatus');
-    if (status) status.textContent = 'New role ready. Save to create it.';
-  };
-
   window.saveEmploymentDocs = async function () {
-    const role = document.getElementById('empDocRole')?.value;
     const status = document.getElementById('empDocStatus');
-    if (!role) return;
     const docs = Array.from(document.querySelectorAll('.emp-doc-row')).map((row, idx) => {
       const label = row.querySelector('[data-field="label"]')?.value.trim() || '';
       const documentType = (row.querySelector('[data-field="document_type"]')?.value.trim() || label)
@@ -1816,7 +1862,7 @@
       if (status) status.textContent = 'Exactly five document rows are required.';
       return;
     }
-    const data = await recApiPost('/api/admin/recruitment/role-document-requirements', { role, documents: docs }, 'PUT');
+    const data = await recApiPost('/api/admin/recruitment/role-document-requirements', { documents: docs }, 'PUT');
     if (status) {
       status.textContent = data?.status === 'success' ? 'Saved.' : (data?.message || 'Save failed.');
       status.style.color = data?.status === 'success' ? '#1E7A45' : '#B3261E';
@@ -1923,6 +1969,7 @@
 
    async function recApiGet(url) {
     try {
+      if (window.getAdminCached) return await window.getAdminCached(url);
       const r = await fetch(url);
       if (r.status === 401) { window.location.href = '/admin/login'; return new Promise(() => {}); }
       return r.ok ? await r.json() : null;

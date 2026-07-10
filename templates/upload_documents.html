@@ -41,6 +41,13 @@
   .submit-all-btn:disabled { opacity:.4; cursor:not-allowed; }
   .instructions { background:var(--mfb-purple-tint); border:1px solid var(--mfb-purple); border-radius:8px;
                   padding:14px 16px; font-size:0.88rem; color:var(--mfb-purple-dark); margin-bottom:24px; }
+  .file-preview { display:none; margin:12px 0; border:1px solid var(--mfb-gray-300); border-radius:8px; overflow:hidden; background:#f5f5f5; }
+  .file-preview.active { display:block; }
+  .file-preview object, .file-preview img { display:block; width:100%; height:360px; border:0; object-fit:contain; }
+  .file-preview.expanded { position:fixed; inset:0; z-index:10000; margin:0; border-radius:0; background:#fff; padding:48px 12px 12px; }
+  .file-preview.expanded object, .file-preview.expanded img { height:calc(100vh - 60px); }
+  .preview-actions { display:flex; justify-content:flex-end; padding:8px; background:#fff; }
+  @media (max-width:600px) { .file-preview object, .file-preview img { height:52vh; } }
 </style>
 {% endblock %}
 
@@ -66,7 +73,7 @@
   {% for doc_req in required_docs %}
     {% set doc_type = doc_req.document_type %}
     {% set doc_label = doc_req.label %}
-    {% set accepted_formats = doc_req.accepted_formats or ['PDF','DOC','DOCX','JPG','PNG'] %}
+    {% set accepted_formats = ['PDF','JPG','PNG'] %}
     {% set doc_info = submitted.get(doc_type) %}
     {% set is_done = doc_info and doc_info[1] %}
     {% if doc_req.required and not is_done %}{% set completion.all_uploaded = false %}{% endif %}
@@ -97,9 +104,23 @@
           {{ rejection_note }}
         </p>
         {% endif %}
+        <div class="file-preview{% if is_done %} active{% endif %}" id="preview-{{ doc_type }}">
+          <div class="preview-actions">
+            <button type="button" onclick="event.stopPropagation();togglePreviewSize('{{ doc_type }}')">Expand / Close</button>
+          </div>
+          {% if is_done %}
+          {% if doc_info[1].lower().endswith(('.jpg', '.jpeg', '.png')) %}
+          <img src="/api/candidate/documents/{{ doc_info[6] }}/preview" id="previewMedia-{{ doc_type }}" alt="{{ doc_label }} preview">
+          {% else %}
+          <object data="/api/candidate/documents/{{ doc_info[6] }}/preview" type="application/pdf" id="previewMedia-{{ doc_type }}">
+            <p>We couldn't show this file here. Please try replacing it.</p>
+          </object>
+          {% endif %}
+          {% else %}<div id="previewMedia-{{ doc_type }}"></div>{% endif %}
+        </div>
         <div class="drop-zone" id="drop-{{ doc_type }}">
           <input type="file" id="file-{{ doc_type }}"
-                 accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                 accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                  onchange="handleFileSelect('{{ doc_type }}', this)">
           <div style="font-size:1.5rem">📎</div>
           <p>Click or drag &amp; drop a file here</p>
@@ -145,6 +166,23 @@ function handleFileSelect(docType, input) {
   document.getElementById(`fname-${docType}`).style.display = 'block';
   document.getElementById(`uploadBtn-${docType}`).disabled = false;
   document.getElementById(`err-${docType}`).style.display = 'none';
+  showLocalPreview(docType, file);
+}
+
+function showLocalPreview(docType, file) {
+  const wrap = document.getElementById(`preview-${docType}`);
+  const old = document.getElementById(`previewMedia-${docType}`);
+  const url = URL.createObjectURL(file);
+  const media = file.type === 'application/pdf' ? document.createElement('object') : document.createElement('img');
+  media.id = `previewMedia-${docType}`;
+  if (file.type === 'application/pdf') { media.data = url; media.type = 'application/pdf'; }
+  else { media.src = url; media.alt = 'Selected document preview'; }
+  old.replaceWith(media);
+  wrap.classList.add('active');
+}
+
+function togglePreviewSize(docType) {
+  document.getElementById(`preview-${docType}`).classList.toggle('expanded');
 }
 
 // Drag & drop for each zone
@@ -239,7 +277,7 @@ function pollUploadStatus(docType, jobId) {
       } else if (data.status === 'failed') {
         clearInterval(interval);
         prog.style.display = 'none';
-        err.textContent = data.error || 'Upload failed on server.';
+        err.textContent = data.error || "We couldn't upload this file. Please try again.";
         err.style.display = 'block';
         document.getElementById(`uploadBtn-${docType}`).disabled = false;
       }

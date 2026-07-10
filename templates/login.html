@@ -19,6 +19,7 @@
     {% endif %}
 
     <form method="POST" action="{{ url_for('recruitment.login') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="form-group" style="margin-bottom: 24px;">
         <label for="email" style="display: block; color: var(--mfb-ink); font-size: 13px; line-weight: 18px; font-weight: 600; margin-bottom: 6px;">
           Email address

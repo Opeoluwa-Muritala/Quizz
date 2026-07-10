@@ -155,13 +155,14 @@
       <h3>CV</h3>
       <div class="form-group">
         <label for="cvFile">Upload CV or resume <span class="req">*</span></label>
-        <p style="font-size:13px;color:var(--mfb-gray-600);margin:0 0 10px">PDF or Word document, max 10 MB.</p>
+        <p style="font-size:13px;color:var(--mfb-gray-600);margin:0 0 10px">PDF, JPG, or PNG, max 10 MB.</p>
         <div class="cv-drop" id="cvDrop">
-          <input type="file" id="cvFile" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onchange="handleCvSelect(this)">
+          <input type="file" id="cvFile" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onchange="handleCvSelect(this)">
           <div class="icon"><i class="ti ti-file-upload"></i></div>
           <p>Drag and drop, or click to browse</p>
           <div class="cv-name" id="cvName" style="display:none"></div>
         </div>
+        <div id="cvLocalPreview" style="display:none;margin-top:12px;border:1px solid var(--mfb-gray-300);border-radius:8px;overflow:hidden;background:#f5f5f5"></div>
         <div class="field-error" id="cvError">Upload your CV before submitting.</div>
       </div>
       <button class="btn-submit" id="submitBtn" onclick="submitApplication()">Submit application</button>
@@ -222,6 +223,15 @@ function handleCvSelect(input) {
   document.getElementById('cvName').style.display = 'block';
   document.getElementById('cvDrop').querySelector('p').style.display = 'none';
   setFieldError('cv', false);
+  const preview = document.getElementById('cvLocalPreview');
+  const url = URL.createObjectURL(file);
+  preview.innerHTML = '';
+  const media = file.type === 'application/pdf' ? document.createElement('object') : document.createElement('img');
+  if (file.type === 'application/pdf') { media.data = url; media.type = 'application/pdf'; }
+  else { media.src = url; media.alt = 'Selected CV preview'; media.style.objectFit = 'contain'; }
+  Object.assign(media.style, {width:'100%', height:'55vh', border:'0', display:'block'});
+  preview.appendChild(media);
+  preview.style.display = 'block';
 }
 
 const drop = document.getElementById('cvDrop');

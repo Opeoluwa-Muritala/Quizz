@@ -6,11 +6,15 @@ import json
 import random
 import datetime
 import threading
+import logging
+import time
+import requests
+import cloudinary.utils
 from zoneinfo import ZoneInfo
 from functools import wraps
 
 from flask import (Blueprint, request, jsonify, render_template,
-                   session, redirect, url_for, g)
+                   session, redirect, url_for, g, Response)
 
 from db import DBConnection
 from services.notifications import send_notification
@@ -21,6 +25,32 @@ from services.meetings import create_meeting
 
 recruitment = Blueprint("recruitment", __name__)
 LOCAL_TZ = ZoneInfo("Africa/Lagos")
+logger = logging.getLogger(__name__)
+
+
+def _inline_candidate_asset(public_id: str, stored_url: str):
+    """Return an authenticated candidate asset inline, including legacy raw files."""
+    resource_type = "raw" if "/raw/upload/" in (stored_url or "") else "image"
+    try:
+        signed_url, _ = cloudinary.utils.cloudinary_url(
+            public_id, resource_type=resource_type, type="authenticated",
+            sign_url=True, expires_at=int(time.time()) + 300,
+        )
+        if resource_type == "image":
+            return redirect(signed_url, code=302)
+        upstream = requests.get(signed_url, timeout=20)
+        if upstream.status_code != 200:
+            logger.error("Candidate preview fetch failed: status=%s public_id=%s",
+                         upstream.status_code, public_id)
+            return "We couldn't display this file. Please try again.", 502
+        return Response(
+            upstream.content,
+            mimetype=upstream.headers.get("Content-Type", "application/octet-stream"),
+            headers={"Content-Disposition": "inline"},
+        )
+    except Exception:
+        logger.exception("Candidate preview failed for public_id=%s", public_id)
+        return "We couldn't display this file. Please try again.", 502
 
 def get_or_create_cloudinary_folder(candidate_id: int) -> str:
     with DBConnection() as conn:
@@ -99,8 +129,8 @@ REQUIRED_DOCUMENTS = [
 
 
 def get_role_document_requirements(role: str | None) -> list[dict]:
-    """Return the configured five employment-document requirements for a role."""
-    role = (role or "").strip() or "General"
+    """Return the single employment-document requirement set used by every role."""
+    role = "General"
     with DBConnection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -110,19 +140,11 @@ def get_role_document_requirements(role: str | None) -> list[dict]:
                 ORDER BY position ASC;
             """, (role,))
             rows = cur.fetchall()
-            if not rows and role != "General":
-                cur.execute("""
-                    SELECT document_type, label, accepted_formats, required, position
-                    FROM role_document_requirements
-                    WHERE role = 'General'
-                    ORDER BY position ASC;
-                """)
-                rows = cur.fetchall()
 
     if not rows:
         return [
             {"document_type": d, "label": d.replace("_", " ").title(),
-             "accepted_formats": ["PDF", "DOC", "DOCX", "JPG", "PNG"],
+             "accepted_formats": ["PDF", "JPG", "PNG"],
              "required": True, "position": idx}
             for idx, d in enumerate(REQUIRED_DOCUMENTS, 1)
         ]
@@ -130,7 +152,8 @@ def get_role_document_requirements(role: str | None) -> list[dict]:
     return [{
         "document_type": r[0],
         "label": r[1],
-        "accepted_formats": list(r[2] or ["PDF", "DOC", "DOCX", "JPG", "PNG"]),
+        "accepted_formats": [f for f in list(r[2] or ["PDF", "JPG", "PNG"])
+                             if f in {"PDF", "JPG", "JPEG", "PNG"}],
         "required": r[3],
         "position": r[4],
     } for r in rows]
@@ -403,13 +426,26 @@ def dashboard():
             """, (candidate_id,))
             stage_history = cur.fetchall()
 
+            # Clean and format stage history list
+            stage_history_formatted = []
+            for item in stage_history:
+                from_s, to_s, ch_at, ch_by, reason = item
+                ch_at_str = ch_at.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %I:%M %p").lower() if ch_at else ""
+                
+                # Hide admin override reasons
+                clean_reason = None
+                if reason and "override" not in reason.lower():
+                    clean_reason = reason
+                    
+                stage_history_formatted.append((from_s, to_s, ch_at_str, ch_by, clean_reason))
+
             stage_windows = {}
             for sc in stage_configs:
                 s_name = sc[0]
                 opens = sc[1]
                 closes = sc[2]
-                opens_str = opens.astimezone(LOCAL_TZ).strftime("%b %d, %Y %I:%M %p WAT") if opens else None
-                closes_str = closes.astimezone(LOCAL_TZ).strftime("%b %d, %Y %I:%M %p WAT") if closes else None
+                opens_str = opens.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %I:%M %p").lower() if opens else None
+                closes_str = closes.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %I:%M %p").lower() if closes else None
                 stage_windows[s_name] = {
                     "opens_at": opens_str,
                     "closes_at": closes_str
@@ -423,7 +459,7 @@ def dashboard():
         latest_score=latest_score,
         docs=docs,
         stage_configs=stage_configs,
-        stage_history=stage_history,
+        stage_history=stage_history_formatted,
         stage_windows=stage_windows,
         required_docs=get_role_document_requirements(cand[10] if cand else None),
         now=datetime.datetime.utcnow(),
@@ -474,7 +510,7 @@ def documents():
             cur.execute("SELECT role FROM candidates WHERE id = %s;", (candidate_id,))
             cand_role = (cur.fetchone() or [None])[0]
             cur.execute("""
-                SELECT doc_type, url, verified, upload_status, uploaded_at, rejection_note
+                SELECT doc_type, url, verified, upload_status, uploaded_at, rejection_note, id
                 FROM candidate_documents WHERE candidate_id = %s;
             """, (candidate_id,))
             uploaded = cur.fetchall()
@@ -622,7 +658,8 @@ def api_apply():
     if cv_file:
         cv_file_bytes = cv_file.read()
         cv_mimetype   = cv_file.mimetype
-        err = validate_file(cv_file_bytes, cv_mimetype, ALLOWED_CV_MIMETYPES)
+        err = validate_file(cv_file_bytes, cv_mimetype, ALLOWED_CV_MIMETYPES,
+                            cv_file.filename)
         if err:
             return jsonify({"error": err}), 400
 
@@ -669,7 +706,7 @@ def api_apply():
         upload_job_id = enqueue_upload(
             cv_file_bytes, folder, "cv",
             candidate_id=candidate_id,
-            resource_type="raw",
+            resource_type="image",
             target_field="cv_url",
         )
 
@@ -701,7 +738,55 @@ def upload_status(job_id):
     result = get_job_status(job_id)
     if not result:
         return jsonify({"error": "Job not found."}), 404
+    candidate_id = session.get("candidate_id")
+    if not candidate_id:
+        return jsonify({"error": "Not authenticated."}), 401
+    # Upload job identifiers are not authorization tokens.
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM upload_jobs WHERE id = %s AND candidate_id = %s;",
+                        (job_id, candidate_id))
+            if not cur.fetchone():
+                return jsonify({"error": "Job not found."}), 404
     return jsonify(result)
+
+
+@recruitment.route("/api/candidate/cv/preview")
+def candidate_cv_preview():
+    candidate_id = session.get("candidate_id")
+    if not candidate_id:
+        return "Please sign in to view this file.", 401
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT uj.public_id, c.cv_url
+                FROM candidates c
+                JOIN upload_jobs uj ON uj.candidate_id = c.id
+                WHERE c.id = %s AND uj.target_field = 'cv_url'
+                  AND uj.status = 'done' AND uj.public_id IS NOT NULL
+                ORDER BY uj.updated_at DESC LIMIT 1;
+            """, (candidate_id,))
+            row = cur.fetchone()
+    if not row:
+        return "This file is not available yet.", 404
+    return _inline_candidate_asset(row[0], row[1])
+
+
+@recruitment.route("/api/candidate/documents/<int:doc_id>/preview")
+def candidate_document_preview(doc_id):
+    candidate_id = session.get("candidate_id")
+    if not candidate_id:
+        return "Please sign in to view this file.", 401
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT public_id, url FROM candidate_documents
+                WHERE id = %s AND candidate_id = %s AND public_id IS NOT NULL;
+            """, (doc_id, candidate_id))
+            row = cur.fetchone()
+    if not row:
+        return "This file is not available.", 404
+    return _inline_candidate_asset(row[0], row[1])
 
 
 # ── Assessment endpoints ──────────────────────────────────────────────────────
@@ -1214,7 +1299,8 @@ def upload_document():
 
     file_bytes = doc_file.read()
     mimetype   = doc_file.mimetype
-    err = validate_file(file_bytes, mimetype, ALLOWED_DOC_MIMETYPES)
+    err = validate_file(file_bytes, mimetype, ALLOWED_DOC_MIMETYPES,
+                        doc_file.filename)
     if err:
         return jsonify({"error": err}), 400
 
@@ -1236,7 +1322,7 @@ def upload_document():
     job_id = enqueue_upload(
         file_bytes, folder, doc_type,
         candidate_id=candidate_id,
-        resource_type="raw" if "pdf" in mimetype or "word" in mimetype else "image",
+        resource_type="image",
         doc_type=doc_type,
     )
 
