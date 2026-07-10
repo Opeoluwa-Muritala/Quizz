@@ -531,27 +531,12 @@
             <div class="rec-subpanel" id="rec-sub-employmentdocs">
                 <div class="card">
                     <h3 style="margin:0 0 4px;font-size:1rem">Employment Documents</h3>
-                    <p style="font-size:.85rem;color:#888;margin:0 0 16px">Configure exactly five required post-acceptance documents for each role.</p>
-                    <div class="rec-row" style="align-items:end">
-                        <div class="form-group">
-                            <label>Role</label>
-                            <select class="rec-ctrl" id="empDocRole" onchange="loadEmploymentDocsForRole(this.value)">
-                                <option value="">Loading roles...</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Add role</label>
-                            <div style="display:flex;gap:8px">
-                                <input class="rec-ctrl" id="empDocNewRole" type="text" placeholder="Role name">
-                                <button class="btn btn-secondary" type="button" onclick="addEmploymentDocRole()">Add</button>
-                            </div>
-                        </div>
-                    </div>
+                    <p style="font-size:.85rem;color:#888;margin:0 0 16px">Configure the five employment documents required from every candidate, regardless of role.</p>
                     <div id="empDocRows" style="display:grid;gap:12px;margin-top:14px">
-                        <p style="color:#888">Choose a role to edit its document requirements.</p>
+                        <p style="color:#888">Loading shared document requirements...</p>
                     </div>
                     <div style="display:flex;align-items:center;gap:12px;margin-top:16px">
-                        <button class="btn btn-primary" type="button" onclick="saveEmploymentDocs()">Save role documents</button>
+                        <button class="btn btn-primary" type="button" onclick="saveEmploymentDocs()">Save employment documents</button>
                         <span id="empDocStatus" style="font-size:.85rem;color:#666"></span>
                     </div>
                 </div>

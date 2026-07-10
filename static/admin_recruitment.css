@@ -1151,4 +1151,17 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   background: #f0f0f0;
   font-weight: 700;
 }
+.expanded-preview {
+  position: fixed !important;
+  inset: 0;
+  z-index: 10000;
+  margin: 0 !important;
+  padding: 48px 12px 12px;
+  background: #fff;
+}
 
+.expanded-preview .cv-iframe {
+  width: 100%;
+  height: calc(100vh - 68px);
+  border: 0;
+}

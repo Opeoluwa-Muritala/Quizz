@@ -6,12 +6,15 @@ import threading
 import datetime
 import time
 import requests
+import logging
 import cloudinary.utils
 
-from flask import Blueprint, request, jsonify, session, Response
+from flask import Blueprint, request, jsonify, session, Response, redirect
 
 from db import DBConnection
 from services.notifications import send_notification, resend_notification
+
+logger = logging.getLogger(__name__)
 from jobs.slot_generator import generate_slots
 
 admin_rec = Blueprint("admin_rec", __name__)
@@ -164,10 +167,10 @@ def get_candidate(cand_id):
         "candidate": {
             "id": cand[0], "name": cand[1], "email": cand[2], "phone": cand[3],
             "dob": cand[4].isoformat() if cand[4] else None,
-            "nysc_status": cand[5], "stage": cand[6],
+            "id": cand_id, "nysc_status": cand[5], "stage": cand[6],
             "stage_updated_at": cand[7].isoformat() if cand[7] else None,
             "eligibility_flag": cand[8], "flag_reason": cand[9],
-            "cv_url": cand[10],
+            "cv_url": f"/api/admin/recruitment/candidates/{cand_id}/cv" if cand[10] else None,
             "created_at": cand[11].isoformat() if cand[11] else None,
             "role": cand[12], "location": cand[13],
         },
@@ -195,7 +198,8 @@ def get_candidate(cand_id):
         "stage_history": [{
             "from": h[0], "to": h[1],
             "at": h[2].isoformat() if h[2] else None,
-            "by": h[3], "reason": h[4],
+            "by": h[3],
+            "reason": None if (h[4] and "override" in h[4].lower()) else h[4],
         } for h in history],
     })
 
@@ -1303,6 +1307,42 @@ def resend_email(log_id):
 
 # ── Documents admin view ──────────────────────────────────────────────────────
 
+@admin_rec.route("/api/admin/recruitment/candidates/<int:cand_id>/cv")
+def proxy_candidate_cv(cand_id):
+    err = _require_admin()
+    if err: return err
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT uj.public_id, c.cv_url FROM candidates c
+                JOIN upload_jobs uj ON uj.candidate_id = c.id
+                WHERE c.id = %s AND uj.target_field = 'cv_url'
+                  AND uj.status = 'done' AND uj.public_id IS NOT NULL
+                ORDER BY uj.updated_at DESC LIMIT 1;
+            """, (cand_id,))
+            row = cur.fetchone()
+    if not row:
+        return "This file is not available.", 404
+    public_id, stored_url = row
+    resource_type = "raw" if "/raw/upload/" in (stored_url or "") else "image"
+    try:
+        signed_url, _ = cloudinary.utils.cloudinary_url(
+            public_id, resource_type=resource_type, type="authenticated",
+            sign_url=True, expires_at=int(time.time()) + 300)
+        if resource_type == "image":
+            return redirect(signed_url, code=302)
+        resp = requests.get(signed_url, timeout=20)
+        if resp.status_code != 200:
+            logger.error("Admin CV fetch failed: candidate=%s status=%s", cand_id, resp.status_code)
+            return "We couldn't display this file. Please try again.", 502
+        return Response(resp.content,
+                        mimetype=resp.headers.get("Content-Type", "application/octet-stream"),
+                        headers={"Content-Disposition": "inline"})
+    except Exception:
+        logger.exception("Admin CV preview failed: candidate=%s", cand_id)
+        return "We couldn't display this file. Please try again.", 502
+
+
 @admin_rec.route("/api/admin/recruitment/documents/<int:cand_id>")
 def candidate_documents(cand_id):
     err = _require_admin()
@@ -1402,6 +1442,8 @@ def proxy_candidate_document(doc_id):
             sign_url=True,
             expires_at=int(time.time()) + 300,
         )
+        if resource_type == "image":
+            return redirect(signed_url, code=302)
         resp = requests.get(signed_url, timeout=20)
         if resp.status_code != 200:
             return "Failed to fetch file", resp.status_code
@@ -1454,13 +1496,9 @@ def role_document_requirements():
     if err: return err
 
     if request.method == "GET":
-        role = request.args.get("role", "").strip()
+        role = "General"
         with DBConnection() as conn:
             with conn.cursor() as cur:
-                if not role:
-                    cur.execute("SELECT DISTINCT role FROM role_document_requirements ORDER BY role;")
-                    roles = [r[0] for r in cur.fetchall()]
-                    return jsonify({"roles": roles})
                 cur.execute("""
                     SELECT id, role, document_type, label, accepted_formats, required, position
                     FROM role_document_requirements
@@ -1479,12 +1517,10 @@ def role_document_requirements():
         } for r in rows]})
 
     data = request.json or {}
-    role = (data.get("role") or "").strip()
+    role = "General"
     docs = data.get("documents") or []
-    if not role:
-        return jsonify({"error": "role is required"}), 400
     if len(docs) != 5:
-        return jsonify({"error": "Exactly 5 documents are required per role."}), 400
+        return jsonify({"error": "Exactly 5 employment documents are required."}), 400
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
@@ -1492,7 +1528,8 @@ def role_document_requirements():
             for idx, doc in enumerate(docs, 1):
                 label = (doc.get("label") or "").strip()
                 document_type = (doc.get("document_type") or label.lower().replace(" ", "_")).strip()
-                formats = doc.get("accepted_formats") or ["PDF", "DOC", "DOCX", "JPG", "PNG"]
+                formats = [f for f in (doc.get("accepted_formats") or ["PDF", "JPG", "PNG"])
+                           if f in {"PDF", "JPG", "JPEG", "PNG"}]
                 if not label or not document_type:
                     return jsonify({"error": "Each document needs a label."}), 400
                 cur.execute("""

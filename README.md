@@ -275,13 +275,19 @@ CLOUDINARY_API_SECRET=your-api-secret
 
 Supported upload types:
 
-- CV: PDF, DOC, DOCX.
-- Recruitment documents: PDF, DOC, DOCX, JPG, PNG.
+- CV: PDF, JPG, PNG.
+- Recruitment documents: PDF, JPG, PNG.
 - Quiz identity uploads: ID image and selfie image.
 
 Maximum file size for recruitment upload jobs is 10 MB.
 
 Uploads are processed in background threads and tracked in `upload_jobs`.
+
+### PDF previews
+
+Cloudinary PDF delivery must be enabled in the account's security settings. New PDFs are uploaded as image resources and their secure delivery URLs must contain `/image/upload/`. The app keeps candidate files authenticated and serves previews only after checking the current candidate or admin session.
+
+If a PDF downloads instead of appearing in the page, check the server logs and confirm that PDF delivery is enabled, the stored URL does not contain `fl_attachment`, the asset was not uploaded as a raw resource, and no response uses `Content-Disposition: attachment`. Existing raw assets remain viewable through the compatibility proxy, but replacing them uploads them in the new inline-preview format.
 
 ## Admin Security
 
@@ -321,6 +327,23 @@ JOB_SECRET=replace-with-a-strong-secret
 ```
 
 Never commit real passwords, database URLs, Gmail app passwords, Cloudinary secrets, or admin tokens.
+
+Performance-related variables:
+
+```env
+# Vercel/Neon pooler (default)
+DATABASE_POOL_MODE=serverless
+
+# Use persistent on an always-on Gunicorn host
+# DATABASE_POOL_MODE=persistent
+# DATABASE_POOL_MIN=1
+# DATABASE_POOL_MAX=10
+
+# Enable only for an explicit deployment migration run
+RUN_DB_MIGRATIONS=false
+```
+
+Production workers do not run schema migrations during startup. Before deploying schema changes, run one controlled application start with `RUN_DB_MIGRATIONS=true`, confirm it completes, then restore it to `false` for normal traffic.
 
 ## Local Setup
 

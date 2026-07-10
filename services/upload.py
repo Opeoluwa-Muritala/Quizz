@@ -4,22 +4,46 @@ Uploads run inline in the request handler so they block until completed.
 """
 import os
 import uuid
+import logging
+from pathlib import Path
 import cloudinary
 import cloudinary.uploader
 from db import DBConnection
 
-ALLOWED_CV_MIMETYPES = {"application/pdf", "application/msword",
-                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
-ALLOWED_DOC_MIMETYPES = ALLOWED_CV_MIMETYPES | {"image/jpeg", "image/png"}
+logger = logging.getLogger(__name__)
+
+ALLOWED_FILE_TYPES = {
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+}
+ALLOWED_CV_MIMETYPES = set(ALLOWED_FILE_TYPES.values())
+ALLOWED_DOC_MIMETYPES = ALLOWED_CV_MIMETYPES
 MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
-def validate_file(file_bytes: bytes, mimetype: str, allowed: set) -> str | None:
+def validate_file(file_bytes: bytes, mimetype: str, allowed: set,
+                  filename: str = "") -> str | None:
     """Return error string or None if valid."""
+    if not file_bytes:
+        return "The selected file is empty."
     if len(file_bytes) > MAX_FILE_BYTES:
         return f"File exceeds 10 MB limit ({len(file_bytes)//1024//1024} MB uploaded)."
     if mimetype not in allowed:
-        return f"File type '{mimetype}' not allowed. Accepted: {', '.join(allowed)}."
+        return "Only PDF, JPEG, and PNG files are allowed."
+    extension = Path(filename).suffix.lower()
+    if extension not in ALLOWED_FILE_TYPES:
+        return "Only .pdf, .jpg, .jpeg, and .png files are allowed."
+    if ALLOWED_FILE_TYPES[extension] != mimetype:
+        return "This file does not appear to be a valid PDF, JPG, or PNG."
+    signatures_valid = {
+        "application/pdf": file_bytes.startswith(b"%PDF-"),
+        "image/jpeg": file_bytes.startswith(b"\xff\xd8\xff"),
+        "image/png": file_bytes.startswith(b"\x89PNG\r\n\x1a\n"),
+    }
+    if not signatures_valid.get(mimetype, False):
+        return "This file appears to be damaged or in an unsupported format."
     return None
 
 
@@ -48,9 +72,14 @@ def enqueue_upload(file_bytes: bytes, folder: str, public_id: str,
         )
         url = result.get("secure_url", "")
         pid = result.get("public_id", "")
+        if (not url.startswith("https://") or "/image/upload/" not in url
+                or "fl_attachment" in url):
+            raise ValueError("Cloudinary returned a URL that cannot be previewed inline.")
     except Exception as exc:
+        logger.exception("Cloudinary upload failed for candidate_id=%s, doc_type=%s",
+                         candidate_id, doc_type or target_field)
         status = "failed"
-        error_msg = str(exc)
+        error_msg = "We couldn't upload this file. Please try again."
 
     with DBConnection() as conn:
         with conn.cursor() as cur:

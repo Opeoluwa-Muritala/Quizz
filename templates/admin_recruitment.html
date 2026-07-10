@@ -263,6 +263,47 @@
 <script>
 const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
+function formatStageText(stage) {
+  if (!stage) return '—';
+  const map = {
+    'applied': 'Applied',
+    'screening_failed': 'Screening Failed',
+    'screening_flagged': 'Screening Flagged',
+    'screening_passed': 'Screening Passed',
+    'assessment_in_progress': 'Assessment In Progress',
+    'assessment_failed': 'Assessment Failed',
+    'assessment_passed': 'Assessment Passed',
+    'interview_slot_pending': 'Interview Slot Pending',
+    'interview_scheduled': 'Interview Scheduled',
+    'interview_completed': 'Interview Completed',
+    'documents_pending': 'Documents Pending',
+    'documents_submitted': 'Documents Submitted',
+    'offered': 'Offered',
+    'rejected': 'Rejected'
+  };
+  if (map[stage]) return map[stage];
+  return stage.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatWAT(dateOrStr) {
+  if (!dateOrStr) return '—';
+  const d = new Date(dateOrStr);
+  if (isNaN(d.getTime())) return '—';
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Africa/Lagos',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+  const parts = formatter.formatToParts(d);
+  const m = {};
+  parts.forEach(p => m[p.type] = p.value);
+  return `${m.year}-${m.month}-${m.day} ${m.hour}:${m.minute} ${m.dayPeriod.toLowerCase()}`;
+}
+
 function getLocalDateString(d) {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -313,7 +354,7 @@ async function loadCandidates(page) {
           <tr>
             <td>${c.name}</td>
             <td style="color:#888">${c.email}</td>
-            <td><span class="stage-pill ${stagePillClass(c.stage)}">${c.stage}</span></td>
+            <td><span class="stage-pill ${stagePillClass(c.stage)}">${formatStageText(c.stage)}</span></td>
             <td>${c.latest_score !== null ? c.latest_score + '%' : '—'}</td>
             <td>${c.eligibility_flag ? '<span class="flag-icon" title="'+c.eligibility_flag_reason+'">⚠</span>' : ''}</td>
             <td style="color:#888">${c.created_at ? c.created_at.slice(0,10) : '—'}</td>
@@ -348,7 +389,7 @@ async function openCandModal(candId) {
   document.getElementById('candModalContent').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
       <div><label style="font-size:.75rem;color:#888">Stage</label>
-           <div><span class="stage-pill ${stagePillClass(c.stage)}">${c.stage}</span></div></div>
+           <div><span class="stage-pill ${stagePillClass(c.stage)}">${formatStageText(c.stage)}</span></div></div>
       <div><label style="font-size:.75rem;color:#888">Email</label><div>${c.email}</div></div>
       <div><label style="font-size:.75rem;color:#888">Phone</label><div>${c.phone||'—'}</div></div>
       <div><label style="font-size:.75rem;color:#888">NYSC Status</label><div>${c.nysc_status||'—'}</div></div>
@@ -362,7 +403,7 @@ async function openCandModal(candId) {
              'assessment_in_progress','assessment_failed','assessment_passed',
              'interview_slot_pending','interview_scheduled','documents_pending',
              'documents_submitted','interview_completed','offered','rejected']
-            .map(s => `<option value="${s}" ${s===c.stage?'selected':''}>${s}</option>`).join('')}
+            .map(s => `<option value="${s}" ${s===c.stage?'selected':''}>${formatStageText(s)}</option>`).join('')}
         </select>
         <button class="btn btn-primary" onclick="setStage(${candId})">Apply</button>
       </div>
@@ -373,7 +414,7 @@ async function openCandModal(candId) {
       <details><summary>Assessment Scores (${data.scores.length})</summary>
         <table style="margin-top:8px"><thead><tr><th>Label</th><th>Score</th><th>Result</th><th>Date</th></tr></thead>
         <tbody>${data.scores.map(s => `<tr><td>${s.label}</td><td>${s.score||'—'}%</td>
-          <td>${s.pass_fail||'—'}</td><td>${s.taken_at?s.taken_at.slice(0,16):'—'}</td></tr>`).join('')}</tbody>
+          <td>${s.pass_fail||'—'}</td><td>${formatWAT(s.taken_at)}</td></tr>`).join('')}</tbody>
         </table></details>` : ''}
     ${data.documents.length ? `
       <details><summary>Documents (${data.documents.length})</summary>
@@ -390,7 +431,7 @@ async function openCandModal(candId) {
       <details><summary>Interview Slots</summary>
         <table style="margin-top:8px"><thead><tr><th>Time</th><th>Interviewer</th><th>Link</th></tr></thead>
         <tbody>${data.interview_slots.map(s => `<tr>
-          <td>${s.start_time?new Date(s.start_time).toLocaleString('en-NG',{timeZone:'Africa/Lagos'}):'—'}</td>
+          <td>${formatWAT(s.start_time)}</td>
           <td>${s.interviewer||'—'}</td>
           <td>${s.meeting_link?'<a href="'+s.meeting_link+'" target="_blank">Join</a>':'—'}</td>
           </tr>`).join('')}</tbody>
@@ -398,8 +439,8 @@ async function openCandModal(candId) {
     <details><summary>Stage History (${data.stage_history.length})</summary>
       <table style="margin-top:8px"><thead><tr><th>From</th><th>To</th><th>By</th><th>Date</th></tr></thead>
       <tbody>${data.stage_history.map(h => `<tr>
-        <td>${h.from||'—'}</td><td>${h.to}</td><td>${h.by}</td>
-        <td style="color:#888">${h.at?h.at.slice(0,16):'—'}</td>
+        <td>${formatStageText(h.from)}</td><td>${formatStageText(h.to)}</td><td>${h.by}</td>
+        <td style="color:#888">${formatWAT(h.at)}</td>
         </tr>`).join('')}</tbody>
       </table></details>
   `;

@@ -1,374 +1,68 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
-{% block title %}Candidate Assessment Portal — Mainstreet Microfinance Bank{% endblock %}
+{% block title %}Mainstreet MFB Recruitment Portal{% endblock %}
 
-{% block content %}
-<div class="wizard-container">
-    <!-- Step 1: Registration -->
-    <section id="step-1" class="wizard-step active">
-        <div class="card reg-card">
-            <!-- Bank Logo -->
-            <div class="logo-container">
-                <img src="{{ url_for('static', filename='logo.png') }}" alt="Mainstreet Microfinance Bank Logo" class="bank-logo-img" width="290" height="100">
-            </div>
-            
-            <h1 class="step-heading">Aptitude Assessment</h1>
-            <p class="step-subtext">This assessment is for Mainstreet MFB recruitment candidates registered by HR.</p>
-            
-            <!-- Rejection Alerts -->
-            <div id="reg-error" class="alert alert-danger hidden"></div>
-            
-            <form id="reg-form" novalidate>
-                <div class="form-group">
-                    <label for="full-name">Full Name</label>
-                    <input type="text" id="full-name" required placeholder="e.g. John Doe">
-                </div>
-                <div class="form-group">
-                    <label for="email">Email Address</label>
-                    <input type="email" id="email" required placeholder="e.g. candidate@mail.com">
-                </div>
-                <p class="consent-statement">
-                    Your photo and ID will be captured and stored securely for verification purposes.
-                </p>
-                
-                <button type="submit" class="btn btn-primary btn-full">Continue</button>
-            </form>
-        </div>
-    </section>
+{% block extra_head %}
+<style>
+  .gateway-wrap { max-width: 800px; margin: 80px auto; padding: 0 16px; }
+  .gateway-header { text-align: center; margin-bottom: 48px; }
+  .gateway-header .logo { height: 48px; margin-bottom: 20px; }
+  .gateway-header h1 { font-family: var(--font-heading); font-size: 32px; font-weight: 700; color: var(--mfb-ink); margin: 0 0 8px; }
+  .gateway-header p { color: var(--mfb-gray-600); font-size: 16px; margin: 0; }
+  
+  .gateway-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .gateway-card { background: var(--mfb-white); border: 1px solid var(--mfb-gray-300); border-radius: 12px; padding: 32px; display: flex; flex-direction: column; box-shadow: var(--mfb-shadow-soft); transition: transform 0.2s, box-shadow 0.2s; }
+  .gateway-card:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08); border-color: var(--mfb-purple); }
+  
+  .gateway-card .icon-box { width: 48px; height: 48px; border-radius: 8px; background: var(--mfb-purple-tint); color: var(--mfb-purple); display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 20px; }
+  .gateway-card h2 { font-family: var(--font-body); font-size: 20px; font-weight: 700; color: var(--mfb-ink); margin: 0 0 12px; }
+  .gateway-card p { font-size: 14px; line-height: 20px; color: var(--mfb-gray-600); margin: 0 0 24px; flex: 1; }
+  
+  .gateway-btn { display: inline-flex; align-items: center; justify-content: center; width: 100%; border-radius: 8px; font-weight: 700; padding: 14px; text-decoration: none; font-size: 14px; transition: background 0.2s; }
+  .gateway-btn-primary { background: var(--mfb-purple); color: var(--mfb-white); }
+  .gateway-btn-primary:hover { background: var(--mfb-purple-dark); }
+  .gateway-btn-outline { border: 2px solid var(--mfb-purple); color: var(--mfb-purple); background: transparent; }
+  .gateway-btn-outline:hover { background: var(--mfb-purple-tint); }
 
-    <!-- Step 2: ID Card Upload -->
-    <section id="step-2" class="wizard-step">
-        <div class="card upload-card">
-            <h1 class="step-heading">Upload your ID card</h1>
-            <p class="step-subtext">Government-issued ID — National ID, Voter's Card, Driver's Licence, or International Passport.</p>
-            
-            <div id="id-dropzone" class="dropzone">
-                <div class="dropzone-content">
-                    <i class="ti-id-badge dropzone-icon"></i>
-                    <p class="dropzone-text">Click to upload or drag and drop</p>
-                    <p class="dropzone-subtext">JPG or PNG — max 1 MB</p>
-                </div>
-                <input type="file" id="id-file-input" accept="image/png, image/jpeg" class="hidden">
-                <div id="id-preview-container" class="preview-container hidden">
-                    <img id="id-preview" src="" alt="ID Preview">
-                    <button type="button" id="btn-remove-id" class="btn-remove">Remove</button>
-                </div>
-            </div>
-            
-            <div class="button-group">
-                <button type="button" id="btn-to-step3" class="btn btn-primary btn-full" disabled>Continue to selfie</button>
-            </div>
-        </div>
-    </section>
-
-    <!-- Step 3: Selfie Capture -->
-    <section id="step-3" class="wizard-step">
-        <div class="card upload-card">
-            <h1 class="step-heading">Take your selfie</h1>
-            <p class="step-subtext">Face the camera directly. Make sure your face is clearly visible and well-lit.</p>
-            
-            <!-- Live camera frame / still preview -->
-            <div class="camera-wrapper">
-                <div class="camera-container">
-                    <video id="webcam" autoplay playsinline muted class="camera-feed"></video>
-                    <canvas id="captured-canvas" class="hidden"></canvas>
-                    <div id="face-guide" class="face-guide"></div>
-                    <img id="selfie-still" src="" alt="Selfie Still" class="hidden">
-                </div>
-            </div>
-
-            <!-- Error message if camera fails -->
-            <div id="camera-error-msg" class="alert alert-warning hidden">
-                Camera access was denied. Please upload a selfie photo instead.
-            </div>
-
-            <!-- Fallback upload zone -->
-            <div id="selfie-fallback-zone" class="dropzone hidden">
-                <div class="dropzone-content">
-                    <i class="ti-camera dropzone-icon"></i>
-                    <p class="dropzone-text">Click to upload selfie</p>
-                    <p class="dropzone-subtext">JPG or PNG — max 1 MB</p>
-                </div>
-                <input type="file" id="selfie-file-input" accept="image/png, image/jpeg" class="hidden">
-                <div id="selfie-preview-container" class="preview-container hidden">
-                    <img id="selfie-preview" src="" alt="Selfie Preview">
-                    <button type="button" id="btn-remove-selfie" class="btn-remove">Remove</button>
-                </div>
-            </div>
-            
-            <div class="button-group">
-                <!-- Camera controls -->
-                <button type="button" id="btn-capture" class="btn btn-primary btn-full">Capture photo</button>
-                
-                <!-- Accept/Retake controls (initially hidden) -->
-                <div id="selfie-confirm-controls" class="hidden btn-row">
-                    <button type="button" id="btn-use-photo" class="btn btn-primary btn-half">Use this photo</button>
-                    <button type="button" id="btn-retake" class="btn btn-ghost btn-half">Retake</button>
-                </div>
-
-                <!-- Fallback continue button -->
-                <button type="button" id="btn-selfie-fallback-continue" class="btn btn-primary btn-full hidden" disabled>Continue to instructions</button>
-            </div>
-        </div>
-    </section>
-
-    <!-- Step 4: Instructions -->
-    <section id="step-4" class="wizard-step">
-        <!-- Pre-exam Social Banner -->
-        <div class="pre-exam-social-banner">
-            <div class="pre-exam-social-full">
-                <p class="pre-exam-text">Before you begin, stay connected with Mainstreet MFB! Follow us on Facebook, Instagram, TikTok, and LinkedIn to keep up with career opportunities, financial tips, product updates, and exciting news. You will have the opportunity to connect with us after completing your assessment. Good luck with your exam!</p>
-            </div>
-            <div class="pre-exam-social-collapsed">
-                <p class="pre-exam-text-collapsed">Follow Mainstreet MFB for career updates</p>
-            </div>
-            <div class="pre-exam-social-icons">
-                <a href="https://www.instagram.com/mainstreetmfbng" target="_blank" rel="noopener noreferrer" class="social-icon-link" aria-label="Instagram">
-                    <i class="ti ti-brand-instagram"></i>
-                </a>
-                <a href="https://www.facebook.com/mainstreet.mfb" target="_blank" rel="noopener noreferrer" class="social-icon-link" aria-label="Facebook">
-                    <i class="ti ti-brand-facebook"></i>
-                </a>
-                <a href="https://www.tiktok.com/@mainstreetmfb" target="_blank" rel="noopener noreferrer" class="social-icon-link" aria-label="TikTok">
-                    <i class="ti ti-brand-tiktok"></i>
-                </a>
-                <a href="https://twitter.com/Mainstreetmfbng" target="_blank" rel="noopener noreferrer" class="social-icon-link" aria-label="Twitter">
-                    <i class="ti ti-brand-x"></i>
-                </a>
-            </div>
-        </div>
-
-        <div class="instructions-layout">
-            <!-- Left column: Rules -->
-            <div class="instructions-rules">
-                <h1 class="step-heading">Exam Instructions</h1>
-                <p class="step-subtext">Please read the following guidelines carefully before starting.</p>
-                
-                <ol class="rules-list">
-                    <li>
-                        <span class="rule-num">1</span>
-                        <p class="rule-text">This exam moves forward only — you cannot return to a previous question or skip ahead.</p>
-                    </li>
-                    <li>
-                        <span class="rule-num">2</span>
-                        <p class="rule-text">Each question has a timed limit. If time runs out before you answer, the question is marked wrong and the exam moves on automatically.</p>
-                    </li>
-                    <li>
-                        <span class="rule-num">3</span>
-                        <p class="rule-text">If you answer before time runs out, your selected answer is locked when the timer expires or when you click Next.</p>
-                    </li>
-                    <li>
-                        <span class="rule-num">4</span>
-                        <p class="rule-text">Switching tabs or leaving this window is recorded and will be flagged to the HR team.</p>
-                    </li>
-                </ol>
-            </div>
-            
-            <!-- Right column: Stats -->
-            <div class="instructions-stats">
-                <div class="card stat-card">
-                    <h2 class="stat-card-title">Exam Summary</h2>
-                    <div class="stat-item">
-                        <span class="stat-label">Total Questions</span>
-                        <span id="stat-total-q" class="stat-value font-mono">-</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Time per Question</span>
-                        <span id="stat-time-q" class="stat-value font-mono">-</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Pass Mark</span>
-                        <span id="stat-pass-mark" class="stat-value font-mono">-</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Sections</span>
-                        <span class="stat-value">Numerical / Verbal / Logical</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Animated start button container -->
-        <div class="start-btn-container">
-            <button type="button" id="btn-start-exam" class="btn btn-primary start-confirm-btn">
-                <span class="btn-text">Start exam</span>
-                <span class="btn-progress-overlay"></span>
-            </button>
-        </div>
-    </section>
-
-    <!-- Step 5: Exam (The Quiz Workspace) -->
-    <section id="step-5" class="wizard-step exam-step">
-        <!-- Sticky Exam Topbar -->
-        <header class="exam-topbar">
-            <div class="topbar-logo">
-                <img src="{{ url_for('static', filename='logo.png') }}" alt="Mainstreet Microfinance Bank Logo" class="bank-logo-img" width="24" height="24">
-                <span class="topbar-wordmark">MAINSTREET MFB</span>
-            </div>
-            <div class="topbar-meta">
-                <span id="exam-section-label" class="section-tag-pill">Numerical</span>
-                <span id="exam-progress-text" class="progress-indicator">Question 1 of 50</span>
-                <button type="button" id="btn-mobile-grid-toggle" class="btn-mobile-grid">Q1/50 Grid</button>
-            </div>
-            <div id="exam-timer-display" class="timer-display font-mono" aria-live="assertive">60</div>
-        </header>
-
-        <div class="exam-body-layout">
-            <!-- Left Sidebar (Desktop only) -->
-            <aside class="exam-sidebar">
-                <div class="sidebar-scrollable">
-                    <div class="sidebar-section-group" id="grid-group-numerical">
-                        <h3 class="sidebar-section-header">NUMERICAL</h3>
-                        <div class="grid-layout" id="grid-numerical"></div>
-                    </div>
-                    <div class="sidebar-section-group" id="grid-group-verbal">
-                        <h3 class="sidebar-section-header">VERBAL</h3>
-                        <div class="grid-layout" id="grid-verbal"></div>
-                    </div>
-                    <div class="sidebar-section-group" id="grid-group-logical">
-                        <h3 class="sidebar-section-header">LOGICAL</h3>
-                        <div class="grid-layout" id="grid-logical"></div>
-                    </div>
-                </div>
-            </aside>
-
-            <!-- Main Question Area -->
-            <article class="exam-main-content">
-                <div id="exam-section-tag" class="exam-section-tag">Numerical Reasoning</div>
-                <h2 id="exam-question-stem" class="exam-question-stem">Loading question...</h2>
-                
-                <div id="options-container" class="options-container">
-                    <!-- Dynamic Options -->
-                </div>
-
-                <div class="exam-actions">
-                    <button type="button" id="btn-next-question" class="btn btn-primary">Next question &rarr;</button>
-                </div>
-            </article>
-        </div>
-    </section>
-
-    <!-- Mobile Bottom Sheet Grid -->
-    <div id="mobile-bottom-sheet" class="bottom-sheet hidden">
-        <div class="bottom-sheet-overlay"></div>
-        <div class="bottom-sheet-content">
-            <div class="bottom-sheet-header">
-                <h3>Question Status Grid</h3>
-                <button type="button" id="btn-close-sheet" class="btn-close">&times;</button>
-            </div>
-            <div class="bottom-sheet-body">
-                <div class="sheet-section">
-                    <h4>NUMERICAL</h4>
-                    <div class="grid-layout" id="mobile-grid-numerical"></div>
-                </div>
-                <div class="sheet-section">
-                    <h4>VERBAL</h4>
-                    <div class="grid-layout" id="mobile-grid-verbal"></div>
-                </div>
-                <div class="sheet-section">
-                    <h4>LOGICAL</h4>
-                    <div class="grid-layout" id="mobile-grid-logical"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Step 6: Results -->
-    <section id="step-6" class="wizard-step">
-        <!-- Spinner Overlay during grading -->
-        <div id="grading-spinner" class="grading-loading">
-            <div class="spinner spinner-large"></div>
-            <p>Evaluating answers and grading your exam, please wait...</p>
-        </div>
-
-        <!-- Result Content -->
-        <div id="result-content-container" class="card result-card hidden">
-            <!-- Print Header (Hidden on screen) -->
-            <div class="print-header hidden-screen">
-                <div class="print-logo">
-                    <img src="{{ url_for('static', filename='logo.png') }}" alt="Mainstreet Microfinance Bank Logo" class="bank-logo-img" width="48" height="48">
-                    <div class="bank-wordmark">MAINSTREET MICROFINANCE BANK</div>
-                </div>
-                <h1 class="print-title">Aptitude Test Result Certificate</h1>
-            </div>
-
-            <div class="result-score-block">
-                <p class="result-candidate-label">Candidate Name</p>
-                <h2 id="res-candidate-name" class="result-candidate-name">-</h2>
-                
-                <div class="score-badge-row">
-                    <div id="res-badge" class="badge">PASS</div>
-                    <div id="res-percent" class="result-score-value font-mono">0.00%</div>
-                    <div id="res-fraction" class="result-score-fraction font-mono">(0/50)</div>
-                </div>
-            </div>
-
-            <h3 class="breakdown-title">Section Performance Breakdown</h3>
-            <table class="breakdown-table">
-                <thead>
-                    <tr>
-                        <th>Section</th>
-                        <th>Correct</th>
-                        <th>Total</th>
-                        <th>Performance (%)</th>
-                    </tr>
-                </thead>
-                <tbody id="breakdown-rows">
-                    <!-- Dynamic breakdown lines -->
-                </tbody>
-            </table>
-
-            <div class="result-footer-details">
-                <div class="result-ref-row">
-                    <span class="ref-label">Reference Number:</span>
-                    <span id="res-ref-number" class="ref-value font-mono">-</span>
-                </div>
-                <p class="result-closing-message">Your results have been submitted. The HR team will be in touch.</p>
-            </div>
-
-            <div class="result-actions no-print">
-                <button type="button" id="btn-print-result" class="btn btn-primary">Download result</button>
-            </div>
-            
-            <!-- Post-exam Social Section -->
-            <div class="post-exam-social no-print">
-                <hr class="post-exam-divider">
-                <h3 class="post-exam-heading">Stay connected</h3>
-                <p class="post-exam-text">Thank you for completing the assessment. Stay connected with Mainstreet MFB by following us on our social platforms for updates, career opportunities, financial insights, and more.</p>
-                <div class="post-exam-icons">
-                    <a href="https://www.instagram.com/mainstreetmfbng" target="_blank" rel="noopener noreferrer" class="social-btn" aria-label="Instagram">
-                        <i class="ti ti-brand-instagram"></i>
-                    </a>
-                    <a href="https://www.facebook.com/mainstreet.mfb" target="_blank" rel="noopener noreferrer" class="social-btn" aria-label="Facebook">
-                        <i class="ti ti-brand-facebook"></i>
-                    </a>
-                    <a href="https://www.tiktok.com/@mainstreetmfb" target="_blank" rel="noopener noreferrer" class="social-btn" aria-label="TikTok">
-                        <i class="ti ti-brand-tiktok"></i>
-                    </a>
-                    <a href="https://twitter.com/Mainstreetmfbng" target="_blank" rel="noopener noreferrer" class="social-btn" aria-label="Twitter">
-                        <i class="ti ti-brand-x"></i>
-                    </a>
-                </div>
-            </div>
-            
-            <!-- Print Footer (Hidden on screen) -->
-            <div class="print-footer hidden-screen">
-                <hr class="print-divider">
-                <p class="print-footer-text">This is a system-generated result statement for Mainstreet Microfinance Bank Limited.</p>
-                <p class="print-timestamp" id="res-print-time"></p>
-            </div>
-        </div>
-    </section>
-</div>
+  @media(max-width:640px) {
+    .gateway-wrap { margin: 40px auto; }
+    .gateway-grid { grid-template-columns: 1fr; gap: 16px; }
+  }
+</style>
 {% endblock %}
 
-{% block extra_js %}
-<!-- Pass config seed defaults from server-side Flask settings -->
-<script>
-    window.EXAM_DEFAULTS = {
-        title: "{{ exam_title }}",
-        passMark: 50.0, // Initial placeholder, will read from API config
-        secondsPerQuestion: 60
-    };
-</script>
+{% block content %}
+<div class="gateway-wrap">
+  <div class="gateway-header">
+    <img class="logo" src="{{ url_for('static', filename='logo.png') }}" alt="Mainstreet Microfinance Bank Logo">
+    <h1>Recruitment Portal</h1>
+    <p>Join our team and build a rewarding career in microfinance banking.</p>
+  </div>
+
+  <div class="gateway-grid">
+    <!-- Option 1: Start Application -->
+    <div class="gateway-card">
+      <div class="icon-box">
+        <i class="ti ti-user-plus"></i>
+      </div>
+      <h2>Start Application</h2>
+      <p>Submit your details, select your preferred role and branch location, and upload your CV to start the recruitment process.</p>
+      <a href="{{ url_for('recruitment.apply') }}" class="gateway-btn gateway-btn-primary">
+        Apply Now →
+      </a>
+    </div>
+
+    <!-- Option 2: Check Status -->
+    <div class="gateway-card">
+      <div class="icon-box">
+        <i class="ti ti-login"></i>
+      </div>
+      <h2>Check Application Status</h2>
+      <p>Already applied? Sign in with your email address to check your stage, upload documents, or schedule an interview.</p>
+      <a href="{{ url_for('recruitment.login') }}" class="gateway-btn gateway-btn-outline">
+        Check Status →
+      </a>
+    </div>
+  </div>
+</div>
 {% endblock %}

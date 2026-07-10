@@ -384,7 +384,7 @@
   {% else %}
   <div class="stage-card">
     <h2>Application in Progress</h2>
-    <p>Your application is being processed. Current stage: <strong>{{ stage }}</strong></p>
+    <p>Your application is being processed. Current stage: <strong>{{ stage.replace('_', ' ')|title }}</strong></p>
   </div>
   {% endif %}
 
@@ -398,7 +398,7 @@
             <div>
               <div class="timeline-label">{{ (item[1] or 'updated').replace('_', ' ')|title }}</div>
               <div class="timeline-meta">
-                {{ item[2].isoformat() if item[2] else '' }}
+                {{ item[2] }}
                 {% if item[4] %} · {{ item[4] }}{% endif %}
               </div>
             </div>
@@ -422,10 +422,24 @@
       {% if candidate[5] %}
       <div class="info-item">
         <label>CV</label>
-        <span><a href="{{ candidate[5] }}" target="_blank">View uploaded CV</a></span>
+        <span><button type="button" class="action-btn outline" onclick="toggleCandidateCv()">View uploaded CV</button></span>
       </div>
       {% endif %}
     </div>
+    {% if candidate[5] %}
+    <div id="candidateCvPreview" style="display:none;margin-top:16px;border:1px solid var(--mfb-gray-300);border-radius:8px;overflow:hidden;background:#f5f5f5">
+      <div style="display:flex;justify-content:flex-end;padding:8px;background:#fff">
+        <button type="button" onclick="expandCandidateCv()">Expand / Close</button>
+      </div>
+      {% if candidate[5].lower().endswith(('.jpg', '.jpeg', '.png')) %}
+      <img src="/api/candidate/cv/preview" alt="Uploaded CV preview" style="width:100%;height:60vh;object-fit:contain;display:block">
+      {% else %}
+      <object data="/api/candidate/cv/preview" type="application/pdf" style="width:100%;height:60vh;border:0;display:block">
+        <p>We couldn't show your CV here. Please try again later.</p>
+      </object>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 </div>
@@ -433,19 +447,45 @@
 
 {% block extra_js %}
 <script>
+function toggleCandidateCv() {
+  const preview = document.getElementById('candidateCvPreview');
+  preview.style.display = preview.style.display === 'none' ? 'block' : 'none';
+}
+function expandCandidateCv() {
+  const preview = document.getElementById('candidateCvPreview');
+  const expanded = preview.dataset.expanded === 'true';
+  preview.dataset.expanded = String(!expanded);
+  preview.style.cssText = expanded
+    ? 'display:block;margin-top:16px;border:1px solid var(--mfb-gray-300);border-radius:8px;overflow:hidden;background:#f5f5f5'
+    : 'display:block;position:fixed;inset:0;z-index:10000;background:#fff;padding:48px 12px 12px';
+}
 function csrfMeta() {
   return document.querySelector('meta[name="csrf-token"]')?.content || '';
+}
+
+function formatWAT(utcIso) {
+  if (!utcIso) return '—';
+  const d = new Date(utcIso);
+  if (isNaN(d.getTime())) return '—';
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Africa/Lagos',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+  const parts = formatter.formatToParts(d);
+  const m = {};
+  parts.forEach(p => m[p.type] = p.value);
+  return `${m.year}-${m.month}-${m.day} ${m.hour}:${m.minute} ${m.dayPeriod.toLowerCase()}`;
 }
 
 // Localize interview time
 const timeEl = document.getElementById('interviewTime');
 if (timeEl && timeEl.dataset.utc) {
-  const d = new Date(timeEl.dataset.utc);
-  timeEl.textContent = d.toLocaleString('en-NG', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-    hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
-    timeZone: 'Africa/Lagos',
-  });
+  timeEl.textContent = formatWAT(timeEl.dataset.utc);
 }
 
 // Enable join button 15 min before interview
