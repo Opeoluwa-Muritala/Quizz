@@ -8,7 +8,6 @@ from db import DBConnection
 def init_recruitment_db():
     with DBConnection() as conn:
         with conn.cursor() as cur:
-            # ── Extend candidates table ─────────────────────────────────
             cur.execute("""
                 ALTER TABLE candidates
                     ADD COLUMN IF NOT EXISTS dob DATE,
@@ -17,8 +16,18 @@ def init_recruitment_db():
                     ADD COLUMN IF NOT EXISTS stage TEXT DEFAULT 'applied',
                     ADD COLUMN IF NOT EXISTS stage_updated_at TIMESTAMPTZ DEFAULT NOW(),
                     ADD COLUMN IF NOT EXISTS eligibility_flag BOOLEAN DEFAULT FALSE,
-                    ADD COLUMN IF NOT EXISTS eligibility_flag_reason TEXT;
+                    ADD COLUMN IF NOT EXISTS eligibility_flag_reason TEXT,
+                    ADD COLUMN IF NOT EXISTS ref_token TEXT;
             """)
+            cur.execute("SELECT id FROM candidates WHERE ref_token IS NULL;")
+            rows_to_update = cur.fetchall()
+            if rows_to_update:
+                import secrets
+                for (cid,) in rows_to_update:
+                    token = secrets.token_hex(6) # 12 character unique token
+                    cur.execute("UPDATE candidates SET ref_token = %s WHERE id = %s;", (token, cid))
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_candidates_ref_token ON candidates (ref_token);")
+
 
             # ── scores – one row per assessment attempt ─────────────────
             cur.execute("""
@@ -230,6 +239,33 @@ def init_recruitment_db():
                 ADD COLUMN IF NOT EXISTS interview_instructions TEXT;
             """)
 
+            # ── add title column to generated_slots if missing ──────────
+            cur.execute("""
+                ALTER TABLE generated_slots
+                ADD COLUMN IF NOT EXISTS title TEXT;
+            """)
+
+            # ── create index for generated_slots optimization ──────────
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_generated_slots_interviewer_time
+                ON generated_slots (interviewer_id, start_time, end_time);
+            """)
+
+            # ── add color column to interviewers if missing ─────────────
+            cur.execute("""
+                ALTER TABLE interviewers
+                ADD COLUMN IF NOT EXISTS color TEXT;
+            """)
+            cur.execute("SELECT id FROM interviewers WHERE color IS NULL ORDER BY id;")
+            null_rows = cur.fetchall()
+            colors_palette = ['#89268B', '#1E7A45', '#B8790A', '#2B6CB0', '#319795', '#D53F8C', '#4A5568']
+            for idx, r in enumerate(null_rows):
+                cur.execute(
+                    "UPDATE interviewers SET color = %s WHERE id = %s;",
+                    (colors_palette[idx % len(colors_palette)], r[0])
+                )
+
+
             # ── seed default recruitment cycle ──────────────────────────
             cur.execute("SELECT COUNT(*) FROM recruitment_cycles;")
             if cur.fetchone()[0] == 0:
@@ -259,18 +295,20 @@ def init_recruitment_db():
                         ON CONFLICT (cycle_id, stage_name) DO NOTHING;
                     """, row)
 
-            cur.execute("SELECT COUNT(*) FROM role_document_requirements;")
+            cur.execute("SELECT COUNT(*) FROM role_document_requirements WHERE document_type = 'waec_cert';")
             if cur.fetchone()[0] == 0:
+                cur.execute("DELETE FROM role_document_requirements;")
                 default_roles = [
                     "Loan Officer", "Operations", "IT&S", "Audit", "Credit Risk",
                     "HR", "Recovery", "General"
                 ]
                 default_docs = [
-                    ("nysc_certificate", "NYSC certificate", 1),
-                    ("guarantor_form", "Guarantor form", 2),
-                    ("utility_bill", "Utility bill", 3),
-                    ("bank_statement", "Bank statement", 4),
-                    ("passport_photograph", "Passport photograph", 5),
+                    ("cv", "CV / Resume", 1),
+                    ("waec_cert", "WAEC Certificate", 2),
+                    ("nysc_cert", "NYSC Certificate", 3),
+                    ("university_cert", "University Certificate", 4),
+                    ("professional_cert", "Professional Certificate", 5),
+                    ("birth_cert", "Birth Certificate", 6),
                 ]
                 for role in default_roles:
                     for doc_type, label, position in default_docs:

@@ -247,11 +247,10 @@ def set_candidate_stage(cand_id):
 
     if notify and new_stage in STAGE_EMAIL_EVENT:
         event = STAGE_EMAIL_EVENT[new_stage]
-        threading.Thread(
-            target=send_notification,
-            args=(cand_id, new_stage, event),
-            daemon=True,
-        ).start()
+        try:
+            send_notification(cand_id, new_stage, event)
+        except Exception as e:
+            print(f"Error sending notification to {cand_id}: {e}")
 
     return jsonify({"status": "success", "old_stage": old_stage, "new_stage": new_stage})
 
@@ -291,12 +290,17 @@ def interviewers():
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM interviewers;")
+            count = cur.fetchone()[0]
+            colors_palette = ['#89268B', '#1E7A45', '#B8790A', '#2B6CB0', '#319795', '#D53F8C', '#4A5568']
+            color = colors_palette[count % len(colors_palette)]
+
             cur.execute("""
                 INSERT INTO interviewers
-                    (name, email, meeting_provider, google_calendar_id, zoom_user_id)
-                VALUES (%s, %s, %s, %s, %s)
+                    (name, email, meeting_provider, google_calendar_id, zoom_user_id, color)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id;
-            """, (name, email, provider, gcal_id, zoom_uid))
+            """, (name, email, provider, gcal_id, zoom_uid, color))
             new_id = cur.fetchone()[0]
         conn.commit()
 
@@ -398,8 +402,11 @@ def availability_rules():
             rule_id = cur.fetchone()[0]
         conn.commit()
 
-    # Trigger slot generation in background
-    threading.Thread(target=generate_slots, kwargs={"weeks_ahead": 4}, daemon=True).start()
+    # Trigger slot generation synchronously for serverless environment
+    try:
+        generate_slots(weeks_ahead=4)
+    except Exception as e:
+        print(f"Error generating slots: {e}")
 
     return jsonify({"status": "success", "id": rule_id})
 
@@ -452,44 +459,140 @@ def list_slots():
     err = _require_admin()
     if err: return err
 
-    from_dt = request.args.get("from", datetime.date.today().isoformat())
-    to_dt   = request.args.get("to",
-                (datetime.date.today() + datetime.timedelta(days=28)).isoformat())
+    from_str = request.args.get("start_date") or request.args.get("from")
+    to_str   = request.args.get("end_date") or request.args.get("to")
+    if not from_str or not to_str:
+        from_str = datetime.date.today().isoformat()
+        to_str = (datetime.date.today() + datetime.timedelta(days=28)).isoformat()
+
+    try:
+        start_d = datetime.date.fromisoformat(from_str)
+        end_d = datetime.date.fromisoformat(to_str)
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+
+    if end_d < start_d:
+        return jsonify({"error": "end_date cannot be before start_date"}), 400
+
+    delta = end_d - start_d
+    if delta.days > 62:
+        return jsonify({"error": "Date range cannot exceed 62 days"}), 400
+
+    import pytz
+    lagos_tz = pytz.timezone('Africa/Lagos')
+    start_dt = lagos_tz.localize(datetime.datetime.combine(start_d, datetime.time.min))
+    end_dt = lagos_tz.localize(datetime.datetime.combine(end_d, datetime.time.max))
+
+    interviewer_ids = request.args.getlist("interviewer_id")
+    if interviewer_ids:
+        try:
+            interviewer_ids = [int(x) for x in interviewer_ids]
+        except ValueError:
+            return jsonify({"error": "Invalid interviewer_id"}), 400
+
+    where_clauses = ["sl.start_time >= %s", "sl.start_time <= %s"]
+    params = [start_dt, end_dt]
+
+    if interviewer_ids:
+        where_clauses.append("sl.interviewer_id = ANY(%s)")
+        params.append(interviewer_ids)
+
+    where_sql = " AND ".join(where_clauses)
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-                SELECT gs.id, gs.start_time, gs.end_time, gs.is_booked, gs.is_blocked,
-                       gs.meeting_link, gs.meeting_provider,
-                       i.name AS primary_interviewer,
-                       c.full_name AS candidate_name, c.email AS candidate_email,
+            cur.execute(f"""
+                WITH slot_list AS (
+                    SELECT gs.id, gs.start_time, gs.end_time, gs.is_booked, gs.is_blocked,
+                           gs.meeting_link, gs.meeting_provider, gs.interviewer_id, gs.candidate_id, gs.title,
+                           LEAD(gs.start_time) OVER (PARTITION BY gs.interviewer_id ORDER BY gs.start_time) AS next_start_time
+                    FROM generated_slots gs
+                )
+                SELECT sl.id, sl.start_time, sl.end_time, sl.is_booked, sl.is_blocked, sl.meeting_link, sl.meeting_provider,
+                       i.name AS primary_interviewer, i.id AS interviewer_id, i.color AS interviewer_color,
+                       c.full_name AS candidate_name, c.email AS candidate_email, c.role AS candidate_role, c.id AS candidate_id,
+                       sl.title,
                        COALESCE(
                            STRING_AGG(pi.name, ', ' ORDER BY pi.name),
                            i.name
-                       ) AS all_interviewers
-                FROM generated_slots gs
-                JOIN interviewers i ON gs.interviewer_id = i.id
-                LEFT JOIN candidates c ON gs.candidate_id = c.id
-                LEFT JOIN slot_interviewers si ON si.slot_id = gs.id
+                       ) AS all_interviewers,
+                       sl.next_start_time
+                FROM slot_list sl
+                JOIN interviewers i ON sl.interviewer_id = i.id
+                LEFT JOIN candidates c ON sl.candidate_id = c.id
+                LEFT JOIN slot_interviewers si ON si.slot_id = sl.id
                 LEFT JOIN interviewers pi ON pi.id = si.interviewer_id
-                WHERE gs.start_time >= %s AND gs.start_time < %s
-                GROUP BY gs.id, gs.start_time, gs.end_time, gs.is_booked, gs.is_blocked,
-                         gs.meeting_link, gs.meeting_provider, i.name,
-                         c.full_name, c.email
-                ORDER BY gs.start_time;
-            """, (from_dt, to_dt))
+                WHERE {where_sql}
+                GROUP BY sl.id, sl.start_time, sl.end_time, sl.is_booked, sl.is_blocked, sl.meeting_link, sl.meeting_provider,
+                         i.name, i.id, i.color, c.full_name, c.email, c.role, c.id, sl.title, sl.next_start_time
+                ORDER BY sl.start_time;
+            """, params)
             rows = cur.fetchall()
 
-    return jsonify([{
-        "id": r[0],
-        "start_time": r[1].isoformat(),
-        "end_time":   r[2].isoformat(),
-        "is_booked":  r[3], "is_blocked": r[4],
-        "meeting_link": r[5], "meeting_provider": r[6],
-        "interviewer": r[7],
-        "candidate_name": r[8], "candidate_email": r[9],
-        "interviewers": r[10],
-    } for r in rows])
+    results = []
+    for r in rows:
+        (s_id, s_start, s_end, is_booked, is_blocked, meeting_link, meeting_provider,
+         i_name, i_id, i_color, c_name, c_email, c_role, c_id, title, all_interviewers, next_start) = r
+
+        # Apply Lagos timezone offset
+        start_lagos = s_start.astimezone(lagos_tz)
+        end_lagos = s_end.astimezone(lagos_tz)
+
+        # Computed title fallback
+        if not title:
+            title = f"{i_name} — {start_lagos.strftime('%I:%M %p')}"
+
+        # Status mapping
+        status = "open"
+        if is_blocked:
+            status = "blocked"
+        elif is_booked:
+            status = "booked"
+
+        # Candidate mapping
+        candidate = None
+        if is_booked:
+            candidate = {
+                "id": c_id,
+                "name": c_name,
+                "email": c_email,
+                "role": c_role
+            }
+
+        # break_after_minutes
+        break_after_minutes = None
+        if next_start:
+            break_after_minutes = int((next_start - s_end).total_seconds() / 60)
+
+        results.append({
+            "id": s_id,
+            "title": title,
+            "start_time": start_lagos.isoformat(),
+            "end_time": end_lagos.isoformat(),
+            "status": status,
+            "meeting_provider": meeting_provider,
+            "interviewer": {
+                "id": i_id,
+                "name": i_name,
+                "color": i_color or "#6B6470",
+                "all_names": all_interviewers
+            },
+            "candidate": candidate,
+            "meeting_link": meeting_link,
+            "break_after_minutes": break_after_minutes,
+            # include raw bools for backwards compatibility
+            "is_booked": is_booked,
+            "is_blocked": is_blocked,
+            "candidate_name": c_name,
+            "candidate_id": c_id,
+            "candidate_email": c_email,
+            "candidate_role": c_role,
+            "interviewers": all_interviewers,
+            "interviewer_id": i_id,
+            "interviewer": i_name
+        })
+
+    return jsonify(results)
 
 
 @admin_rec.route("/api/admin/recruitment/slots/<int:slot_id>/block", methods=["POST"])
@@ -503,11 +606,438 @@ def block_slot(slot_id):
     with DBConnection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                UPDATE generated_slots SET is_blocked = %s WHERE id = %s;
+                UPDATE generated_slots SET is_blocked = %s WHERE id = %s AND is_booked = FALSE;
             """, (blocked, slot_id))
         conn.commit()
 
     return jsonify({"status": "success", "blocked": blocked})
+
+
+@admin_rec.route("/api/admin/recruitment/slots/batch-block", methods=["POST"])
+def batch_block():
+    err = _require_admin()
+    if err: return err
+
+    data = request.json or {}
+    slot_ids = data.get("slot_ids")
+    blocked = data.get("blocked", True)
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            if slot_ids is not None:
+                if not slot_ids:
+                    return jsonify({"status": "success", "blocked": 0, "skipped_booked": 0})
+                
+                cur.execute("""
+                    SELECT COUNT(*) FROM generated_slots
+                    WHERE id = ANY(%s) AND is_booked = TRUE;
+                """, (slot_ids,))
+                skipped_booked = cur.fetchone()[0]
+
+                cur.execute("""
+                    UPDATE generated_slots
+                    SET is_blocked = %s
+                    WHERE id = ANY(%s) AND is_booked = FALSE;
+                """, (blocked, slot_ids))
+                updated_count = cur.rowcount
+            else:
+                interviewer_id = data.get("interviewer_id")
+                start_str = data.get("start_time")
+                end_str = data.get("end_time")
+                if not interviewer_id or not start_str or not end_str:
+                    return jsonify({"error": "Must specify either slot_ids or interviewer_id/start_time/end_time range."}), 400
+
+                start_t = datetime.datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                end_t = datetime.datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+
+                cur.execute("""
+                    SELECT COUNT(*) FROM generated_slots
+                    WHERE interviewer_id = %s
+                      AND start_time >= %s AND end_time <= %s
+                      AND is_booked = TRUE;
+                """, (interviewer_id, start_t, end_t))
+                skipped_booked = cur.fetchone()[0]
+
+                cur.execute("""
+                    UPDATE generated_slots
+                    SET is_blocked = %s
+                    WHERE interviewer_id = %s
+                      AND start_time >= %s AND end_time <= %s
+                      AND is_booked = FALSE;
+                """, (blocked, interviewer_id, start_t, end_t))
+                updated_count = cur.rowcount
+
+        conn.commit()
+
+    return jsonify({
+        "status": "success",
+        "blocked" if blocked else "unblocked": updated_count,
+        "skipped_booked": skipped_booked
+    })
+
+
+@admin_rec.route("/api/admin/recruitment/slots/bulk-block", methods=["POST"])
+def bulk_block():
+    return batch_block()
+
+
+@admin_rec.route("/api/admin/recruitment/slots/bulk-unblock", methods=["POST"])
+def bulk_unblock():
+    # Force blocked parameter to False
+    if request.is_json:
+        req_data = request.get_json()
+        req_data["blocked"] = False
+        request.json = req_data
+    return batch_block()
+
+
+@admin_rec.route("/api/admin/recruitment/slots/rules")
+def get_slot_rules():
+    err = _require_admin()
+    if err: return err
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT ar.id, ar.interviewer_id, i.name, ar.start_time, ar.end_time,
+                       ar.slot_duration_minutes, ar.buffer_minutes
+                FROM availability_rules ar
+                JOIN interviewers i ON ar.interviewer_id = i.id
+                WHERE ar.active = TRUE;
+            """)
+            rows = cur.fetchall()
+    return jsonify([{
+        "id": r[0],
+        "interviewer_id": r[1],
+        "interviewer_name": r[2],
+        "start_time": str(r[3]),
+        "end_time": str(r[4]),
+        "slot_duration": r[5],
+        "buffer": r[6],
+    } for r in rows])
+
+
+@admin_rec.route("/api/admin/recruitment/slots/<int:slot_id>", methods=["PUT", "PATCH"])
+def update_slot(slot_id):
+    err = _require_admin()
+    if err: return err
+
+    data = request.json or {}
+    title = data.get("title")
+    start_str = data.get("start_time")
+    end_str = data.get("end_time")
+    confirm_reschedule = data.get("confirm_reschedule", False)
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            # 1. Fetch current state of the slot
+            cur.execute("""
+                SELECT gs.start_time, gs.end_time, gs.is_booked, gs.is_blocked, 
+                       gs.candidate_id, gs.interviewer_id, i.name AS interviewer_name, gs.meeting_link
+                FROM generated_slots gs
+                JOIN interviewers i ON gs.interviewer_id = i.id
+                WHERE gs.id = %s;
+            """, (slot_id,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({"error": "Slot not found."}), 404
+
+            old_start, old_end, is_booked, is_blocked, candidate_id, interviewer_id, interviewer_name, meeting_link = row
+
+            updates = []
+            params = []
+
+            # Update title if present
+            if "title" in data:
+                updates.append("title = %s")
+                params.append(title)
+
+            # Check time updates
+            time_changing = False
+            new_start = old_start
+            new_end = old_end
+
+            if start_str or end_str:
+                if is_blocked:
+                    return jsonify({"error": "Blocked slots cannot be rescheduled. Unblock first."}), 400
+
+                if start_str:
+                    new_start = datetime.datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                    if new_start != old_start:
+                        time_changing = True
+                if end_str:
+                    new_end = datetime.datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                    if new_end != old_end:
+                        time_changing = True
+
+            if time_changing:
+                # Run overlap check
+                from db import check_interviewer_overlap
+                collision = check_interviewer_overlap(conn, interviewer_id, new_start, new_end, exclude_slot_id=slot_id)
+                if collision:
+                    return jsonify({
+                        "status": "conflict",
+                        "error": "Time range overlaps with another active slot for this interviewer.",
+                        "collision": {
+                            "id": collision["id"],
+                            "start_time": collision["start_time"].isoformat(),
+                            "end_time": collision["end_time"].isoformat()
+                        }
+                    }), 409
+
+                # If booked and time is changing, require confirm_reschedule
+                if is_booked:
+                    if not confirm_reschedule:
+                        return jsonify({
+                            "status": "requires_confirmation",
+                            "error": "Rescheduling a booked slot requires explicit candidate notification confirmation."
+                        }), 409
+
+                # Apply time updates
+                updates.append("start_time = %s")
+                params.append(new_start)
+                updates.append("end_time = %s")
+                params.append(new_end)
+
+            if updates:
+                params.append(slot_id)
+                query = f"UPDATE generated_slots SET {', '.join(updates)} WHERE id = %s;"
+                cur.execute(query, tuple(params))
+            
+            conn.commit()
+
+    # Trigger reschedule email if booked and times were updated and confirmed
+    if is_booked and time_changing and confirm_reschedule and candidate_id:
+        try:
+            from zoneinfo import ZoneInfo
+            wat_tz = ZoneInfo("Africa/Lagos")
+            wat_time = new_start.astimezone(wat_tz).strftime("%A %d %B %Y at %H:%M WAT")
+            from services.notifications import send_notification
+            send_notification(candidate_id, "interview", "interview_rescheduled", {
+                "interview_time": wat_time,
+                "meeting_link": meeting_link or ""
+            })
+        except Exception as e:
+            print(f"Error sending reschedule notification: {e}")
+
+    return jsonify({"status": "success"})
+
+
+@admin_rec.route("/api/admin/recruitment/slots/summary")
+def slots_summary():
+    err = _require_admin()
+    if err: return err
+
+    from_str = request.args.get("start_date") or request.args.get("from")
+    to_str   = request.args.get("end_date") or request.args.get("to")
+    if not from_str or not to_str:
+        return jsonify({"error": "start_date and end_date parameters are required."}), 400
+
+    try:
+        start_d = datetime.date.fromisoformat(from_str)
+        end_d = datetime.date.fromisoformat(to_str)
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+
+    if end_d < start_d:
+        return jsonify({"error": "end_date cannot be before start_date"}), 400
+
+    delta = end_d - start_d
+    if delta.days > 62:
+        return jsonify({"error": "Date range cannot exceed 62 days"}), 400
+
+    import pytz
+    lagos_tz = pytz.timezone('Africa/Lagos')
+    start_dt = lagos_tz.localize(datetime.datetime.combine(start_d, datetime.time.min))
+    end_dt = lagos_tz.localize(datetime.datetime.combine(end_d, datetime.time.max))
+
+    interviewer_ids = request.args.getlist("interviewer_id")
+    if interviewer_ids:
+        try:
+            interviewer_ids = [int(x) for x in interviewer_ids]
+        except ValueError:
+            return jsonify({"error": "Invalid interviewer_id"}), 400
+
+    where_clauses = ["start_time >= %s", "start_time <= %s"]
+    params = [start_dt, end_dt]
+
+    if interviewer_ids:
+        where_clauses.append("interviewer_id = ANY(%s)")
+        params.append(interviewer_ids)
+
+    where_sql = " AND ".join(where_clauses)
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT 
+                    DATE(start_time AT TIME ZONE 'Africa/Lagos') AS day,
+                    CASE 
+                        WHEN is_blocked = TRUE THEN 'blocked'
+                        WHEN is_booked = TRUE THEN 'booked'
+                        ELSE 'open'
+                    END AS status,
+                    COUNT(*) AS cnt
+                FROM generated_slots
+                WHERE {where_sql}
+                GROUP BY day, status
+                ORDER BY day;
+            """, params)
+            rows = cur.fetchall()
+
+    totals = {"open": 0, "booked": 0, "blocked": 0}
+    by_day_map = {}
+
+    for day, status, count in rows:
+        day_str = day.isoformat()
+        if day_str not in by_day_map:
+            by_day_map[day_str] = {"date": day_str, "open": 0, "booked": 0, "blocked": 0}
+        
+        by_day_map[day_str][status] = count
+        totals[status] += count
+
+    by_day = list(by_day_map.values())
+    by_day.sort(key=lambda x: x["date"])
+
+    return jsonify({
+        "totals": totals,
+        "by_day": by_day
+    })
+
+
+@admin_rec.route("/api/admin/recruitment/slots/export")
+def export_slots():
+    err = _require_admin()
+    if err: return err
+
+    from_str = request.args.get("start_date") or request.args.get("from")
+    to_str   = request.args.get("end_date") or request.args.get("to")
+    if not from_str or not to_str:
+        return jsonify({"error": "start_date and end_date date parameters are required."}), 400
+
+    try:
+        start_d = datetime.date.fromisoformat(from_str)
+        end_d = datetime.date.fromisoformat(to_str)
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+
+    if end_d < start_d:
+        return jsonify({"error": "end_date cannot be before start_date"}), 400
+
+    delta = end_d - start_d
+    if delta.days > 62:
+        return jsonify({"error": "Date range cannot exceed 62 days"}), 400
+
+    import pytz
+    lagos_tz = pytz.timezone('Africa/Lagos')
+    start_dt = lagos_tz.localize(datetime.datetime.combine(start_d, datetime.time.min))
+    end_dt = lagos_tz.localize(datetime.datetime.combine(end_d, datetime.time.max))
+
+    interviewer_ids = request.args.getlist("interviewer_id")
+    if interviewer_ids:
+        try:
+            interviewer_ids = [int(x) for x in interviewer_ids]
+        except ValueError:
+            return jsonify({"error": "Invalid interviewer_id"}), 400
+
+    export_format = request.args.get("format", "csv").lower()
+
+    where_clauses = ["gs.start_time >= %s", "gs.start_time <= %s"]
+    params = [start_dt, end_dt]
+
+    if interviewer_ids:
+        where_clauses.append("gs.interviewer_id = ANY(%s)")
+        params.append(interviewer_ids)
+
+    where_sql = " AND ".join(where_clauses)
+
+    # Database fetching
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT gs.id, gs.start_time, gs.end_time, gs.is_booked, gs.is_blocked,
+                       i.name AS primary_interviewer,
+                       c.full_name AS candidate_name, c.email AS candidate_email, c.role AS candidate_role,
+                       gs.title,
+                       COALESCE(
+                           STRING_AGG(pi.name, ', ' ORDER BY pi.name),
+                           i.name
+                       ) AS all_interviewers
+                FROM generated_slots gs
+                JOIN interviewers i ON gs.interviewer_id = i.id
+                LEFT JOIN candidates c ON gs.candidate_id = c.id
+                LEFT JOIN slot_interviewers si ON si.slot_id = gs.id
+                LEFT JOIN interviewers pi ON pi.id = si.interviewer_id
+                WHERE {where_sql}
+                GROUP BY gs.id, gs.start_time, gs.end_time, gs.is_booked, gs.is_blocked,
+                         i.name, c.full_name, c.email, c.role, gs.title
+                ORDER BY gs.start_time;
+            """, params)
+            rows = cur.fetchall()
+
+    data_list = []
+    for r in rows:
+        (s_id, s_start, s_end, is_booked, is_blocked, i_name, c_name, c_email, c_role, title, all_interviewers) = r
+        start_lagos = s_start.astimezone(lagos_tz)
+        end_lagos = s_end.astimezone(lagos_tz)
+
+        # Computed title
+        if not title:
+            title = f"{i_name} — {start_lagos.strftime('%I:%M %p')}"
+
+        status = "Open"
+        if is_blocked:
+            status = "Blocked"
+        elif is_booked:
+            status = f"Booked by {c_name or 'Unknown'} ({c_role or 'General'})"
+
+        data_list.append({
+            "id": s_id,
+            "title": title,
+            "start_time": start_lagos.isoformat(),
+            "end_time": end_lagos.isoformat(),
+            "status": status,
+            "interviewer": all_interviewers,
+            "candidate_name": c_name or "—",
+            "candidate_email": c_email or "—",
+            "candidate_role": c_role or "—"
+        })
+
+    if export_format == "json":
+        return jsonify(data_list)
+
+    # Otherwise stream CSV
+    import io
+    import csv
+
+    def generate():
+        data = io.StringIO()
+        writer = csv.writer(data)
+        writer.writerow(['Slot ID', 'Title', 'Start Time (WAT)', 'End Time (WAT)', 'Status', 'Interviewer / Panel', 'Candidate Name', 'Candidate Email', 'Candidate Role'])
+        yield data.getvalue()
+        data.seek(0)
+        data.truncate(0)
+
+        for item in data_list:
+            writer.writerow([
+                item["id"],
+                item["title"],
+                item["start_time"],
+                item["end_time"],
+                item["status"],
+                item["interviewer"],
+                item["candidate_name"],
+                item["candidate_email"],
+                item["candidate_role"]
+            ])
+            yield data.getvalue()
+            data.seek(0)
+            data.truncate(0)
+
+    headers = {
+        'Content-Disposition': 'attachment; filename=interview_slots_export.csv',
+        'Content-Type': 'text/csv'
+    }
+    return Response(generate(), headers=headers)
 
 
 @admin_rec.route("/api/admin/recruitment/slots/generate", methods=["POST"])
@@ -518,9 +1048,10 @@ def trigger_slot_generation():
     data = request.json or {}
     weeks = data.get("weeks_ahead", 4)
 
-    threading.Thread(
-        target=generate_slots, kwargs={"weeks_ahead": weeks}, daemon=True
-    ).start()
+    try:
+        generate_slots(weeks_ahead=weeks)
+    except Exception as e:
+        print(f"Error generating slots: {e}")
 
     return jsonify({"status": "success", "message": f"Slot generation started for {weeks} weeks."})
 
@@ -644,6 +1175,83 @@ def update_stage_config(stage_name):
         conn.commit()
 
     return jsonify({"status": "success"})
+
+
+@admin_rec.route("/api/admin/recruitment/stage-config/<stage_name>/open", methods=["POST"])
+def stage_config_open(stage_name):
+    err = _require_admin()
+    if err: return err
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            # 1. Close all other stages (only one stage can be open at a time)
+            cur.execute("""
+                UPDATE stage_config
+                SET closes_at = NOW()
+                WHERE stage_name <> %s;
+            """, (stage_name,))
+            # 2. Open this stage
+            cur.execute("""
+                UPDATE stage_config
+                SET opens_at = NOW(),
+                    closes_at = NULL
+                WHERE stage_name = %s;
+            """, (stage_name,))
+        conn.commit()
+
+    return jsonify({"status": "success"})
+
+
+@admin_rec.route("/api/admin/recruitment/stage-config/<stage_name>/close", methods=["POST"])
+def stage_config_close(stage_name):
+    err = _require_admin()
+    if err: return err
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE stage_config
+                SET closes_at = NOW()
+                WHERE stage_name = %s;
+            """, (stage_name,))
+        conn.commit()
+
+    return jsonify({"status": "success"})
+
+
+@admin_rec.route("/api/admin/recruitment/stage-config/<stage_name>/next", methods=["POST"])
+def stage_config_next(stage_name):
+    err = _require_admin()
+    if err: return err
+
+    STAGE_PIPELINE_ORDER = ['application', 'screening', 'assessment', 'interview', 'documents', 'final_decision']
+    try:
+        current_idx = STAGE_PIPELINE_ORDER.index(stage_name)
+    except ValueError:
+        return jsonify({"error": f"Invalid stage name '{stage_name}'."}), 400
+
+    if current_idx + 1 >= len(STAGE_PIPELINE_ORDER):
+        return jsonify({"error": "No next stage available."}), 400
+
+    next_stage = STAGE_PIPELINE_ORDER[current_idx + 1]
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            # 1. Close all stages
+            cur.execute("""
+                UPDATE stage_config
+                SET closes_at = NOW();
+            """)
+            # 2. Open next stage
+            cur.execute("""
+                UPDATE stage_config
+                SET opens_at = NOW(),
+                    closes_at = NULL
+                WHERE stage_name = %s;
+            """, (next_stage,))
+        conn.commit()
+
+    return jsonify({"status": "success", "next_stage": next_stage})
 
 
 # ── Email log ─────────────────────────────────────────────────────────────────

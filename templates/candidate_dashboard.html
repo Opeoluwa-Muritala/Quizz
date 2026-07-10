@@ -126,18 +126,18 @@
   <div class="pipeline">
     {% for s_key, s_label in pipeline_stages %}
       {% set s_idx = loop.index0 %}
-      {% if s_idx < current_order %}
-        <div class="pip-step done">
-      {% elif s_idx == current_order %}
-        <div class="pip-step current">
-      {% else %}
-        <div class="pip-step">
-      {% endif %}
-        <div class="pip-dot">
-          {% if s_idx < current_order %}✓{% else %}{{ loop.index }}{% endif %}
+      {% if s_idx <= current_order %}
+        {% if s_idx < current_order %}
+          <div class="pip-step done">
+        {% else %}
+          <div class="pip-step current">
+        {% endif %}
+          <div class="pip-dot">
+            {% if s_idx < current_order %}✓{% else %}{{ loop.index }}{% endif %}
+          </div>
+          <div class="pip-label">{{ s_label }}</div>
         </div>
-        <div class="pip-label">{{ s_label }}</div>
-      </div>
+      {% endif %}
     {% endfor %}
   </div>
 
@@ -154,6 +154,17 @@
   <div class="stage-card">
     <h2><span class="stage-badge badge-pending">⏳ Under Review</span></h2>
     <p>Your application has been received and is under eligibility review. This typically completes within a few minutes. Please refresh this page or check back shortly.</p>
+    {% if stage_windows and stage_windows.get('screening') %}
+      {% set sw = stage_windows.get('screening') %}
+      {% if sw.opens_at or sw.closes_at %}
+      <p style="margin-top:12px;font-size:0.82rem;color:#888;">
+        Screening window:
+        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
+        {% if sw.opens_at and sw.closes_at %} · {% endif %}
+        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
+      </p>
+      {% endif %}
+    {% endif %}
   </div>
 
   {% elif stage == 'screening_failed' %}
@@ -167,15 +178,16 @@
     <h2><span class="stage-badge badge-pass">✓ Screening Passed</span></h2>
     <p>Your application has cleared the initial screening. You may now take the <strong>online assessment</strong>. Ensure you're in a quiet environment with a stable internet connection.</p>
     <a href="/assessment" class="action-btn">Start Assessment →</a>
-    {% if stage_configs %}
-      {% for sc in stage_configs %}
-        {% if sc[0] == 'assessment' and sc[2] %}
-          <p style="margin-top:12px;font-size:0.82rem;color:#888;">
-            Assessment window closes: <strong>{{ sc[2] }}</strong> ·
-            Duration: <strong>{{ sc[3] or 60 }} minutes</strong>
-          </p>
-        {% endif %}
-      {% endfor %}
+    {% if stage_windows and stage_windows.get('assessment') %}
+      {% set sw = stage_windows.get('assessment') %}
+      {% if sw.opens_at or sw.closes_at %}
+      <p style="margin-top:12px;font-size:0.82rem;color:#888;">
+        Assessment window:
+        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
+        {% if sw.opens_at and sw.closes_at %} · {% endif %}
+        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
+      </p>
+      {% endif %}
     {% endif %}
   </div>
 
@@ -184,6 +196,17 @@
     <h2><span class="stage-badge badge-progress">▶ Assessment In Progress</span></h2>
     <p>You have an ongoing assessment session. Click below to continue — your timer is still running.</p>
     <a href="/assessment" class="action-btn">Resume Assessment →</a>
+    {% if stage_windows and stage_windows.get('assessment') %}
+      {% set sw = stage_windows.get('assessment') %}
+      {% if sw.opens_at or sw.closes_at %}
+      <p style="margin-top:12px;font-size:0.82rem;color:#888;">
+        Assessment window:
+        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
+        {% if sw.opens_at and sw.closes_at %} · {% endif %}
+        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
+      </p>
+      {% endif %}
+    {% endif %}
   </div>
 
   {% elif stage == 'assessment_failed' %}
@@ -209,6 +232,17 @@
     </div>
     {% endif %}
     <a href="/schedule" class="action-btn">Choose Interview Slot →</a>
+    {% if stage_windows and stage_windows.get('interview') %}
+      {% set sw = stage_windows.get('interview') %}
+      {% if sw.opens_at or sw.closes_at %}
+      <p style="margin-top:12px;font-size:0.82rem;color:#888;">
+        Interview scheduling window:
+        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
+        {% if sw.opens_at and sw.closes_at %} · {% endif %}
+        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
+      </p>
+      {% endif %}
+    {% endif %}
   </div>
 
   {% elif stage == 'interview_scheduled' %}
@@ -244,7 +278,18 @@
     <p style="margin-top:16px;font-size:0.85rem;color:#666;">
       Please also upload your supporting documents below.
     </p>
-    <a href="/documents" class="action-btn outline" style="margin-top:4px">Upload Documents →</a>
+    <a href="/documents" class="action-btn outline" style="margin-top:4px;margin-bottom:12px">Upload Documents →</a>
+    {% if stage_windows and stage_windows.get('interview') %}
+      {% set sw = stage_windows.get('interview') %}
+      {% if sw.opens_at or sw.closes_at %}
+      <p style="font-size:0.82rem;color:#888;">
+        Interview window:
+        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
+        {% if sw.opens_at and sw.closes_at %} · {% endif %}
+        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
+      </p>
+      {% endif %}
+    {% endif %}
   </div>
 
   {% elif stage in ('documents_pending', 'documents_submitted') %}
@@ -274,21 +319,54 @@
       </div>
       {% endfor %}
     </div>
-    <a href="/documents" class="action-btn" style="margin-top:16px">
+    <a href="/documents" class="action-btn" style="margin-top:16px;margin-bottom:12px">
       {{ 'Update Documents' if stage == 'documents_submitted' else 'Upload Documents' }} →
     </a>
+    {% if stage_windows and stage_windows.get('documents') %}
+      {% set sw = stage_windows.get('documents') %}
+      {% if sw.opens_at or sw.closes_at %}
+      <p style="font-size:0.82rem;color:#888;">
+        Document upload window:
+        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
+        {% if sw.opens_at and sw.closes_at %} · {% endif %}
+        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
+      </p>
+      {% endif %}
+    {% endif %}
   </div>
 
   {% elif stage == 'interview_completed' %}
   <div class="stage-card">
     <h2><span class="stage-badge badge-progress">✓ Interview Completed</span></h2>
     <p>Your interview has been completed. We are reviewing all candidates and will communicate the final decision shortly. Thank you for your patience.</p>
+    {% if stage_windows and (stage_windows.get('final_decision') or stage_windows.get('decision')) %}
+      {% set sw = stage_windows.get('final_decision') or stage_windows.get('decision') %}
+      {% if sw.opens_at or sw.closes_at %}
+      <p style="margin-top:12px;font-size:0.82rem;color:#888;">
+        Decision stage window:
+        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
+        {% if sw.opens_at and sw.closes_at %} · {% endif %}
+        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
+      </p>
+      {% endif %}
+    {% endif %}
   </div>
 
   {% elif stage == 'offered' %}
   <div class="stage-card">
     <h2><span class="stage-badge badge-pass">🎉 Offer Extended</span></h2>
     <p>Congratulations! You have been selected for the Executive Trainee Program. Please watch your email for your formal offer letter and next steps from our HR team.</p>
+    {% if stage_windows and (stage_windows.get('final_decision') or stage_windows.get('decision')) %}
+      {% set sw = stage_windows.get('final_decision') or stage_windows.get('decision') %}
+      {% if sw.opens_at or sw.closes_at %}
+      <p style="margin-top:12px;font-size:0.82rem;color:#888;">
+        Decision stage window:
+        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
+        {% if sw.opens_at and sw.closes_at %} · {% endif %}
+        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
+      </p>
+      {% endif %}
+    {% endif %}
   </div>
 
   {% elif stage == 'rejected' %}

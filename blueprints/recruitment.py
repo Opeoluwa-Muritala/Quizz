@@ -22,6 +22,50 @@ from services.meetings import create_meeting
 recruitment = Blueprint("recruitment", __name__)
 LOCAL_TZ = ZoneInfo("Africa/Lagos")
 
+def get_or_create_cloudinary_folder(candidate_id: int) -> str:
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT cloudinary_folder, email FROM candidates WHERE id = %s;", (candidate_id,))
+            row = cur.fetchone()
+            if row:
+                folder, email = row
+                if folder:
+                    return folder
+                import datetime
+                now_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                clean_email = email.replace("@", "_").replace(".", "_") if email else str(candidate_id)
+                new_folder = f"candidates/{clean_email}-{now_str}"
+                cur.execute("UPDATE candidates SET cloudinary_folder = %s WHERE id = %s;", (new_folder, candidate_id))
+                conn.commit()
+                return new_folder
+    return f"candidates/{candidate_id}"
+
+@recruitment.before_request
+def handle_ref_token():
+    ref = request.args.get("ref")
+    if ref:
+        with DBConnection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id, email FROM candidates WHERE ref_token = %s;", (ref,))
+                cand = cur.fetchone()
+                if cand:
+                    session["candidate_id"] = cand[0]
+                    session["candidate_email"] = cand[1]
+
+@recruitment.route("/resume/<ref_token>")
+def resume_candidate(ref_token):
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, email, stage FROM candidates WHERE ref_token = %s;", (ref_token,))
+            cand = cur.fetchone()
+    if cand:
+        session["candidate_id"] = cand[0]
+        session["candidate_email"] = cand[1]
+        stage = cand[2] or "applied"
+        return _stage_redirect(stage)
+    return redirect(url_for("recruitment.apply"))
+
+
 # ── Stage → route mapping ─────────────────────────────────────────────────────
 
 STAGE_ROUTES = {
@@ -109,7 +153,7 @@ def require_stage(*allowed_stages):
             with DBConnection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT stage FROM candidates WHERE id = %s",
+                        "SELECT stage, email FROM candidates WHERE id = %s",
                         (candidate_id,)
                     )
                     row = cur.fetchone()
@@ -119,11 +163,73 @@ def require_stage(*allowed_stages):
                 return redirect(url_for("recruitment.apply"))
 
             current_stage = row[0] or "applied"
+            candidate_email = row[1]
             g.candidate_stage = current_stage
             g.candidate_id = candidate_id
 
             if current_stage not in allowed_stages:
                 return _stage_redirect(current_stage)
+
+            # Stage time-gating validation
+            STAGE_CONFIG_MAP = {
+                "applied": "application",
+                "screening_passed": "assessment",
+                "screening_flagged": "assessment",
+                "assessment_in_progress": "assessment",
+                "interview_slot_pending": "interview",
+                "interview_scheduled": "interview",
+                "documents_pending": "documents",
+                "documents_submitted": "documents",
+                "offered": "decision"
+            }
+            stage_config_name = STAGE_CONFIG_MAP.get(current_stage)
+            if stage_config_name:
+                with DBConnection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            SELECT opens_at, closes_at
+                            FROM stage_config
+                            WHERE stage_name = %s
+                            ORDER BY cycle_id DESC LIMIT 1;
+                        """, (stage_config_name,))
+                        cfg = cur.fetchone()
+                if cfg:
+                    opens_at, closes_at = cfg
+                    now = datetime.datetime.now(datetime.timezone.utc)
+                    
+                    is_locked = False
+                    is_closed = False
+                    
+                    if opens_at and now < opens_at:
+                        is_locked = True
+                    if closes_at and now > closes_at:
+                        is_closed = True
+                        
+                    if is_locked or is_closed:
+                        # Bypass time gating if:
+                        # 1. Candidate is a test/preview candidate (email match)
+                        # 2. Stage transition was manually overridden by an admin
+                        bypass = False
+                        if candidate_email and ("test" in candidate_email.lower() or "preview" in candidate_email.lower()):
+                            bypass = True
+                        else:
+                            with DBConnection() as conn:
+                                with conn.cursor() as cur:
+                                    cur.execute("""
+                                        SELECT changed_by FROM candidate_stage_history
+                                        WHERE candidate_id = %s AND to_stage = %s
+                                        ORDER BY changed_at DESC LIMIT 1;
+                                    """, (candidate_id, current_stage))
+                                    history_row = cur.fetchone()
+                                    if history_row and history_row[0] == 'admin':
+                                        bypass = True
+                        
+                        if not bypass:
+                            if is_locked:
+                                opens_str = opens_at.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %I:%M %p WAT")
+                                return render_template("stage_locked.html", stage_label=stage_config_name.capitalize(), opens_at=opens_str, closed=False)
+                            else:
+                                return render_template("stage_locked.html", stage_label=stage_config_name.capitalize(), closed=True)
 
             return f(*args, **kwargs)
         return decorated
@@ -162,10 +268,40 @@ def _transition_stage(candidate_id: int, new_stage: str, changed_by: str = "syst
 
 # ── Pages ─────────────────────────────────────────────────────────────────────
 
+@recruitment.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("candidate_id"):
+        return redirect(url_for("recruitment.dashboard"))
+
+    error = None
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        if not email:
+            error = "Email address is required."
+        else:
+            with DBConnection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT id, email, stage FROM candidates WHERE LOWER(email) = %s;", (email,))
+                    row = cur.fetchone()
+            if row:
+                session["candidate_id"] = row[0]
+                session["candidate_email"] = row[1]
+                return _stage_redirect(row[2] or "applied")
+            else:
+                error = "No candidate application found with that email address. Please apply first."
+
+    return render_template("login.html", error=error)
+
+
 @recruitment.route("/apply")
 def apply():
     if session.get("candidate_id"):
-        return redirect(url_for("recruitment.dashboard"))
+        with DBConnection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT stage FROM candidates WHERE id = %s;", (session["candidate_id"],))
+                row = cur.fetchone()
+        stage = row[0] if row else "applied"
+        return _stage_redirect(stage)
     return render_template("apply.html")
 
 
@@ -174,6 +310,11 @@ def apply():
 def dashboard():
     candidate_id = g.candidate_id
     stage = g.candidate_stage
+
+    # Stage-aware redirection fallback
+    target_route = STAGE_ROUTES.get(stage, "recruitment.dashboard")
+    if target_route != "recruitment.dashboard":
+        return redirect(url_for(target_route))
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
@@ -233,6 +374,18 @@ def dashboard():
             """, (candidate_id,))
             stage_history = cur.fetchall()
 
+            stage_windows = {}
+            for sc in stage_configs:
+                s_name = sc[0]
+                opens = sc[1]
+                closes = sc[2]
+                opens_str = opens.astimezone(LOCAL_TZ).strftime("%b %d, %Y %I:%M %p WAT") if opens else None
+                closes_str = closes.astimezone(LOCAL_TZ).strftime("%b %d, %Y %I:%M %p WAT") if closes else None
+                stage_windows[s_name] = {
+                    "opens_at": opens_str,
+                    "closes_at": closes_str
+                }
+
     return render_template(
         "candidate_dashboard.html",
         candidate=cand,
@@ -242,13 +395,14 @@ def dashboard():
         docs=docs,
         stage_configs=stage_configs,
         stage_history=stage_history,
+        stage_windows=stage_windows,
         required_docs=get_role_document_requirements(cand[10] if cand else None),
         now=datetime.datetime.utcnow(),
     )
 
 
 @recruitment.route("/assessment")
-@require_stage("assessment_in_progress")
+@require_stage("screening_passed", "screening_flagged", "assessment_in_progress")
 def assessment():
     return render_template("assessment.html")
 
@@ -386,23 +540,25 @@ def api_apply():
                     WHERE id = %s;
                 """, (full_name, phone_number, dob, nysc_status, role, location, candidate_id))
             else:
+                import secrets
+                ref_token = secrets.token_hex(6)
                 cur.execute("""
                     INSERT INTO candidates
                         (full_name, email, phone_number, dob, nysc_status,
-                         role, location, stage, stage_updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'applied', NOW())
+                         role, location, stage, stage_updated_at, ref_token)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'applied', NOW(), %s)
                     RETURNING id;
-                """, (full_name, email, phone_number, dob, nysc_status, role, location))
+                """, (full_name, email, phone_number, dob, nysc_status, role, location, ref_token))
                 candidate_id = cur.fetchone()[0]
         conn.commit()
 
     session["candidate_id"] = candidate_id
     session["candidate_email"] = email
 
-    # Fire CV upload in background if file was provided
+    # Fire CV upload synchronously if file was provided
     upload_job_id = None
     if cv_file_bytes:
-        folder = f"candidates/cv/{candidate_id}"
+        folder = get_or_create_cloudinary_folder(candidate_id)
         upload_job_id = enqueue_upload(
             cv_file_bytes, folder, "cv",
             candidate_id=candidate_id,
@@ -410,18 +566,18 @@ def api_apply():
             target_field="cv_url",
         )
 
-    # Run eligibility screening in background thread
-    def _screen_and_notify(cid):
-        new_stage = apply_screening(cid)
-        event_map = {
-            "screening_passed":  "screening_passed",
-            "screening_flagged": "screening_flagged",
-            "screening_failed":  "screening_failed",
-        }
-        send_notification(cid, new_stage, "application_submitted")
-        send_notification(cid, new_stage, event_map.get(new_stage, "application_submitted"))
-
-    threading.Thread(target=_screen_and_notify, args=(candidate_id,), daemon=True).start()
+    # Run eligibility screening synchronously for serverless environment
+    new_stage = apply_screening(candidate_id)
+    event_map = {
+        "screening_passed":  "screening_passed",
+        "screening_flagged": "screening_flagged",
+        "screening_failed":  "screening_failed",
+    }
+    try:
+        send_notification(candidate_id, new_stage, "application_submitted")
+        send_notification(candidate_id, new_stage, event_map.get(new_stage, "application_submitted"))
+    except Exception as e:
+        print(f"Error sending notifications during apply: {e}")
 
     return jsonify({
         "status": "success",
@@ -751,11 +907,10 @@ def assessment_submit():
         conn.commit()
 
     event = "assessment_passed" if pf == "PASS" else "assessment_failed"
-    threading.Thread(
-        target=send_notification,
-        args=(candidate_id, final_stage, event),
-        daemon=True,
-    ).start()
+    try:
+        send_notification(candidate_id, final_stage, event)
+    except Exception as e:
+        print(f"Error sending assessment notification: {e}")
 
     return jsonify({
         "score_percent": score_pct,
@@ -788,6 +943,7 @@ def get_slots():
                 JOIN interviewers i ON gs.interviewer_id = i.id
                 LEFT JOIN availability_rules ar ON gs.availability_rule_id = ar.id
                 WHERE gs.is_blocked = FALSE
+                  AND gs.is_booked = FALSE
                   AND EXTRACT(YEAR  FROM gs.start_time AT TIME ZONE 'Africa/Lagos') = %s
                   AND EXTRACT(MONTH FROM gs.start_time AT TIME ZONE 'Africa/Lagos') = %s
                 ORDER BY gs.start_time;
@@ -837,7 +993,7 @@ def book_slot(slot_id):
                 JOIN interviewers i ON gs.interviewer_id = i.id
                 LEFT JOIN availability_rules ar ON gs.availability_rule_id = ar.id
                 WHERE gs.id = %s
-                FOR UPDATE;
+                FOR UPDATE OF gs;
             """, (slot_id,))
             slot_row = cur.fetchone()
 
@@ -901,12 +1057,11 @@ def book_slot(slot_id):
         conn.commit()
 
     interview_time = slot_row[1].astimezone(LOCAL_TZ).strftime("%A %d %B %Y at %H:%M WAT")
-    threading.Thread(
-        target=send_notification,
-        args=(candidate_id, "interview_scheduled", "interview_booked",
-              {"interview_time": interview_time, "meeting_link": meeting_link}),
-        daemon=True,
-    ).start()
+    try:
+        send_notification(candidate_id, "interview_scheduled", "interview_booked",
+                          {"interview_time": interview_time, "meeting_link": meeting_link})
+    except Exception as e:
+        print(f"Error sending booking notification: {e}")
 
     return jsonify({
         "status": "success",
@@ -963,7 +1118,7 @@ def upload_document():
             """, (candidate_id, doc_type))
         conn.commit()
 
-    folder = f"candidates/documents/{candidate_id}"
+    folder = get_or_create_cloudinary_folder(candidate_id)
     job_id = enqueue_upload(
         file_bytes, folder, doc_type,
         candidate_id=candidate_id,

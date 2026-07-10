@@ -48,13 +48,22 @@
         </div>
     </header>
 
-    <!-- Tab Bar -->
     <nav class="admin-tabs">
-        <button type="button" class="tab-btn active" data-tab="settings">Exam Settings</button>
-        <button type="button" class="tab-btn" data-tab="questions">Question Editor</button>
-        <button type="button" class="tab-btn" data-tab="candidates">Candidates & Results</button>
-        <button type="button" class="tab-btn" data-tab="whitelist">Whitelist</button>
-        <button type="button" class="tab-btn" data-tab="recruitment">Recruitment Pipeline</button>
+        <button type="button" class="tab-btn active" data-tab="settings">
+            <i class="ti ti-settings"></i><span class="tab-text">Exam Settings</span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="questions">
+            <i class="ti ti-help"></i><span class="tab-text">Question Editor</span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="candidates">
+            <i class="ti ti-users"></i><span class="tab-text">Candidates & Results</span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="whitelist">
+            <i class="ti ti-shield-check"></i><span class="tab-text">Whitelist</span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="recruitment">
+            <i class="ti ti-briefcase"></i><span class="tab-text">Recruitment Pipeline</span>
+        </button>
     </nav>
 
     <!-- Tab Contents -->
@@ -503,7 +512,17 @@
             <div class="rec-subpanel" id="rec-sub-config">
                 <div class="card">
                     <h3 style="margin:0 0 4px;font-size:1rem">Stage Configuration</h3>
-                    <p style="font-size:.85rem;color:#888;margin:0 0 16px">Changes take effect immediately. Opens At / Closes At control when candidates can access each stage.</p>
+                    <div class="stage-legend" style="display:flex;gap:16px;margin:6px 0 16px;font-family:var(--font-body);font-size:0.82rem;color:var(--mfb-gray-600)">
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <span style="color:var(--mfb-success)">●</span> <span>Open now</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <span style="color:var(--mfb-gray-600)">○</span> <span>Not yet open</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <span style="color:var(--mfb-error)">✕</span> <span>Closed</span>
+                        </div>
+                    </div>
                     <div id="recConfigGrid"><p style="color:#888">Loading…</p></div>
                 </div>
             </div>
@@ -724,5 +743,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='admin_recruitment.js') }}"></script>
+<script src="{{ url_for('static', filename='admin_recruitment.js', v='20260610-1208') }}"></script>
 {% endblock %}
