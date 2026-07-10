@@ -28,8 +28,8 @@
   .q-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px,1fr)); gap: 6px; }
   .q-cell { aspect-ratio: 1; border-radius: 6px; border: 1.5px solid #e5e5ef;
              display: flex; align-items: center; justify-content: center;
-             font-size: 0.8rem; cursor: pointer; transition: all .15s;
-             background: #f9f9fb; color: #555; }
+             font-size: 0.8rem; transition: all .15s;
+             background: #f9f9fb; color: #555; font-weight: 600; }
   .q-cell.current { border-color: var(--mfb-purple); background: var(--mfb-purple); color: #fff; }
   .q-cell.answered { border-color: var(--mfb-success); background: var(--mfb-success-tint); color: var(--mfb-success); }
   .q-cell.unanswered { border-color: #e5e5ef; background: #f9f9fb; }
@@ -56,6 +56,7 @@
   .btn { border: none; border-radius: 8px; padding: 12px 24px; font-size: 0.92rem;
          font-weight: 700; cursor: pointer; font-family: inherit; transition: opacity .2s; }
   .btn-primary { background: var(--mfb-purple); color: #fff; }
+  .btn-primary:hover { background: var(--mfb-purple-dark); }
   .btn-outline { background: #fff; color: var(--mfb-purple); border: 2px solid var(--mfb-purple); }
   .btn:disabled { opacity: .4; cursor: not-allowed; }
 
@@ -67,6 +68,22 @@
   .modal-box h3 { margin:0 0 10px; font-family:var(--font-body); }
   .modal-box p { color:#555; font-size:0.92rem; margin:0 0 24px; }
   .modal-btns { display:flex; gap:10px; justify-content:center; }
+
+  /* Verification Section styles */
+  .verify-container { max-width: 800px; margin: 40px auto; padding: 32px; background: #fff; border-radius: 12px; box-shadow: var(--mfb-shadow-soft); border: 1px solid var(--mfb-gray-300); }
+  .verify-container h1 { font-family: var(--font-heading); font-size: 28px; line-height: 36px; margin: 0 0 8px; color: var(--mfb-ink); }
+  .verify-container .lead { color: var(--mfb-gray-600); font-size: 15px; margin-bottom: 24px; }
+  .verify-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 28px; }
+  .verify-card { border: 1.5px dashed var(--mfb-gray-300); border-radius: 8px; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 280px; position: relative; background: #fafafb; }
+  .verify-card h3 { font-size: 15px; font-weight: 700; margin: 0 0 12px; color: var(--mfb-ink); }
+  .video-preview { width: 100%; aspect-ratio: 4/3; border-radius: 8px; object-fit: cover; transform: scaleX(-1); background: #e5e5ef; margin-bottom: 12px; border: 1px solid var(--mfb-gray-300); }
+  .image-preview { width: 100%; aspect-ratio: 4/3; border-radius: 8px; object-fit: cover; display: none; margin-bottom: 12px; border: 1px solid var(--mfb-gray-300); }
+  .verify-actions { display: flex; gap: 10px; width: 100%; justify-content: center; }
+  .verify-status { font-size: 13px; color: var(--mfb-gray-600); margin-top: 10px; font-weight: 600; }
+  .file-input-fallback { margin-top: 8px; font-size: 13px; }
+  .id-dropzone { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; }
+  .id-dropzone p { font-size: 13px; color: var(--mfb-gray-600); margin: 8px 0 0; }
+  .id-dropzone i { font-size: 32px; color: var(--mfb-gray-600); }
 
   /* Results overlay */
   #resultsOverlay { display:none; position:fixed; inset:0; background:#f5f5f9;
@@ -85,6 +102,7 @@
     .exam-body { grid-template-columns: 1fr; }
     .sidebar { display: none; }
     .question-area { padding: 20px 16px; }
+    .verify-grid { grid-template-columns: 1fr; }
   }
 </style>
 {% endblock %}
@@ -100,11 +118,76 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
       </svg>
-      <span class="timer-display" id="timerDisplay">--:--</span>
+      <span class="timer-display" id="timerDisplay">--</span>
     </div>
   </div>
 
-  <div class="exam-body" id="examBody">
+  <!-- Verification Step Container -->
+  <div id="verificationContainer" class="candidate-page mfb-page" style="display: none; padding: 20px; overflow-y: auto;">
+    <div class="verify-container">
+      <h1 id="verifyGreeting">Welcome! Let's get verified</h1>
+      <p class="lead">Please complete the identity verification steps below to begin your online assessment.</p>
+      
+      <div class="verify-grid">
+        <!-- Card 1: Selfie verification -->
+        <div class="verify-card" id="selfieCard">
+          <h3>1. Take a Selfie</h3>
+          <video id="webcam" class="video-preview" autoplay playsinline muted></video>
+          <img id="selfiePreview" class="image-preview" alt="Selfie preview">
+          <canvas id="selfieCanvas" style="display:none;"></canvas>
+          
+          <div class="verify-actions">
+            <button class="btn btn-primary btn-sm" id="captureBtn" onclick="captureSelfie()">Capture Image</button>
+            <button class="btn btn-outline btn-sm" id="retakeBtn" style="display:none;" onclick="retakeSelfie()">Retake</button>
+          </div>
+          <div class="file-input-fallback" id="selfieFallback">
+            <span style="font-size:12px;display:block;margin-bottom:4px;color:var(--mfb-gray-600);">Camera blocked? Upload a photo instead:</span>
+            <input type="file" accept="image/*" onchange="handleSelfieFile(this)">
+          </div>
+          <div class="verify-status" id="selfieStatus">Selfie required</div>
+        </div>
+
+        <!-- Card 2: ID verification -->
+        <div class="verify-card" id="idCard">
+          <div class="id-dropzone" onclick="document.getElementById('idInput').click()">
+            <h3>2. Upload ID Card</h3>
+            <i class="ti ti-id-badge" style="font-size:36px;color:var(--mfb-gray-600);margin-bottom:8px;"></i>
+            <p>Click or drag to upload valid ID card image</p>
+            <input type="file" id="idInput" accept="image/*" style="display:none;" onchange="handleIdFile(this)">
+          </div>
+          <img id="idPreview" class="image-preview" alt="ID preview">
+          <div class="verify-actions" id="idActions" style="display:none;">
+            <button class="btn btn-outline btn-sm" onclick="retakeId()">Choose Different ID</button>
+          </div>
+          <div class="verify-status" id="idStatus">ID Card required</div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="startVerifyBtn" style="width:100%;" disabled onclick="submitVerification()">Verify &amp; Start Assessment</button>
+      <div id="uploadStatusText" style="text-align:center;margin-top:12px;font-weight:700;color:var(--mfb-purple);display:none;">Uploading files, please wait...</div>
+    </div>
+  </div>
+
+  <!-- Instruction welcome stage if verification is skipped -->
+  <div id="instructionsContainer" class="candidate-page mfb-page" style="display: none; padding: 20px; overflow-y: auto;">
+    <div class="verify-container" style="max-width:600px;">
+      <h1>Online Assessment Instructions</h1>
+      <p class="lead">Please read the instructions carefully before starting the assessment.</p>
+      <div style="background:#f9f9fb;border:1px solid var(--mfb-gray-300);padding:20px;border-radius:8px;margin-bottom:24px;font-size:14px;line-height:22px;color:var(--mfb-ink);">
+        <ul style="margin:0;padding-left:20px;">
+          <li>This assessment consists of Numerical, Verbal, and Logical reasoning sections.</li>
+          <li>Each question has a **per-question countdown timer**.</li>
+          <li>When the timer expires, the question will **auto-advance** and register a blank answer.</li>
+          <li>You **cannot navigate backward** to modify previous questions.</li>
+          <li>Ensure you are in a quiet room with a stable internet connection.</li>
+          <li>Leaving the page or switching tabs will be tracked.</li>
+        </ul>
+      </div>
+      <button class="btn btn-primary" style="width:100%;" onclick="triggerStartAssessment()">Start Assessment Now</button>
+    </div>
+  </div>
+
+  <div class="exam-body" id="examBody" style="display: none;">
     <div class="sidebar" id="sidebarGrid">
       <div style="padding:40px;text-align:center;color:#888;font-size:0.9rem">
         Loading questions…
@@ -148,17 +231,228 @@
 <script>
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
+const candidateEmail = "{{ email }}";
+const candidateFullName = "{{ full_name }}";
+const candidatePhone = "{{ phone_number }}";
+const candidateRole = "{{ role }}";
+const candidateLocation = "{{ location }}";
+const initialStage = "{{ stage }}";
+
 let questions = [];
 let answers   = {};   // { question_id: { answer_given, was_timeout, time_spent_secs } }
 let currentIdx = 0;
 let scoreId    = null;
-let totalSeconds = 3600;
-let remainingSeconds = 3600;
-let timerInterval = null;
+let secondsPerQuestion = 60; // fetched from API/settings
+let questionTimeLeft = 60;
+let questionTimerInterval = null;
 let qStartTime = null;
+let globalStartTimeStamp = null;
 let tabSwitches = 0;
 
+// Camera state variables
+let localStream = null;
+let selfieBase64 = null;
+let idCardBase64 = null;
+
+async function checkAssessmentState() {
+  // If resume or already verified:
+  if (initialStage === 'assessment_in_progress') {
+    document.getElementById('examBody').style.display = 'grid';
+    startAssessment();
+    return;
+  }
+
+  // First check settings
+  try {
+    const summaryResp = await fetch('/api/exam-summary');
+    const settings = await summaryResp.json();
+    secondsPerQuestion = settings.seconds_per_question || 60;
+
+    if (settings.require_identity_verification) {
+      document.getElementById('verifyGreeting').textContent = `Welcome, ${candidateFullName}!`;
+      document.getElementById('verificationContainer').style.display = 'block';
+      initWebcam();
+    } else {
+      document.getElementById('instructionsContainer').style.display = 'block';
+    }
+  } catch (err) {
+    console.error("Failed to load settings:", err);
+    document.getElementById('instructionsContainer').style.display = 'block';
+  }
+}
+
+// ── Web Camera and ID Files Handlers ──────────────────────────────────────────
+async function initWebcam() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    const video = document.getElementById('webcam');
+    video.srcObject = localStream;
+  } catch (err) {
+    console.warn("Webcam access denied/unavailable:", err);
+    document.getElementById('webcam').style.display = 'none';
+    document.getElementById('captureBtn').style.display = 'none';
+    // Fallback stays visible
+  }
+}
+
+function captureSelfie() {
+  const video = document.getElementById('webcam');
+  const canvas = document.getElementById('selfieCanvas');
+  const ctx = canvas.getContext('2d');
+
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+
+  // Mirror effect
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  selfieBase64 = canvas.toDataURL('image/jpeg');
+
+  document.getElementById('webcam').style.display = 'none';
+  document.getElementById('captureBtn').style.display = 'none';
+  document.getElementById('selfieFallback').style.display = 'none';
+
+  const preview = document.getElementById('selfiePreview');
+  preview.src = selfieBase64;
+  preview.style.display = 'block';
+  document.getElementById('retakeBtn').style.display = 'block';
+
+  document.getElementById('selfieStatus').textContent = '✓ Selfie captured';
+  document.getElementById('selfieStatus').style.color = 'var(--mfb-success)';
+
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+  }
+
+  checkVerifyReady();
+}
+
+function retakeSelfie() {
+  selfieBase64 = null;
+  document.getElementById('selfiePreview').style.display = 'none';
+  document.getElementById('retakeBtn').style.display = 'none';
+  document.getElementById('webcam').style.display = 'block';
+  document.getElementById('captureBtn').style.display = 'block';
+  document.getElementById('selfieFallback').style.display = 'block';
+
+  document.getElementById('selfieStatus').textContent = 'Selfie required';
+  document.getElementById('selfieStatus').style.color = '';
+
+  initWebcam();
+  checkVerifyReady();
+}
+
+function handleSelfieFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    selfieBase64 = e.target.result;
+    document.getElementById('webcam').style.display = 'none';
+    document.getElementById('captureBtn').style.display = 'none';
+    
+    const preview = document.getElementById('selfiePreview');
+    preview.src = selfieBase64;
+    preview.style.display = 'block';
+    document.getElementById('retakeBtn').style.display = 'block';
+    
+    document.getElementById('selfieStatus').textContent = '✓ Selfie uploaded';
+    document.getElementById('selfieStatus').style.color = 'var(--mfb-success)';
+    
+    checkVerifyReady();
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleIdFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    idCardBase64 = e.target.result;
+    document.getElementById('idCard').querySelector('.id-dropzone').style.display = 'none';
+    
+    const preview = document.getElementById('idPreview');
+    preview.src = idCardBase64;
+    preview.style.display = 'block';
+    document.getElementById('idActions').style.display = 'block';
+    
+    document.getElementById('idStatus').textContent = '✓ ID Card uploaded';
+    document.getElementById('idStatus').style.color = 'var(--mfb-success)';
+    
+    checkVerifyReady();
+  };
+  reader.readAsDataURL(file);
+}
+
+function retakeId() {
+  idCardBase64 = null;
+  document.getElementById('idPreview').style.display = 'none';
+  document.getElementById('idActions').style.display = 'none';
+  document.getElementById('idCard').querySelector('.id-dropzone').style.display = 'flex';
+  
+  document.getElementById('idStatus').textContent = 'ID Card required';
+  document.getElementById('idStatus').style.color = '';
+  
+  checkVerifyReady();
+}
+
+function checkVerifyReady() {
+  const ready = selfieBase64 && idCardBase64;
+  document.getElementById('startVerifyBtn').disabled = !ready;
+}
+
+async function submitVerification() {
+  document.getElementById('startVerifyBtn').disabled = true;
+  document.getElementById('uploadStatusText').style.display = 'block';
+
+  try {
+    const payload = {
+      email: candidateEmail,
+      full_name: candidateFullName,
+      phone_number: candidatePhone,
+      role: candidateRole,
+      location: candidateLocation,
+      selfie_b64: selfieBase64,
+      id_card_b64: idCardBase64,
+      pre_test_responses: {}
+    };
+
+    const resp = await fetch('/api/upload-photos', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) {
+      alert("Verification Upload Failed: " + (data.error || "Please try again."));
+      document.getElementById('startVerifyBtn').disabled = false;
+      document.getElementById('uploadStatusText').style.display = 'none';
+      return;
+    }
+
+    // Success: advance to instruction screen or start assessment
+    document.getElementById('verificationContainer').style.display = 'none';
+    document.getElementById('instructionsContainer').style.display = 'block';
+  } catch (err) {
+    alert("Network Error: Could not upload verification images.");
+    document.getElementById('startVerifyBtn').disabled = false;
+    document.getElementById('uploadStatusText').style.display = 'none';
+  }
+}
+
+function triggerStartAssessment() {
+  document.getElementById('instructionsContainer').style.display = 'none';
+  document.getElementById('examBody').style.display = 'grid';
+  startAssessment();
+}
+
+// ── Assessment Start ──────────────────────────────────────────────────────────
 async function startAssessment() {
+  globalStartTimeStamp = Date.now();
   try {
     const resp = await fetch('/api/assessment/start', {
       method: 'POST',
@@ -174,11 +468,10 @@ async function startAssessment() {
 
     questions = data.questions;
     scoreId   = data.score_id;
-    totalSeconds = remainingSeconds = data.remaining_seconds || data.duration_seconds || 3600;
+    secondsPerQuestion = data.seconds_per_question || secondsPerQuestion || 60;
 
     buildSidebar();
     showQuestion(0);
-    startTimer();
   } catch(e) {
     document.getElementById('questionArea').innerHTML =
       '<div style="text-align:center;padding:40px;color:#c53030">Network error. Please reload.</div>';
@@ -206,15 +499,6 @@ function buildSidebar() {
 function showQuestion(idx) {
   if (idx < 0 || idx >= questions.length) return;
 
-  // Record time spent on previous question
-  if (qStartTime !== null && currentIdx !== idx) {
-    const spent = Math.round((Date.now() - qStartTime) / 1000);
-    if (answers[questions[currentIdx].id]) {
-      answers[questions[currentIdx].id].time_spent_secs =
-        (answers[questions[currentIdx].id].time_spent_secs || 0) + spent;
-    }
-  }
-
   currentIdx = idx;
   qStartTime = Date.now();
   const q = questions[idx];
@@ -241,12 +525,16 @@ function showQuestion(idx) {
     </div>
     <div class="nav-bar">
       ${idx < questions.length - 1
-        ? `<button class="btn btn-primary" onclick="navTo(${idx+1})">Next →</button>`
+        ? `<button class="btn btn-primary" onclick="nextQuestion()">Next question →</button>`
         : `<button class="btn btn-primary" onclick="openModal()">Submit Assessment</button>`
       }
     </div>
   `;
   document.getElementById('questionArea').innerHTML = html;
+  
+  // Restart per-question timer
+  questionTimeLeft = secondsPerQuestion;
+  startQuestionTimer();
   updateCell(idx);
 }
 
@@ -255,19 +543,83 @@ function selectOption(qId, optIdx, labelEl) {
     r.closest('.option-row').classList.remove('selected');
   });
   labelEl.classList.add('selected');
+  
+  const prevTime = answers[qId] ? (answers[qId].time_spent_secs || 0) : 0;
   answers[qId] = {
     question_id: qId,
     answer_given: optIdx,
     was_timeout: false,
-    time_spent_secs: 0,
+    time_spent_secs: prevTime,
   };
   updateCell(currentIdx);
 }
 
-function navTo(idx) {
-  if (idx < 0 || idx >= questions.length) return;
-  if (idx <= currentIdx && qStartTime !== null) return;
-  showQuestion(idx);
+function startQuestionTimer() {
+  if (questionTimerInterval) clearInterval(questionTimerInterval);
+  
+  const disp = document.getElementById('timerDisplay');
+  disp.textContent = questionTimeLeft;
+  disp.classList.remove('warn', 'danger');
+
+  questionTimerInterval = setInterval(() => {
+    questionTimeLeft--;
+    disp.textContent = questionTimeLeft;
+
+    if (questionTimeLeft <= 10) {
+      disp.classList.add('warn');
+    }
+    if (questionTimeLeft <= 3) {
+      disp.classList.remove('warn');
+      disp.classList.add('danger');
+    }
+
+    if (questionTimeLeft <= 0) {
+      clearInterval(questionTimerInterval);
+      autoAdvanceOnTimeout();
+    }
+  }, 1000);
+}
+
+function autoAdvanceOnTimeout() {
+  const q = questions[currentIdx];
+  const spent = Math.round((Date.now() - qStartTime) / 1000);
+
+  const saved = answers[q.id];
+  answers[q.id] = {
+    question_id: q.id,
+    answer_given: saved ? saved.answer_given : null,
+    was_timeout: true,
+    time_spent_secs: (saved ? (saved.time_spent_secs || 0) : 0) + spent
+  };
+
+  alert("Time's up! Advancing to the next question.");
+
+  if (currentIdx < questions.length - 1) {
+    showQuestion(currentIdx + 1);
+  } else {
+    doSubmit();
+  }
+}
+
+function nextQuestion() {
+  if (questionTimerInterval) clearInterval(questionTimerInterval);
+
+  const q = questions[currentIdx];
+  const spent = Math.round((Date.now() - qStartTime) / 1000);
+
+  const saved = answers[q.id];
+  answers[q.id] = {
+    question_id: q.id,
+    answer_given: saved ? saved.answer_given : null,
+    was_timeout: false,
+    time_spent_secs: (saved ? (saved.time_spent_secs || 0) : 0) + spent
+  };
+
+  if (currentIdx < questions.length - 1) {
+    showQuestion(currentIdx + 1);
+  } else {
+    openModal();
+  }
 }
 
 function updateCell(idx) {
@@ -280,28 +632,6 @@ function updateCell(idx) {
   });
 }
 
-function startTimer() {
-  const disp = document.getElementById('timerDisplay');
-  timerInterval = setInterval(() => {
-    remainingSeconds--;
-    const m = Math.floor(remainingSeconds / 60);
-    const s = remainingSeconds % 60;
-    disp.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-    if (remainingSeconds <= 120) disp.classList.add('warn');
-    if (remainingSeconds <= 30)  { disp.classList.remove('warn'); disp.classList.add('danger'); }
-    if (remainingSeconds <= 0) {
-      clearInterval(timerInterval);
-      // Mark remaining questions as timed out
-      questions.forEach(q => {
-        if (!answers[q.id]) {
-          answers[q.id] = { question_id: q.id, answer_given: null, was_timeout: true, time_spent_secs: 0 };
-        }
-      });
-      doSubmit();
-    }
-  }, 1000);
-}
-
 function openModal() { document.getElementById('submitModal').classList.add('open'); }
 function closeModal() { document.getElementById('submitModal').classList.remove('open'); }
 
@@ -311,17 +641,29 @@ document.addEventListener('visibilitychange', () => {
 
 async function doSubmit() {
   closeModal();
-  clearInterval(timerInterval);
+  if (questionTimerInterval) clearInterval(questionTimerInterval);
 
   // Record final question time
   if (qStartTime !== null) {
     const spent = Math.round((Date.now() - qStartTime) / 1000);
     const q = questions[currentIdx];
-    if (q && answers[q.id]) answers[q.id].time_spent_secs = (answers[q.id].time_spent_secs || 0) + spent;
+    if (q) {
+      if (!answers[q.id]) {
+        answers[q.id] = { question_id: q.id, answer_given: null, was_timeout: false, time_spent_secs: 0 };
+      }
+      answers[q.id].time_spent_secs = (answers[q.id].time_spent_secs || 0) + spent;
+    }
   }
 
+  // Backfill any remaining un-navigated questions as timed out
+  questions.forEach(q => {
+    if (!answers[q.id]) {
+      answers[q.id] = { question_id: q.id, answer_given: null, was_timeout: true, time_spent_secs: 0 };
+    }
+  });
+
   const answersArr = Object.values(answers);
-  const timeTaken = totalSeconds - remainingSeconds;
+  const timeTaken = Math.round((Date.now() - globalStartTimeStamp) / 1000);
 
   try {
     const resp = await fetch('/api/assessment/submit', {
@@ -363,6 +705,7 @@ async function doSubmit() {
   }
 }
 
-startAssessment();
+// Entry point
+checkAssessmentState();
 </script>
 {% endblock %}
