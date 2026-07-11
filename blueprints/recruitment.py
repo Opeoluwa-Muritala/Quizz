@@ -1419,19 +1419,22 @@ def get_slots():
     with DBConnection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT gs.id, gs.start_time, gs.end_time,
-                       i.name AS interviewer_name,
-                       gs.is_booked,
-                       ar.booking_lead_time_hours
+                SELECT gs.id, gs.start_time, gs.end_time, i.name, gs.is_booked,
+                       COALESCE(gs.booking_lead_time_hours, ar.booking_lead_time_hours, 24),
+                       s.title, s.interview_round, COALESCE(gs.booking_mode, 'single'),
+                       COALESCE((SELECT json_agg(json_build_object('id',pi.id,'name',pi.name,'color',pi.color))
+                         FROM slot_interviewers si JOIN interviewers pi ON pi.id=si.interviewer_id WHERE si.slot_id=gs.id), '[]'::json)
                 FROM generated_slots gs
                 JOIN interviewers i ON gs.interviewer_id = i.id
                 LEFT JOIN availability_rules ar ON gs.availability_rule_id = ar.id
+                JOIN interview_schedules s ON s.id=gs.schedule_id AND s.published=TRUE
+                JOIN candidates c ON c.id=%s AND c.role=s.role AND c.interview_round=s.interview_round
                 WHERE gs.is_blocked = FALSE
                   AND gs.is_booked = FALSE
                   AND EXTRACT(YEAR  FROM gs.start_time AT TIME ZONE 'Africa/Lagos') = %s
                   AND EXTRACT(MONTH FROM gs.start_time AT TIME ZONE 'Africa/Lagos') = %s
                 ORDER BY gs.start_time;
-            """, (year, month))
+            """, (candidate_id, year, month))
             rows = cur.fetchall()
 
     now_utc = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc)
@@ -1449,6 +1452,7 @@ def get_slots():
             "interviewer": r[3],
             "is_booked":   r[4],
             "bookable":    bookable,
+            "schedule_title": r[6], "interview_round": r[7], "booking_mode": r[8], "panel": r[9] or [],
         })
 
     return jsonify(slots)
@@ -1462,7 +1466,7 @@ def book_slot(slot_id):
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT stage FROM candidates WHERE id = %s;", (candidate_id,))
+            cur.execute("SELECT stage, role, interview_round FROM candidates WHERE id = %s;", (candidate_id,))
             row = cur.fetchone()
             if not row or row[0] not in ("interview_slot_pending", "assessment_passed"):
                 return jsonify({"error": "Cannot book a slot at your current stage."}), 403
@@ -1472,10 +1476,12 @@ def book_slot(slot_id):
                 SELECT gs.id, gs.start_time, gs.end_time, gs.is_booked, gs.is_blocked,
                        i.id AS interviewer_id, i.name, i.email, i.meeting_provider,
                        i.google_calendar_id, i.zoom_user_id,
-                       ar.booking_lead_time_hours
+                       COALESCE(gs.booking_lead_time_hours, ar.booking_lead_time_hours, 24),
+                       s.role, s.interview_round, s.daily_booking_cap
                 FROM generated_slots gs
                 JOIN interviewers i ON gs.interviewer_id = i.id
                 LEFT JOIN availability_rules ar ON gs.availability_rule_id = ar.id
+                JOIN interview_schedules s ON s.id=gs.schedule_id AND s.published=TRUE
                 WHERE gs.id = %s
                 FOR UPDATE OF gs;
             """, (slot_id,))
@@ -1494,6 +1500,15 @@ def book_slot(slot_id):
             now_utc = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc)
             if (slot_row[1] - now_utc).total_seconds() < lead_hours * 3600:
                 return jsonify({"error": "This slot is within the booking lead-time window."}), 409
+
+            if row[1] != slot_row[12] or row[2] != slot_row[13]:
+                return jsonify({"error": "This slot does not match your role and interview round."}), 403
+            if slot_row[14]:
+                cur.execute("""SELECT COUNT(*) FROM generated_slots WHERE schedule_id=(SELECT schedule_id FROM generated_slots WHERE id=%s)
+                    AND is_booked=TRUE AND (start_time AT TIME ZONE 'Africa/Lagos')::date=(%s AT TIME ZONE 'Africa/Lagos')::date""",
+                    (slot_id, slot_row[1]))
+                if cur.fetchone()[0] >= slot_row[14]:
+                    return jsonify({"error": "You have reached this schedule's daily booking limit."}), 409
 
             # Build dicts for meeting creation
             slot_dict = {"id": slot_row[0], "start_time": slot_row[1], "end_time": slot_row[2]}

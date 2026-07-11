@@ -1722,8 +1722,17 @@ def job_generate_slots():
     if secret and not hmac.compare_digest(secret.encode(), provided.encode()):
         return jsonify({"error": "Unauthorized"}), 401
     from jobs.slot_generator import generate_slots
-    count = generate_slots(weeks_ahead=4)
-    return jsonify({"created": count})
+    from services.schedules import generate_schedule_slots
+    count = generate_slots(weeks_ahead=4)  # legacy availability-rule slots
+    schedule_count = 0
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM interview_schedules WHERE published=TRUE")
+            ids = [row[0] for row in cur.fetchall()]
+        for schedule_id in ids:
+            schedule_count += generate_schedule_slots(conn, schedule_id)
+        conn.commit()
+    return jsonify({"created": count + schedule_count, "legacy_created": count, "schedule_created": schedule_count})
 
 
 @app.route("/api/jobs/expire-deadlines", methods=["POST"])

@@ -8,6 +8,9 @@ import time
 import requests
 import logging
 import cloudinary.utils
+import csv
+import io
+import json
 
 from flask import Blueprint, request, jsonify, session, Response, redirect
 
@@ -16,6 +19,7 @@ from services.notifications import send_notification, resend_notification
 
 logger = logging.getLogger(__name__)
 from jobs.slot_generator import generate_slots
+from services.schedules import generate_schedule_slots
 
 admin_rec = Blueprint("admin_rec", __name__)
 
@@ -89,7 +93,7 @@ def list_candidates():
                        c.cv_url, c.created_at,
                        s.score, s.pass_fail,
                        gs.start_time AS interview_time, c.filtered_total,
-                       c.cohort_id, co.name AS cohort_name
+                       c.cohort_id, co.name AS cohort_name, c.interview_round
                 FROM candidate_page c
                 LEFT JOIN cohorts co ON c.cohort_id = co.id
                 LEFT JOIN LATERAL (
@@ -121,7 +125,7 @@ def list_candidates():
             "latest_pass_fail": r[13],
             "interview_time": r[14].isoformat() if r[14] else None,
             "cohort_id": r[16],
-            "cohort_name": r[17] or "Cohort 1",
+            "cohort_name": r[17] or "Cohort 1", "interview_round": r[18],
         })
 
     return jsonify({"candidates": candidates, "total": total, "page": page, "per_page": per_page})
@@ -139,7 +143,7 @@ def get_candidate(cand_id):
                        c.nysc_status, c.stage, c.stage_updated_at,
                        c.eligibility_flag, c.eligibility_flag_reason,
                        c.cv_url, c.created_at, c.role, c.location,
-                       c.cohort_id, co.name AS cohort_name
+                       c.cohort_id, co.name AS cohort_name, c.interview_round
                 FROM candidates c 
                 LEFT JOIN cohorts co ON c.cohort_id = co.id
                 WHERE c.id = %s;
@@ -206,7 +210,7 @@ def get_candidate(cand_id):
             "cv_url": f"/api/admin/recruitment/candidates/{cand_id}/cv" if cand[10] else None,
             "created_at": cand[11].isoformat() if cand[11] else None,
             "role": cand[12], "location": cand[13],
-            "cohort_id": cand[14], "cohort_name": cand[15] or "Cohort 1",
+            "cohort_id": cand[14], "cohort_name": cand[15] or "Cohort 1", "interview_round": cand[16],
         },
         "scores": [{
             "id": s[0], "label": s[1], "score": float(s[2]) if s[2] is not None else None,
@@ -248,6 +252,7 @@ def set_candidate_stage(cand_id):
     new_stage = data.get("stage", "").strip()
     reason    = data.get("reason", "admin override").strip()
     notify    = data.get("notify", True)
+    interview_round = data.get("interview_round")
 
     if new_stage not in VALID_STAGES:
         return jsonify({"error": f"Invalid stage '{new_stage}'."}), 400
@@ -262,9 +267,9 @@ def set_candidate_stage(cand_id):
 
             cur.execute("""
                 UPDATE candidates
-                SET stage = %s, stage_updated_at = NOW()
+                SET stage = %s, interview_round = COALESCE(%s, interview_round), stage_updated_at = NOW()
                 WHERE id = %s;
-            """, (new_stage, cand_id))
+            """, (new_stage, interview_round or None, cand_id))
             cur.execute("""
                 INSERT INTO candidate_stage_history
                     (candidate_id, from_stage, to_stage, changed_by, reason)
@@ -304,6 +309,58 @@ def set_candidate_stage(cand_id):
     return jsonify({"status": "success", "old_stage": old_stage, "new_stage": new_stage})
 
 
+@admin_rec.route("/api/admin/recruitment/candidates/bulk", methods=["POST"])
+def bulk_candidate_updates():
+    """Apply table selections or a CSV (email,target_stage,interview_round) safely."""
+    err = _require_admin()
+    if err: return err
+    data = request.get_json(silent=True) or {}
+    rows = data.get("rows", [])
+    if request.files.get("file"):
+        try:
+            rows = list(csv.DictReader(io.StringIO(request.files["file"].read().decode("utf-8-sig"))))
+        except (UnicodeDecodeError, csv.Error):
+            return jsonify({"error": "Upload a UTF-8 CSV with email,target_stage headers."}), 400
+    if data.get("candidate_ids"):
+        rows = [{"id": cid, "target_stage": data.get("target_stage"), "interview_round": data.get("interview_round")}
+                for cid in data["candidate_ids"]]
+    if not rows:
+        return jsonify({"error": "Provide CSV rows or candidate_ids."}), 400
+
+    results, seen = [], set()
+    notifications = []
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            for index, raw in enumerate(rows, 1):
+                email = (raw.get("email") or "").strip().lower()
+                cid = raw.get("id")
+                stage = (raw.get("target_stage") or raw.get("stage") or "").strip()
+                round_name = (raw.get("interview_round") or "").strip() or None
+                key = email or str(cid or "")
+                if not key or not stage or stage not in VALID_STAGES:
+                    results.append({"row": index, "status": "invalid", "error": "Valid email/id and target_stage are required."}); continue
+                if key in seen:
+                    results.append({"row": index, "status": "duplicate", "error": "Duplicate input row."}); continue
+                seen.add(key)
+                cur.execute("SELECT id, stage FROM candidates WHERE " + ("id = %s" if cid else "LOWER(email) = %s"), (int(cid) if cid else email,))
+                candidate = cur.fetchone()
+                if not candidate:
+                    results.append({"row": index, "status": "unknown", "email": email}); continue
+                candidate_id, old_stage = candidate
+                cur.execute("""UPDATE candidates SET stage=%s, interview_round=COALESCE(%s, interview_round),
+                               stage_updated_at=NOW() WHERE id=%s""", (stage, round_name, candidate_id))
+                cur.execute("""INSERT INTO candidate_stage_history(candidate_id,from_stage,to_stage,changed_by,reason)
+                               VALUES(%s,%s,%s,'admin','bulk update')""", (candidate_id, old_stage, stage))
+                results.append({"row": index, "status": "updated", "id": candidate_id, "old_stage": old_stage, "new_stage": stage})
+                if stage in STAGE_EMAIL_EVENT: notifications.append((candidate_id, stage, STAGE_EMAIL_EVENT[stage]))
+        conn.commit()
+    for candidate_id, stage, event in notifications:
+        try: send_notification(candidate_id, stage, event)
+        except Exception: logger.exception("Bulk notification failed for candidate_id=%s", candidate_id)
+    return jsonify({"status": "success", "results": results,
+                    "updated": sum(r["status"] == "updated" for r in results)})
+
+
 # ── Interviewers ──────────────────────────────────────────────────────────────
 
 @admin_rec.route("/api/admin/recruitment/interviewers", methods=["GET", "POST"])
@@ -316,15 +373,15 @@ def interviewers():
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT id, name, email, active, meeting_provider,
-                           google_calendar_id, zoom_user_id, created_at
+                           google_calendar_id, zoom_user_id, color, created_at
                     FROM interviewers ORDER BY name;
                 """)
                 rows = cur.fetchall()
         return jsonify([{
             "id": r[0], "name": r[1], "email": r[2], "active": r[3],
             "meeting_provider": r[4], "google_calendar_id": r[5],
-            "zoom_user_id": r[6],
-            "created_at": r[7].isoformat() if r[7] else None,
+            "zoom_user_id": r[6], "color": r[7],
+            "created_at": r[8].isoformat() if r[8] else None,
         } for r in rows])
 
     data = request.json or {}
@@ -392,6 +449,141 @@ def interviewer_detail(iid):
 
 
 # ── Availability rules ────────────────────────────────────────────────────────
+
+def _schedule_payload(cur, schedule_id=None):
+    where, params = ("WHERE s.id = %s", [schedule_id]) if schedule_id else ("", [])
+    cur.execute(f"""
+        SELECT s.id,s.title,s.role,s.interview_round,s.schedule_type,s.start_date,s.end_date,
+               s.active_days,s.availability_windows,s.duration_minutes,s.buffer_minutes,
+               s.booking_lead_time_hours,s.daily_booking_cap,s.interviewer_booking_cap,
+               s.booking_mode,s.published,s.generated_at,
+               (SELECT COUNT(*) FROM generated_slots x WHERE x.schedule_id=s.id AND x.is_booked=FALSE),
+               (SELECT COUNT(*) FROM generated_slots x WHERE x.schedule_id=s.id AND x.is_booked=TRUE),
+               (SELECT COUNT(*) FROM candidates x WHERE x.role=s.role AND x.interview_round=s.interview_round AND x.stage='interview_slot_pending')
+        FROM interview_schedules s
+        {where}
+        ORDER BY s.created_at DESC
+    """, params)
+    schedules = []
+    for r in cur.fetchall():
+        cur.execute("""SELECT i.id,i.name,i.email,i.color FROM schedule_interviewers si
+                     JOIN interviewers i ON i.id=si.interviewer_id WHERE si.schedule_id=%s ORDER BY si.position""", (r[0],))
+        schedules.append({"id":r[0],"title":r[1],"role":r[2],"round":r[3],"type":r[4],
+            "start_date":r[5].isoformat() if r[5] else None,"end_date":r[6].isoformat() if r[6] else None,
+            "active_days":r[7] or [],"recurrence_days":r[7] or [],"hours":r[8] or {},"duration":r[9],"buffer":r[10],
+            "notice":r[11],"max_bookings":r[12],"max_interviewer_bookings":r[13],
+            "mode":"robin" if r[14]=="round_robin" else r[14],"published":r[15],
+            "status":"Active" if r[15] and (not r[6] or r[6] >= datetime.date.today()) else "Ended",
+            "generated_at":r[16].isoformat() if r[16] else None,"slots":r[17]+r[18],"booked":r[18],"waiting":r[19],
+            "interviewers":[{"id":i[0],"name":i[1],"email":i[2],"color":i[3]} for i in cur.fetchall()]})
+    return schedules
+
+
+def _validate_schedule(data):
+    title, role, round_name = (data.get("title") or "").strip(), (data.get("role") or "").strip(), (data.get("round") or data.get("interview_round") or "").strip()
+    interviewer_ids = [int(x) for x in data.get("interviewer_ids", [i.get("id") for i in data.get("interviewers", [])]) if x]
+    hours = data.get("hours") or data.get("availability_windows") or {}
+    schedule_type = data.get("type", data.get("schedule_type", "range"))
+    if not title or not role or not round_name or not interviewer_ids or schedule_type not in ("range", "recurring"):
+        return None, "title, role, interview round, schedule type, and one interviewer are required."
+    active_days = [int(x) for x in data.get("active_days", data.get("recurrence_days", []))]
+    if not active_days or not isinstance(hours, dict): return None, "Select days and availability windows."
+    for windows in hours.values():
+        for w in windows:
+            if not w.get("start") or not w.get("end") or w["start"] >= w["end"]: return None, "Each availability window needs a valid start and end time."
+    mode = data.get("mode", data.get("booking_mode", "single"))
+    mode = "round_robin" if mode == "robin" else mode
+    if mode not in ("single", "collective", "round_robin"): return None, "Invalid booking mode."
+    if len(interviewer_ids) == 1: mode = "single"
+    return {"title":title,"role":role,"round":round_name,"type":schedule_type,"interviewer_ids":interviewer_ids,
+            "hours":hours,"active_days":active_days,"mode":mode}, None
+
+
+@admin_rec.route("/api/admin/recruitment/schedules", methods=["GET", "POST"])
+def schedules():
+    err = _require_admin()
+    if err: return err
+    if request.method == "GET":
+        with DBConnection() as conn:
+            with conn.cursor() as cur: return jsonify(_schedule_payload(cur))
+    cfg, error = _validate_schedule(request.json or {})
+    if error: return jsonify({"error":error}), 400
+    data = request.json or {}
+    try:
+        with DBConnection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM interviewers WHERE id = ANY(%s) AND active=TRUE", (cfg["interviewer_ids"],))
+                if cur.fetchone()[0] != len(set(cfg["interviewer_ids"])): return jsonify({"error":"One or more interviewers are inactive or unknown."}), 400
+                cur.execute("""INSERT INTO interview_schedules(title,role,interview_round,schedule_type,start_date,end_date,active_days,availability_windows,
+                    duration_minutes,buffer_minutes,booking_lead_time_hours,daily_booking_cap,interviewer_booking_cap,booking_mode,published)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE) RETURNING id""",
+                    (cfg["title"],cfg["role"],cfg["round"],cfg["type"],data.get("start_date"),data.get("end_date") or data.get("recur_end_date"),cfg["active_days"],json.dumps(cfg["hours"]),
+                     data.get("duration",30),data.get("buffer",10),data.get("notice",24),data.get("max_bookings"),data.get("max_interviewer_bookings"),cfg["mode"]))
+                sid=cur.fetchone()[0]
+                for pos,iid in enumerate(cfg["interviewer_ids"]): cur.execute("INSERT INTO schedule_interviewers(schedule_id,interviewer_id,position) VALUES(%s,%s,%s)",(sid,iid,pos))
+                created=generate_schedule_slots(conn,sid)
+            conn.commit()
+        return jsonify({"status":"success","id":sid,"slots_generated":created}),201
+    except (ValueError, TypeError): return jsonify({"error":"Invalid schedule values."}),400
+
+
+@admin_rec.route("/api/admin/recruitment/schedules/<int:schedule_id>", methods=["GET", "PUT", "DELETE"])
+def schedule_detail(schedule_id):
+    err = _require_admin()
+    if err: return err
+    if request.method == "GET":
+        with DBConnection() as conn:
+            with conn.cursor() as cur:
+                result=_schedule_payload(cur,schedule_id)
+                return jsonify(result[0]) if result else (jsonify({"error":"Schedule not found."}),404)
+    if request.method == "DELETE":
+        with DBConnection() as conn:
+            with conn.cursor() as cur: cur.execute("UPDATE interview_schedules SET published=FALSE,updated_at=NOW() WHERE id=%s",(schedule_id,))
+            conn.commit()
+        return jsonify({"status":"success"})
+    cfg,error=_validate_schedule(request.json or {})
+    if error:return jsonify({"error":error}),400
+    data=request.json or {}
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM generated_slots WHERE schedule_id=%s AND is_booked=TRUE",(schedule_id,)); booked=cur.fetchone()[0]
+            cur.execute("""UPDATE interview_schedules SET title=%s,role=%s,interview_round=%s,schedule_type=%s,start_date=%s,end_date=%s,active_days=%s,availability_windows=%s,
+              duration_minutes=%s,buffer_minutes=%s,booking_lead_time_hours=%s,daily_booking_cap=%s,interviewer_booking_cap=%s,booking_mode=%s,published=TRUE,updated_at=NOW() WHERE id=%s""",
+              (cfg["title"],cfg["role"],cfg["round"],cfg["type"],data.get("start_date"),data.get("end_date") or data.get("recur_end_date"),cfg["active_days"],json.dumps(cfg["hours"]),data.get("duration",30),data.get("buffer",10),data.get("notice",24),data.get("max_bookings"),data.get("max_interviewer_bookings"),cfg["mode"],schedule_id))
+            if not cur.rowcount:return jsonify({"error":"Schedule not found."}),404
+            cur.execute("DELETE FROM schedule_interviewers WHERE schedule_id=%s",(schedule_id,))
+            for pos,iid in enumerate(cfg["interviewer_ids"]):cur.execute("INSERT INTO schedule_interviewers(schedule_id,interviewer_id,position) VALUES(%s,%s,%s)",(schedule_id,iid,pos))
+            # Remove only future, unbooked old slots; booked appointments are preserved.
+            cur.execute("DELETE FROM generated_slots WHERE schedule_id=%s AND is_booked=FALSE AND start_time>NOW()",(schedule_id,))
+            created=generate_schedule_slots(conn,schedule_id)
+        conn.commit()
+    return jsonify({"status":"success","slots_generated":created,"booked_slots_preserved":booked})
+
+
+@admin_rec.route("/api/admin/recruitment/schedules/preview", methods=["POST"])
+def schedule_preview():
+    err = _require_admin()
+    if err: return err
+    cfg,error=_validate_schedule(request.json or {})
+    if error:return jsonify({"error":error}),400
+    # Client already renders a rich preview; this endpoint returns an authoritative count pattern.
+    data=request.json or {}; duration=int(data.get("duration",30)); buffer=int(data.get("buffer",10)); total=0
+    for wins in cfg["hours"].values():
+        for w in wins:
+            a=datetime.time.fromisoformat(w["start"]); b=datetime.time.fromisoformat(w["end"])
+            total += max(0, (int((datetime.datetime.combine(datetime.date.today(),b)-datetime.datetime.combine(datetime.date.today(),a)).seconds//60)-duration)//(duration+buffer)+1)
+    return jsonify({"slots_per_matching_day":total,"booking_mode":cfg["mode"],"timezone":"Africa/Lagos"})
+
+
+@admin_rec.route("/api/admin/recruitment/schedules/candidate-count")
+def schedule_candidate_count():
+    err = _require_admin()
+    if err:return err
+    role=request.args.get("role",""); round_name=request.args.get("round","")
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM candidates WHERE role=%s AND interview_round=%s AND stage='interview_slot_pending'",(role,round_name))
+            return jsonify({"count":cur.fetchone()[0]})
 
 @admin_rec.route("/api/admin/recruitment/availability-rules", methods=["GET", "POST"])
 def availability_rules():
