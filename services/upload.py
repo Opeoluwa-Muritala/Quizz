@@ -72,8 +72,7 @@ def enqueue_upload(file_bytes: bytes, folder: str, public_id: str,
         )
         url = result.get("secure_url", "")
         pid = result.get("public_id", "")
-        if (not url.startswith("https://") or "/image/upload/" not in url
-                or "fl_attachment" in url):
+        if (not url.startswith("https://") or "fl_attachment" in url):
             raise ValueError("Cloudinary returned a URL that cannot be previewed inline.")
     except Exception as exc:
         logger.exception("Cloudinary upload failed for candidate_id=%s, doc_type=%s",

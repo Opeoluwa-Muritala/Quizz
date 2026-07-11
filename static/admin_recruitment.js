@@ -29,19 +29,44 @@
     if (!dateOrStr) return '—';
     const d = new Date(dateOrStr);
     if (isNaN(d.getTime())) return '—';
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Africa/Lagos',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
-    const parts = formatter.formatToParts(d);
-    const m = {};
-    parts.forEach(p => m[p.type] = p.value);
-    return `${m.year}-${m.month}-${m.day} ${m.hour}:${m.minute} ${m.dayPeriod.toLowerCase()}`;
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Africa/Lagos',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+      const parts = formatter.formatToParts(d);
+      const m = {};
+      parts.forEach(p => m[p.type] = p.value);
+      
+      const year = m.year || d.getUTCFullYear();
+      const month = m.month || String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = m.day || String(d.getUTCDate()).padStart(2, '0');
+      
+      let hourVal = d.getUTCHours() + 1;
+      if (hourVal >= 24) hourVal -= 24;
+      
+      let ampm = hourVal >= 12 ? 'pm' : 'am';
+      let displayHour = hourVal % 12;
+      if (displayHour === 0) displayHour = 12;
+      
+      const hour = m.hour || String(displayHour).padStart(2, '0');
+      const minute = m.minute || String(d.getUTCMinutes()).padStart(2, '0');
+      const period = (m.dayPeriod || m.dayperiod || ampm).toLowerCase();
+      
+      return `${year}-${month}-${day} ${hour}:${minute} ${period}`;
+    } catch (e) {
+      const y = d.getUTCFullYear();
+      const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const da = String(d.getUTCDate()).padStart(2, '0');
+      const ho = String(d.getUTCHours()).padStart(2, '0');
+      const mi = String(d.getUTCMinutes()).padStart(2, '0');
+      return `${y}-${mo}-${da} ${ho}:${mi} utc`;
+    }
   }
 
   let recInitialized = false;
@@ -68,7 +93,12 @@
     const btn = document.querySelector('.tab-btn[data-tab="recruitment"]');
     if (btn) {
       btn.addEventListener('click', () => {
-        if (!recInitialized) { loadRecCandidates(1); recInitialized = true; }
+        if (!recInitialized) {
+          const activeSub = localStorage.getItem("adminActiveRecSubTab") || "candidates";
+          switchRecTab(activeSub);
+          recInitialized = true;
+        }
+        populateRecCohortSelector();
       });
     }
     document.addEventListener('click', (event) => {
@@ -84,6 +114,28 @@
       showAdminDocument(link.href);
     });
   });
+
+  async function populateRecCohortSelector() {
+    const sel = document.getElementById("recSearchCohort");
+    if (!sel) return;
+    try {
+      const res = await fetch("/api/admin/cohorts");
+      if (res.ok) {
+        const cohorts = await res.json();
+        const val = sel.value;
+        sel.innerHTML = '<option value="">All Cohorts</option>';
+        cohorts.forEach(c => {
+          const opt = document.createElement("option");
+          opt.value = c.id;
+          opt.textContent = c.name;
+          sel.appendChild(opt);
+        });
+        if (Array.from(sel.options).some(o => o.value === val)) {
+          sel.value = val;
+        }
+      }
+    } catch (_) {}
+  }
 
   window.showAdminDocument = function (url) {
     let popup = document.getElementById('adminDocumentPopup');
@@ -116,6 +168,7 @@
     document.querySelectorAll('.rec-subpanel').forEach(p => p.classList.remove('active'));
     document.querySelector(`.rec-subtab[data-rec="${name}"]`).classList.add('active');
     document.getElementById(`rec-sub-${name}`).classList.add('active');
+    localStorage.setItem("adminActiveRecSubTab", name);
 
     // Toggle full-screen layout body class when slots subtab is selected
     const dashboardContainer = document.querySelector('.admin-dashboard-container');
@@ -135,6 +188,7 @@
       loadRecInterviewerSelect('arInterviewer');
       loadRecInterviewerSelect('panelistAddSel');
       loadRecSlots();
+      if (window.loadSchedulesTab) window.loadSchedulesTab();
     }
     if (name === 'config')   loadRecStageConfig();
     if (name === 'employmentdocs') loadEmploymentDocRoles();
@@ -146,12 +200,14 @@
     recCandPage = page;
     const stage   = document.getElementById('recSearchStage')?.value || '';
     const flagged = document.getElementById('recSearchFlagged')?.value || '';
+    const cohortId = document.getElementById('recSearchCohort')?.value || '';
     const tbody   = document.getElementById('recCandTbody');
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;padding:20px">Loading…</td></tr>';
 
     let url = `/api/admin/recruitment/candidates?page=${page}`;
     if (stage)   url += `&stage=${encodeURIComponent(stage)}`;
     if (flagged) url += `&flagged=${flagged}`;
+    if (cohortId) url += `&cohort_id=${cohortId}`;
 
     const data = await recApiGet(url);
     if (!data) {
@@ -165,7 +221,10 @@
 
     tbody.innerHTML = data.candidates.map(c => `
       <tr>
-        <td>${esc(c.name)}</td>
+        <td>
+          <strong>${esc(c.name)}</strong>
+          <div style="font-size:11px; color:#888; margin-top:2px;">${esc(c.cohort_name)}</div>
+        </td>
         <td style="color:#888">${esc(c.email)}</td>
         <td><span class="rec-pill ${stagePill(c.stage)}">${formatStageText(c.stage)}</span></td>
         <td>${c.latest_score !== null ? c.latest_score + '%' : '—'}</td>
@@ -186,6 +245,15 @@
       <span class="page-indicator font-mono">Page ${page} of ${Math.max(1, Math.ceil(total / pp))}</span>
       <button type="button" class="btn btn-ghost"
         onclick="loadRecCandidates(${page + 1})" ${page * pp >= total ? 'disabled' : ''}>Next →</button>`;
+    // Warm the following candidates page after rendering this one. The shared
+    // cache deduplicates this request with the dashboard's initial preload.
+    if (page * pp < total && window.getAdminCached) {
+      let nextUrl = `/api/admin/recruitment/candidates?page=${page + 1}`;
+      if (stage) nextUrl += `&stage=${encodeURIComponent(stage)}`;
+      if (flagged) nextUrl += `&flagged=${flagged}`;
+      if (cohortId) nextUrl += `&cohort_id=${cohortId}`;
+      window.getAdminCached(nextUrl).catch(() => { /* Load on demand later. */ });
+    }
   };
 
   window.openRecCandModal = async function (candId) {
@@ -207,18 +275,18 @@
     const stageOptions = [
       'applied', 'screening_failed', 'screening_flagged', 'screening_passed',
       'assessment_in_progress', 'assessment_failed', 'assessment_passed',
-      'interview_slot_pending', 'interview_scheduled', 'documents_pending',
-      'documents_submitted', 'interview_completed', 'offered', 'rejected',
+      'interview_slot_pending', 'interview_scheduled', 'interview_completed',
+      'documents_pending', 'documents_submitted', 'offered', 'rejected',
     ].map(s => `<option value="${s}" ${s === c.stage ? 'selected' : ''}>${formatStageText(s)}</option>`).join('');
 
     const cvHtml = c.cv_url ? `
       <div style="margin-top:8px">
         <button class="btn btn-ghost" style="padding:5px 14px;font-size:.85rem" type="button"
-          onclick="toggleCVPreview('${esc(c.cv_url)}')">
+          onclick="showAdminDocument('${esc(c.cv_url)}')">
           <i class="ti ti-file-text" style="margin-right:4px"></i>View CV
         </button>
       </div>
-      <div id="cvPreviewWrap" class="cv-preview-wrap" style="display:none;margin-top:12px">
+      <div id="cvPreviewWrap" class="cv-preview-wrap" style="display:none!important">
         <div class="cv-nav-bar">
           <button type="button" id="cvPrevBtn" onclick="cvChangePage(-1)" disabled>← Prev</button>
           <span id="cvPageLabel">Page 1</span>
@@ -351,6 +419,21 @@
         <div id="recOverrideMsg" style="font-size:.82rem;margin-top:6px"></div>
       </div>
 
+      <div style="margin:20px 0 8px; border-top:1px solid #eee; padding-top:16px;">
+        <label style="font-size:.82rem;font-weight:700;color:#555;display:block;margin-bottom:6px">
+          Assign / Reset Assessment
+        </label>
+        <div style="display:flex;gap:8px">
+          <select id="recAssignQuizSelect" class="rec-ctrl" style="flex:1">
+            ${data.cohort_quizzes && data.cohort_quizzes.length 
+              ? data.cohort_quizzes.map(q => `<option value="${q.id}">${esc(q.title)} (Pass: ${q.pass_mark}%)</option>`).join('')
+              : '<option value="">No quizzes available</option>'}
+          </select>
+          <button class="btn btn-primary" type="button" onclick="assignRecQuiz(${candId})" ${!(data.cohort_quizzes && data.cohort_quizzes.length) ? 'disabled' : ''}>Assign</button>
+        </div>
+        <div id="recAssignQuizMsg" style="font-size:.82rem;margin-top:6px"></div>
+      </div>
+
       ${scoresHtml}${docsHtml}${slotsHtml}${histHtml}
     `;
   };
@@ -401,6 +484,35 @@
       setTimeout(() => openRecCandModal(candId), 400);
     } else {
       msg.textContent = data?.error || 'Error updating stage.'; msg.style.color = '#c53030';
+    }
+  };
+
+  window.assignRecQuiz = async function (candId) {
+    const sel = document.getElementById('recAssignQuizSelect');
+    const msg = document.getElementById('recAssignQuizMsg');
+    if (!sel || !sel.value) return;
+
+    msg.style.color = '#3182ce';
+    msg.textContent = 'Assigning...';
+
+    const resp = await fetch(`/api/admin/recruitment/candidates/${candId}/assign-quiz`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quiz_id: parseInt(sel.value) })
+    });
+
+    if (resp.ok) {
+      const result = await resp.json();
+      msg.style.color = '#2f855a';
+      msg.textContent = result.message || 'Assigned successfully!';
+      setTimeout(() => {
+        openRecCandModal(candId);
+        loadRecCandidates(recCandPage);
+      }, 1000);
+    } else {
+      const err = await resp.json();
+      msg.style.color = '#c53030';
+      msg.textContent = err.error || 'Failed to assign quiz.';
     }
   };
 
@@ -543,9 +655,15 @@
       dashboardContainer.classList.add('sidebar-collapsed');
     }
 
-    // 1. Fetch active interviewers if empty
+    // Fetch stable calendar metadata together. Cached/in-flight requests are
+    // deduplicated by getAdminCached.
+    const [interviewerData, rulesData] = await Promise.all([
+      window.calendarState.interviewers.length ? null : recApiGet('/api/admin/recruitment/interviewers'),
+      window.calendarState.rules.length ? null : recApiGet('/api/admin/recruitment/slots/rules'),
+    ]);
+
     if (!window.calendarState.interviewers.length) {
-      const data = await recApiGet('/api/admin/recruitment/interviewers');
+      const data = interviewerData;
       if (data) {
         window.calendarState.interviewers = data;
         const colors = ['#89268B', '#1E7A45', '#B8790A', '#2B6CB0', '#319795', '#D53F8C', '#4A5568'];
@@ -556,9 +674,8 @@
       }
     }
 
-    // 2. Fetch active rules
     if (!window.calendarState.rules.length) {
-      const data = await recApiGet('/api/admin/recruitment/slots/rules');
+      const data = rulesData;
       if (data) {
         window.calendarState.rules = data;
       }
@@ -605,6 +722,66 @@
     const data = await recApiPost('/api/admin/recruitment/slots/generate', { weeks_ahead: 4 });
     alert(data?.message || 'Slot generation started.');
     setTimeout(loadRecSlots, 2000);
+  };
+
+  window.openManualSlotModal = function (date = '', startMinutes = 540, endMinutes = 570) {
+    const toLocal = (day, minutes) => {
+      const hours = String(Math.floor(minutes / 60)).padStart(2, '0');
+      const mins = String(Math.round(minutes % 60)).padStart(2, '0');
+      return `${day || getLocalDateString(window.calendarState.currentDate)}T${hours}:${mins}`;
+    };
+    let modal = document.getElementById('manualSlotModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'manualSlotModal';
+      modal.className = 'modal-overlay hidden';
+      document.body.appendChild(modal);
+    }
+    const interviewers = window.calendarState.interviewers.filter(i => i.active !== false);
+    modal.innerHTML = `
+      <div class="card" style="width:min(560px,94vw);padding:22px">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
+          <h3 style="margin:0">Create interview slot</h3>
+          <button class="btn btn-ghost" type="button" onclick="closeManualSlotModal()">Close</button>
+        </div>
+        <p style="color:#666;font-size:.9rem">Choose one primary interviewer, or select several people for a panel interview.</p>
+        <div class="form-group"><label>Title (optional)</label><input class="rec-ctrl" id="manualSlotTitle" placeholder="Interview"></div>
+        <div class="rec-row">
+          <div class="form-group"><label>Start</label><input class="rec-ctrl" id="manualSlotStart" type="datetime-local" value="${toLocal(date, startMinutes)}"></div>
+          <div class="form-group"><label>End</label><input class="rec-ctrl" id="manualSlotEnd" type="datetime-local" value="${toLocal(date, Math.max(endMinutes, startMinutes + 15))}"></div>
+        </div>
+        <div class="form-group"><label>Interviewers</label>
+          <div style="max-height:180px;overflow:auto;border:1px solid #ddd;border-radius:6px;padding:8px">
+            ${interviewers.map((i, index) => `<label style="display:flex;gap:8px;padding:5px;align-items:center"><input type="checkbox" class="manual-slot-interviewer" value="${i.id}" ${index === 0 ? 'checked' : ''}> ${esc(i.name)}${index === 0 ? ' <span style="color:#777;font-size:.8rem">(primary)</span>' : ''}</label>`).join('') || '<span style="color:#b3261e">Add an active interviewer first.</span>'}
+          </div>
+        </div>
+        <p id="manualSlotMessage" style="min-height:20px;margin:0 0 10px;color:#b3261e"></p>
+        <button class="btn btn-primary" type="button" onclick="saveManualSlot()">Create slot</button>
+      </div>`;
+    modal.classList.remove('hidden');
+  };
+
+  window.closeManualSlotModal = function () {
+    document.getElementById('manualSlotModal')?.classList.add('hidden');
+  };
+
+  window.saveManualSlot = async function () {
+    const interviewerIds = Array.from(document.querySelectorAll('.manual-slot-interviewer:checked')).map(i => Number(i.value));
+    const message = document.getElementById('manualSlotMessage');
+    if (!interviewerIds.length) { message.textContent = 'Select at least one interviewer.'; return; }
+    const data = await recApiPost('/api/admin/recruitment/slots', {
+      title: document.getElementById('manualSlotTitle').value,
+      start_time: document.getElementById('manualSlotStart').value,
+      end_time: document.getElementById('manualSlotEnd').value,
+      interviewer_ids: interviewerIds,
+    });
+    if (data?.status === 'success') {
+      closeManualSlotModal();
+      window.calendarState.slots = [];
+      await loadRecSlots();
+    } else {
+      message.textContent = data?.error || 'Unable to create the slot.';
+    }
   };
 
   function renderCalendarHTML() {
@@ -679,6 +856,7 @@
 
           <div class="cal-topbar-right">
             <input class="rec-ctrl" type="date" id="jumpDate" style="width:140px;height:34px;padding:4px 10px" onchange="jumpToCalDate(this.value)">
+            <button class="btn btn-primary" style="padding:6px 14px;font-size:0.82rem" onclick="openManualSlotModal()">+ New slot</button>
             <button class="btn btn-primary" style="background:#276749;padding:6px 14px;font-size:0.82rem" onclick="triggerRecGenerate()">↻ Generate Slots</button>
             <button class="btn btn-ghost" style="padding:6px 14px;font-size:0.82rem;border:1px solid var(--mfb-gray-300)" onclick="printSchedule()">Print View</button>
           </div>
@@ -1419,6 +1597,10 @@
         blocked: action
       });
       loadRecSlots();
+    } else if (Math.abs(y - state.selectionStart) < 4) {
+      // A simple click on an empty calendar area opens the slot form at that
+      // date/time. Dragging remains the existing block/unblock gesture.
+      window.openManualSlotModal(colDateStr, Math.round(minMins / 15) * 15, Math.round((minMins + 30) / 15) * 15);
     }
 
     // Reset selection state
@@ -1985,7 +2167,9 @@
         body: JSON.stringify(body),
       });
       if (r.status === 401) { window.location.href = '/admin/login'; return new Promise(() => {}); }
-      return await r.json();
+      const data = await r.json();
+      if (r.ok) window.clearAdminCached?.();
+      return data;
     } catch (e) { return null; }
   }
 
@@ -1993,7 +2177,9 @@
     try {
       const r = await fetch(url, { method, headers: { 'X-CSRF-Token': csrf } });
       if (r.status === 401) { window.location.href = '/admin/login'; return new Promise(() => {}); }
-      return await r.json();
+      const data = await r.json();
+      if (r.ok && method !== 'GET') window.clearAdminCached?.();
+      return data;
     } catch (e) { return null; }
   }
 
@@ -2014,4 +2200,833 @@
     await window.loadRecStageConfig();
   };
 
+  // ── MMFB Admin — Open Time Slots (GCal / Calendly Scheduler Flow) ──
+  
+  // Seeded mock schedules to populate initially
+  const defaultSchedules = [
+    {
+      id: 1,
+      title: "Loan Officer Interviews — Week 3",
+      role: "Loan Officer",
+      round: "Technical",
+      type: "range",
+      start_date: "2026-07-14",
+      end_date: "2026-07-18",
+      duration: 30,
+      buffer: 10,
+      notice: 12,
+      max_bookings: 5,
+      max_interviewer_bookings: 3,
+      interviewers: [
+        { id: 1, name: "Dr. Abigail", email: "abigail@mainstreet.com", color: "#89268B" }
+      ],
+      mode: "collective",
+      status: "Active",
+      active_days: [1, 2, 3, 4, 5], // Mon-Fri
+      hours: {
+        1: [{start: "09:00", end: "17:00"}],
+        2: [{start: "09:00", end: "17:00"}],
+        3: [{start: "09:00", end: "17:00"}],
+        4: [{start: "09:00", end: "17:00"}],
+        5: [{start: "09:00", end: "17:00"}]
+      },
+      slots: 32,
+      booked: 12,
+      waiting: 6
+    },
+    {
+      id: 2,
+      title: "Software Engineer Panel",
+      role: "Software Engineer",
+      round: "Panel",
+      type: "recurring",
+      recurrence_days: [1, 3, 5], // Mon, Wed, Fri
+      end_condition: "never",
+      duration: 45,
+      buffer: 15,
+      notice: 24,
+      max_bookings: null,
+      max_interviewer_bookings: null,
+      interviewers: [
+        { id: 1, name: "Dr. Abigail", email: "abigail@mainstreet.com", color: "#89268B" },
+        { id: 2, name: "Engr. Benson", email: "benson@mainstreet.com", color: "#1E7A45" }
+      ],
+      mode: "collective",
+      status: "Active",
+      hours: {
+        1: [{start: "10:00", end: "16:00"}],
+        3: [{start: "10:00", end: "16:00"}],
+        5: [{start: "10:00", end: "16:00"}]
+      },
+      slots: 18,
+      booked: 4,
+      waiting: 4
+    }
+  ];
+
+  let schedules = JSON.parse(localStorage.getItem('mmfb_schedules') || 'null');
+  if (!schedules) {
+    schedules = defaultSchedules;
+    localStorage.setItem('mmfb_schedules', JSON.stringify(schedules));
+  }
+
+  let editingScheduleId = null;
+  let allInterviewers = [];
+  let selectedInterviewers = [];
+
+  // Initialize and load schedules grid on DOM load / switch tabs
+  window.loadSchedulesTab = async function() {
+    const grid = document.getElementById('schedules-grid');
+    if (!grid) return;
+    
+    // Load Interviewers list
+    const fetched = await recApiGet('/api/admin/recruitment/interviewers');
+    allInterviewers = fetched ? fetched.filter(i => i.active) : [];
+
+    grid.innerHTML = '';
+    schedules.forEach(sch => {
+      const interviewerAvatars = sch.interviewers.map((intv, idx) => {
+        if (idx < 4) {
+          const initials = intv.name.split(' ').map(n => n[0]).join('').slice(0, 2);
+          return `<div class="avatar-circle" style="background:${intv.color || '#89268B'}" title="${intv.name} (${intv.email})">${initials}</div>`;
+        }
+        return '';
+      }).join('');
+      
+      const overflowCount = sch.interviewers.length > 4 ? `+${sch.interviewers.length - 4}` : '';
+      const overflowAvatar = overflowCount ? `<div class="avatar-circle" style="background:#e2e8f0;color:#4a5568;" title="${sch.interviewers.slice(4).map(i => i.name).join(', ')}">${overflowCount}</div>` : '';
+
+      const datePattern = sch.type === 'range' 
+        ? `${sch.start_date || 'Jul 14'} – ${sch.end_date || 'Jul 18'}`
+        : 'Weekly, ' + getRecurrenceString(sch.recurrence_days || sch.active_days);
+
+      const statusClass = sch.status === 'Active' ? 'active' : 'ended';
+      
+      // Calculate waiting count dynamically if possible, or fall back to mock
+      const waiting = sch.waiting || 4;
+
+      const card = document.createElement('div');
+      card.className = 'sch-card';
+      card.onclick = () => editSchedule(sch.id);
+      card.innerHTML = `
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+            <h4 style="margin:0;font-size:0.95rem;font-weight:700;color:var(--mfb-ink);font-family:var(--font-heading);">${sch.title}</h4>
+            <span class="sch-status ${statusClass}">${sch.status}</span>
+          </div>
+          <div style="font-size:0.82rem;color:var(--mfb-gray-600);margin-bottom:12px;font-weight:500;">
+            Role: <span style="font-weight:700;color:var(--mfb-ink);">${sch.role}</span>
+          </div>
+          <div style="font-size:0.82rem;color:var(--mfb-gray-600);margin-bottom:14px;display:flex;align-items:center;gap:6px;">
+            <span style="font-size:1rem;color:var(--mfb-purple)">📅</span> <span>${datePattern}</span>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #f1f0f2;padding-top:12px;margin-top:auto;">
+          <div style="display:flex;align-items:center;">
+            ${interviewerAvatars}${overflowAvatar}
+          </div>
+          <div style="font-size:0.78rem;font-weight:700;color:var(--mfb-gray-600);">
+            ${sch.slots} slots · ${sch.booked} booked · <span style="color:#dd6b20;">${waiting} waiting</span>
+          </div>
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+  };
+
+  function getRecurrenceString(days) {
+    if (!days || !days.length) return 'Mon-Fri';
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    // Sort so order is Sun -> Sat (or Mon -> Sun)
+    const sorted = [...days].sort((a,b) => a - b);
+    return sorted.map(d => dayNames[d]).join(', ');
+  }
+
+  // Toggles and views
+  window.showScheduleBuilder = function() {
+    editingScheduleId = null;
+    document.getElementById('builder-title-label').textContent = 'New Interview Schedule';
+    document.getElementById('sch-publish-btn').textContent = 'Publish schedule';
+    document.getElementById('sch-update-booked-note').classList.add('hidden');
+    
+    // Clear form
+    document.getElementById('sch-title').value = '';
+    document.getElementById('sch-role').value = '';
+    document.getElementById('sch-round').value = 'Screening Call';
+    document.getElementById('sch-start-date').value = getTodayDateString();
+    document.getElementById('sch-end-date').value = getFutureDateString(4);
+    document.getElementById('sch-recur-end-date').value = getFutureDateString(30);
+    document.getElementById('sch-recur-end-weeks').value = 4;
+    document.getElementById('sch-end-condition').value = 'never';
+    document.getElementById('sch-duration').value = '30';
+    document.getElementById('sch-buffer').value = '10';
+    document.getElementById('sch-notice').value = '12';
+    document.getElementById('sch-max-bookings').value = '';
+    document.getElementById('sch-max-interviewer-bookings').value = '';
+    document.getElementById('sch-interviewer-search').value = '';
+    
+    // Reset day pills (select Mon-Fri by default)
+    document.querySelectorAll('.day-pill').forEach(pill => {
+      const day = parseInt(pill.dataset.day);
+      if (day >= 1 && day <= 5) pill.classList.add('active');
+      else pill.classList.remove('active');
+    });
+
+    selectedInterviewers = [];
+    renderInterviewerChips();
+    updateRoleWaitingCount();
+    toggleSchType();
+    buildDailyHoursForm();
+    
+    document.getElementById('schedules-list-card').classList.add('hidden');
+    document.getElementById('schedule-builder-card').classList.remove('hidden');
+    updateLivePreview();
+  };
+
+  window.hideScheduleBuilder = function() {
+    document.getElementById('schedule-builder-card').classList.add('hidden');
+    document.getElementById('schedules-list-card').classList.remove('hidden');
+    window.loadSchedulesTab();
+  };
+
+  window.toggleSchType = function() {
+    const val = document.querySelector('input[name="sch-type"]:checked').value;
+    if (val === 'range') {
+      document.getElementById('sch-date-range-fields').classList.remove('hidden');
+      document.getElementById('sch-recurring-fields').classList.add('hidden');
+    } else {
+      document.getElementById('sch-date-range-fields').classList.add('hidden');
+      document.getElementById('sch-recurring-fields').classList.remove('hidden');
+    }
+    buildDailyHoursForm();
+    updateLivePreview();
+  };
+
+  window.toggleDayPill = function(pill) {
+    pill.classList.toggle('active');
+    buildDailyHoursForm();
+    updateLivePreview();
+  };
+
+  window.toggleEndCondition = function() {
+    const val = document.getElementById('sch-end-condition').value;
+    document.getElementById('sch-end-date-wrap').classList.add('hidden');
+    document.getElementById('sch-end-weeks-wrap').classList.add('hidden');
+    if (val === 'date') document.getElementById('sch-end-date-wrap').classList.remove('hidden');
+    if (val === 'weeks') document.getElementById('sch-end-weeks-wrap').classList.remove('hidden');
+    updateLivePreview();
+  };
+
+  // Helper date generators
+  function getTodayDateString() {
+    const d = new Date();
+    return d.toISOString().split('T')[0];
+  }
+  function getFutureDateString(days) {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split('T')[0];
+  }
+
+  // Build rows of hours based on active day selection
+  function buildDailyHoursForm() {
+    const container = document.getElementById('sch-hours-container');
+    if (!container) return;
+
+    const days = getActiveDays();
+    const dayNames = {
+      1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday',
+      6: 'Saturday', 0: 'Sunday'
+    };
+
+    const previousHours = {};
+    container.querySelectorAll('.hours-day-row').forEach(row => {
+      const d = row.dataset.day;
+      const windows = [];
+      row.querySelectorAll('.time-window-row').forEach(winRow => {
+        const start = winRow.querySelector('.start-t').value;
+        const end = winRow.querySelector('.end-t').value;
+        windows.push({ start, end });
+      });
+      previousHours[d] = windows;
+    });
+
+    container.innerHTML = '';
+    
+    if (!days.length) {
+      container.innerHTML = '<p style="color:#888;font-size:0.85rem;margin:0;">No days selected.</p>';
+      return;
+    }
+
+    days.forEach(d => {
+      const row = document.createElement('div');
+      row.className = 'hours-day-row';
+      row.dataset.day = d;
+      row.style.display = 'flex';
+      row.style.flexDirection = 'column';
+      row.style.gap = '6px';
+      row.style.background = '#f9f9fb';
+      row.style.padding = '10px 14px';
+      row.style.borderRadius = '6px';
+      row.style.border = '1px solid #e5e5ef';
+
+      const labelBar = document.createElement('div');
+      labelBar.style.display = 'flex';
+      labelBar.style.justifyContent = 'space-between';
+      labelBar.style.alignItems = 'center';
+      labelBar.innerHTML = `
+        <span style="font-weight:700;font-size:0.85rem;color:var(--mfb-ink);">${dayNames[d]}</span>
+        <a href="javascript:void(0)" onclick="addTimeWindow(${d})" style="font-size:0.75rem;color:var(--mfb-purple);font-weight:700;text-decoration:none;">+ Add window</a>
+      `;
+      row.appendChild(labelBar);
+
+      const windowsWrap = document.createElement('div');
+      windowsWrap.className = 'windows-wrapper';
+      windowsWrap.style.display = 'flex';
+      windowsWrap.style.flexDirection = 'column';
+      windowsWrap.style.gap = '6px';
+      row.appendChild(windowsWrap);
+
+      container.appendChild(row);
+
+      const savedWins = previousHours[d] || [{ start: "09:00", end: "17:00" }];
+      savedWins.forEach(win => {
+        addTimeWindow(d, win.start, win.end);
+      });
+    });
+  }
+
+  window.addTimeWindow = function(day, startVal = "09:00", endVal = "17:00") {
+    const row = document.querySelector(`.hours-day-row[data-day="${day}"] .windows-wrapper`);
+    if (!row) return;
+
+    const winRow = document.createElement('div');
+    winRow.className = 'time-window-row';
+    winRow.style.display = 'flex';
+    winRow.style.alignItems = 'center';
+    winRow.style.gap = '8px';
+
+    winRow.innerHTML = `
+      <input class="rec-ctrl start-t" type="time" value="${startVal}" onchange="updateLivePreview()" style="padding:4px 8px;font-size:0.8rem;">
+      <span style="font-size:0.8rem;color:#888;">to</span>
+      <input class="rec-ctrl end-t" type="time" value="${endVal}" onchange="updateLivePreview()" style="padding:4px 8px;font-size:0.8rem;">
+      <button class="btn-ghost text-danger" type="button" onclick="removeTimeWindow(this)" style="padding:2px 6px;border:none;background:none;cursor:pointer;font-size:0.95rem;">×</button>
+    `;
+    row.appendChild(winRow);
+    updateLivePreview();
+  };
+
+  window.removeTimeWindow = function(btn) {
+    const wrapper = btn.closest('.windows-wrapper');
+    btn.closest('.time-window-row').remove();
+    if (wrapper && !wrapper.children.length) {
+      // Ensure at least one window exists
+      const day = wrapper.closest('.hours-day-row').dataset.day;
+      addTimeWindow(day);
+    }
+    updateLivePreview();
+  };
+
+  window.copyFirstDayHours = function() {
+    const rows = document.querySelectorAll('.hours-day-row');
+    if (rows.length < 2) return;
+    
+    // Read windows from first row
+    const firstRow = rows[0];
+    const windows = [];
+    firstRow.querySelectorAll('.time-window-row').forEach(winRow => {
+      const start = winRow.querySelector('.start-t').value;
+      const end = winRow.querySelector('.end-t').value;
+      windows.push({ start, end });
+    });
+
+    // Copy to all subsequent rows
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const wrapper = row.querySelector('.windows-wrapper');
+      wrapper.innerHTML = '';
+      windows.forEach(win => {
+        addTimeWindow(row.dataset.day, win.start, win.end);
+      });
+    }
+    updateLivePreview();
+  };
+
+  function getActiveDays() {
+    const days = [];
+    document.querySelectorAll('.day-pill.active').forEach(pill => {
+      days.push(parseInt(pill.dataset.day));
+    });
+    return days;
+  }
+
+  // Interviewers search dropdown logic
+  window.showInterviewerDropdown = function() {
+    const dropdown = document.getElementById('sch-interviewer-dropdown');
+    const input = document.getElementById('sch-interviewer-search');
+    if (!dropdown || !input) return;
+
+    const term = input.value.toLowerCase().trim();
+    const filtered = allInterviewers.filter(i => {
+      const isSelected = selectedInterviewers.some(s => s.id === i.id);
+      return !isSelected && (i.name.toLowerCase().includes(term) || i.email.toLowerCase().includes(term));
+    });
+
+    dropdown.innerHTML = '';
+    if (!filtered.length) {
+      dropdown.innerHTML = '<div style="padding:10px 14px;color:#888;font-size:0.85rem;">No interviewers found</div>';
+    } else {
+      filtered.forEach(i => {
+        const item = document.createElement('div');
+        item.style.padding = '8px 14px';
+        item.style.cursor = 'pointer';
+        item.style.fontSize = '0.85rem';
+        item.style.borderBottom = '1px solid #f1f0f2';
+        item.innerHTML = `<span style="font-weight:700;">${i.name}</span> <span style="color:#888;font-size:0.75rem;">(${i.email})</span>`;
+        item.onmousedown = () => selectInterviewer(i);
+        dropdown.appendChild(item);
+      });
+    }
+    dropdown.classList.remove('hidden');
+  };
+
+  window.hideInterviewerDropdownDelayed = function() {
+    setTimeout(() => {
+      const dropdown = document.getElementById('sch-interviewer-dropdown');
+      if (dropdown) dropdown.classList.add('hidden');
+    }, 200);
+  };
+
+  document.getElementById('sch-interviewer-search')?.addEventListener('input', showInterviewerDropdown);
+
+  function selectInterviewer(interviewer) {
+    selectedInterviewers.push(interviewer);
+    document.getElementById('sch-interviewer-search').value = '';
+    renderInterviewerChips();
+    updateLivePreview();
+  }
+
+  function renderInterviewerChips() {
+    const chipsWrap = document.getElementById('sch-interviewers-chips');
+    if (!chipsWrap) return;
+
+    chipsWrap.innerHTML = '';
+    selectedInterviewers.forEach(i => {
+      const chip = document.createElement('span');
+      chip.style.background = i.color || 'var(--mfb-purple-tint)';
+      chip.style.color = i.color ? '#fff' : 'var(--mfb-purple)';
+      chip.style.padding = '4px 10px';
+      chip.style.borderRadius = '100px';
+      chip.style.fontSize = '0.8rem';
+      chip.style.fontWeight = '700';
+      chip.style.display = 'inline-flex';
+      chip.style.alignItems = 'center';
+      chip.style.gap = '6px';
+      chip.title = i.email;
+      chip.innerHTML = `
+        <span>${i.name}</span>
+        <span onclick="removeInterviewer(${i.id})" style="cursor:pointer;font-weight:900;opacity:0.8;">&times;</span>
+      `;
+      chipsWrap.appendChild(chip);
+    });
+
+    // Toggle Round Robin / Collective selection mode visibility
+    const modeWrap = document.getElementById('sch-mode-container');
+    if (selectedInterviewers.length > 1) {
+      modeWrap.classList.remove('hidden');
+      updateBookingModeHelpers();
+    } else {
+      modeWrap.classList.add('hidden');
+    }
+  }
+
+  window.removeInterviewer = function(id) {
+    selectedInterviewers = selectedInterviewers.filter(i => i.id !== id);
+    renderInterviewerChips();
+    updateLivePreview();
+  };
+
+  window.toggleSchMode = function(mode) {
+    document.querySelectorAll('.mode-segment').forEach(s => {
+      if (s.dataset.mode === mode) s.classList.add('active');
+      else s.classList.remove('active');
+    });
+    updateBookingModeHelpers();
+    updateLivePreview();
+  };
+
+  function updateBookingModeHelpers() {
+    const activeSeg = document.querySelector('.mode-segment.active');
+    const mode = activeSeg ? activeSeg.dataset.mode : 'collective';
+    const help = document.getElementById('sch-mode-help');
+    if (!help) return;
+
+    const count = selectedInterviewers.length;
+    if (mode === 'collective') {
+      help.textContent = `Collective: Every slot needs all ${count} interviewers free at the same time (panel interview).`;
+    } else {
+      help.textContent = `Round Robin: Slots rotate between ${count} interviewers — candidates get ${count}x the availability.`;
+    }
+  }
+
+  window.updateRoleWaitingCount = function() {
+    const role = document.getElementById('sch-role').value;
+    const countLabel = document.getElementById('sch-waiting-count');
+    if (!countLabel) return;
+
+    if (!role) {
+      countLabel.textContent = '';
+      return;
+    }
+
+    const counts = {
+      "Software Engineer": 4,
+      "Loan Officer": 6,
+      "HR Associate": 2,
+      "Product Manager": 1
+    };
+
+    const count = counts[role] || 0;
+    countLabel.textContent = `⚠️ ${count} candidates currently waiting to book for this role`;
+  };
+
+  // Live Slot Generation & mini preview rendering
+  window.updateLivePreview = function() {
+    const calendar = document.getElementById('sch-preview-calendar');
+    const previewCount = document.getElementById('sch-preview-count');
+    if (!calendar) return;
+
+    calendar.innerHTML = '';
+
+    const title = document.getElementById('sch-title').value || 'Interview';
+    const duration = parseInt(document.getElementById('sch-duration').value) || 30;
+    const buffer = parseInt(document.getElementById('sch-buffer').value) || 10;
+    const days = getActiveDays();
+    const round = document.getElementById('sch-round').value;
+
+    const activeSeg = document.querySelector('.mode-segment.active');
+    const mode = selectedInterviewers.length > 1 ? (activeSeg ? activeSeg.dataset.mode : 'collective') : 'single';
+
+    if (!days.length) {
+      calendar.innerHTML = '<p style="color:#888;font-size:0.85rem;text-align:center;padding:20px 0;">Select active days in Date & Recurrence to preview slots.</p>';
+      previewCount.textContent = '0 slots';
+      return;
+    }
+
+    // Read hours windows
+    const dailyWindows = {};
+    let hasWindows = false;
+    document.querySelectorAll('.hours-day-row').forEach(row => {
+      const d = parseInt(row.dataset.day);
+      const windows = [];
+      row.querySelectorAll('.time-window-row').forEach(winRow => {
+        const start = winRow.querySelector('.start-t').value;
+        const end = winRow.querySelector('.end-t').value;
+        if (start && end) {
+          windows.push({ start, end });
+          hasWindows = true;
+        }
+      });
+      dailyWindows[d] = windows;
+    });
+
+    if (!hasWindows) {
+      calendar.innerHTML = '<p style="color:#888;font-size:0.85rem;text-align:center;padding:20px 0;">Enter daily hours windows to generate slots preview.</p>';
+      previewCount.textContent = '0 slots';
+      return;
+    }
+
+    // Generate preview slots for 5 calendar dates matching selected days
+    const previewSlots = [];
+    const today = new Date();
+    let currentIdx = 0;
+    let interviewerRotator = 0;
+
+    for (let offset = 0; offset < 14 && previewSlots.length < 15; offset++) {
+      const targetDate = new Date(today);
+      targetDate.setDate(today.getDate() + offset);
+      const day = targetDate.getDay();
+
+      if (days.includes(day) && dailyWindows[day]) {
+        const dateStr = targetDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const dayWindows = dailyWindows[day];
+
+        dayWindows.forEach(win => {
+          const [sh, sm] = win.start.split(':').map(Number);
+          const [eh, em] = win.end.split(':').map(Number);
+
+          let startM = sh * 60 + sm;
+          const endM = eh * 60 + em;
+
+          while (startM + duration <= endM) {
+            const shour = String(Math.floor(startM / 60)).padStart(2, '0');
+            const smin = String(startM % 60).padStart(2, '0');
+            
+            const estartM = startM + duration;
+            const ehour = String(Math.floor(estartM / 60)).padStart(2, '0');
+            const emin = String(estartM % 60).padStart(2, '0');
+
+            let assignedInterviewer = null;
+            let interviewersGroup = [];
+
+            if (selectedInterviewers.length > 0) {
+              if (mode === 'robin') {
+                assignedInterviewer = selectedInterviewers[interviewerRotator % selectedInterviewers.length];
+                interviewerRotator++;
+              } else if (mode === 'collective') {
+                interviewersGroup = [...selectedInterviewers];
+              } else {
+                assignedInterviewer = selectedInterviewers[0];
+              }
+            }
+
+            previewSlots.push({
+              dateStr,
+              time: `${shour}:${smin} – ${ehour}:${emin}`,
+              assignedInterviewer,
+              interviewersGroup
+            });
+
+            startM += duration + buffer;
+          }
+        });
+      }
+    }
+
+    if (!previewSlots.length) {
+      calendar.innerHTML = '<p style="color:#888;font-size:0.85rem;text-align:center;padding:20px 0;">No slots fit within these hours windows.</p>';
+      previewCount.textContent = '0 slots';
+      return;
+    }
+
+    // Render Preview Slot Blocks
+    previewCount.textContent = `${previewSlots.length * 3} slots generated`;
+    
+    // Group slots by date
+    const grouped = {};
+    previewSlots.forEach(s => {
+      if (!grouped[s.dateStr]) grouped[s.dateStr] = [];
+      grouped[s.dateStr].push(s);
+    });
+
+    Object.keys(grouped).forEach(dateStr => {
+      const dayHeader = document.createElement('div');
+      dayHeader.style.fontWeight = '700';
+      dayHeader.style.fontSize = '0.78rem';
+      dayHeader.style.color = 'var(--mfb-gray-600)';
+      dayHeader.style.marginTop = '8px';
+      dayHeader.style.textTransform = 'uppercase';
+      dayHeader.textContent = dateStr;
+      calendar.appendChild(dayHeader);
+
+      grouped[dateStr].forEach(slot => {
+        const block = document.createElement('div');
+        block.className = 'preview-slot-block';
+
+        let assignmentHTML = '';
+        if (slot.assignedInterviewer) {
+          assignmentHTML = `
+            <span style="display:inline-flex;align-items:center;gap:4px;font-size:0.75rem;font-weight:600;">
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${slot.assignedInterviewer.color || '#89268B'};"></span>
+              ${slot.assignedInterviewer.name}
+            </span>
+          `;
+        } else if (slot.interviewersGroup.length > 0) {
+          const initialsStack = slot.interviewersGroup.map(i => {
+            const init = i.name.split(' ').map(n => n[0]).join('').slice(0, 2);
+            return `<div class="avatar-circle" style="background:${i.color || '#89268B'};width:18px;height:18px;font-size:0.5rem;border-width:1px;" title="${i.name}">${init}</div>`;
+          }).join('');
+          assignmentHTML = `<div style="display:flex;align-items:center;">${initialsStack}</div>`;
+        }
+
+        block.innerHTML = `
+          <div>
+            <div style="font-weight:700;color:var(--mfb-ink);">${title} (${round})</div>
+            <div style="color:var(--mfb-gray-600);font-size:0.75rem;margin-top:2px;">${slot.time}</div>
+          </div>
+          ${assignmentHTML}
+        `;
+        calendar.appendChild(block);
+      });
+    });
+  };
+
+  // Pre-fill form to edit an existing schedule
+  function editSchedule(schId) {
+    const sch = schedules.find(s => s.id === schId);
+    if (!sch) return;
+
+    editingScheduleId = schId;
+    document.getElementById('builder-title-label').textContent = 'Edit Interview Schedule';
+    document.getElementById('sch-publish-btn').textContent = 'Update schedule';
+
+    // Populate Fields
+    document.getElementById('sch-title').value = sch.title;
+    document.getElementById('sch-role').value = sch.role;
+    document.getElementById('sch-round').value = sch.round || 'Screening Call';
+    
+    if (sch.type === 'range') {
+      document.querySelector('input[name="sch-type"][value="range"]').checked = true;
+      document.getElementById('sch-start-date').value = sch.start_date;
+      document.getElementById('sch-end-date').value = sch.end_date;
+    } else {
+      document.querySelector('input[name="sch-type"][value="recurring"]').checked = true;
+      document.getElementById('sch-end-condition').value = sch.end_condition || 'never';
+      if (sch.recur_end_date) document.getElementById('sch-recur-end-date').value = sch.recur_end_date;
+      if (sch.recur_end_weeks) document.getElementById('sch-recur-end-weeks').value = sch.recur_end_weeks;
+    }
+
+    document.getElementById('sch-duration').value = sch.duration;
+    document.getElementById('sch-buffer').value = sch.buffer;
+    document.getElementById('sch-notice').value = sch.notice;
+    document.getElementById('sch-max-bookings').value = sch.max_bookings || '';
+    document.getElementById('sch-max-interviewer-bookings').value = sch.max_interviewer_bookings || '';
+
+    // Selected day pills
+    const activeDays = sch.active_days || sch.recurrence_days || [];
+    document.querySelectorAll('.day-pill').forEach(pill => {
+      const day = parseInt(pill.dataset.day);
+      if (activeDays.includes(day)) pill.classList.add('active');
+      else pill.classList.remove('active');
+    });
+
+    selectedInterviewers = [...sch.interviewers];
+    renderInterviewerChips();
+
+    if (sch.mode) {
+      toggleSchMode(sch.mode);
+    }
+
+    // Set warnings for booked slots
+    if (sch.booked > 0) {
+      const warningNote = document.getElementById('sch-update-booked-note');
+      warningNote.textContent = `⚠️ Note: This schedule already has ${sch.booked} booked slots. Editing the hours won't remove already booked slots, but will generate/regenerate new slots.`;
+      warningNote.classList.remove('hidden');
+    } else {
+      document.getElementById('sch-update-booked-note').classList.add('hidden');
+    }
+
+    toggleSchType();
+    
+    // Set hours
+    buildDailyHoursForm();
+    if (sch.hours) {
+      setTimeout(() => {
+        Object.keys(sch.hours).forEach(day => {
+          const row = document.querySelector(`.hours-day-row[data-day="${day}"] .windows-wrapper`);
+          if (row) {
+            row.innerHTML = '';
+            sch.hours[day].forEach(win => {
+              addTimeWindow(day, win.start, win.end);
+            });
+          }
+        });
+        updateLivePreview();
+      }, 50);
+    }
+
+    document.getElementById('schedules-list-card').classList.add('hidden');
+    document.getElementById('schedule-builder-card').classList.remove('hidden');
+    updateRoleWaitingCount();
+    updateLivePreview();
+  }
+
+  // Publish / Save configured schedule
+  window.publishSchedule = function() {
+    const title = document.getElementById('sch-title').value.trim();
+    const role = document.getElementById('sch-role').value;
+    const round = document.getElementById('sch-round').value;
+    
+    if (!title || !role) {
+      alert('Please enter a schedule title and select a target role.');
+      return;
+    }
+
+    const type = document.querySelector('input[name="sch-type"]:checked').value;
+    const duration = parseInt(document.getElementById('sch-duration').value);
+    const buffer = parseInt(document.getElementById('sch-buffer').value);
+    const notice = parseInt(document.getElementById('sch-notice').value);
+    const max_bookings = parseInt(document.getElementById('sch-max-bookings').value) || null;
+    const max_interviewer_bookings = parseInt(document.getElementById('sch-max-interviewer-bookings').value) || null;
+
+    if (!selectedInterviewers.length) {
+      alert('Please add at least one interviewer to this schedule.');
+      return;
+    }
+
+    const active_days = getActiveDays();
+    const hours = {};
+    document.querySelectorAll('.hours-day-row').forEach(row => {
+      const d = parseInt(row.dataset.day);
+      const windows = [];
+      row.querySelectorAll('.time-window-row').forEach(winRow => {
+        const start = winRow.querySelector('.start-t').value;
+        const end = winRow.querySelector('.end-t').value;
+        if (start && end) windows.push({ start, end });
+      });
+      if (windows.length) hours[d] = windows;
+    });
+
+    const activeSeg = document.querySelector('.mode-segment.active');
+    const mode = selectedInterviewers.length > 1 ? (activeSeg ? activeSeg.dataset.mode : 'collective') : 'collective';
+
+    // Calculate slots count
+    let slotsCount = 0;
+    Object.keys(hours).forEach(day => {
+      hours[day].forEach(win => {
+        const [sh, sm] = win.start.split(':').map(Number);
+        const [eh, em] = win.end.split(':').map(Number);
+        let startM = sh * 60 + sm;
+        const endM = eh * 60 + em;
+        while (startM + duration <= endM) {
+          slotsCount++;
+          startM += duration + buffer;
+        }
+      });
+    });
+    // Slots count scales by number of weeks (roughly 4 weeks for default recurring)
+    const multiplier = type === 'range' ? 1 : 4;
+    const finalSlots = slotsCount * multiplier;
+
+    if (editingScheduleId) {
+      // Update existing
+      const idx = schedules.findIndex(s => s.id === editingScheduleId);
+      if (idx !== -1) {
+        schedules[idx] = {
+          ...schedules[idx],
+          title, role, round, type, duration, buffer, notice, max_bookings, max_interviewer_bookings,
+          interviewers: [...selectedInterviewers],
+          active_days, recurrence_days: active_days,
+          hours, mode, slots: finalSlots,
+          start_date: type === 'range' ? document.getElementById('sch-start-date').value : '',
+          end_date: type === 'range' ? document.getElementById('sch-end-date').value : '',
+          end_condition: type === 'recurring' ? document.getElementById('sch-end-condition').value : ''
+        };
+      }
+    } else {
+      // Create new
+      const newId = schedules.length ? Math.max(...schedules.map(s => s.id)) + 1 : 1;
+      schedules.push({
+        id: newId,
+        title, role, round, type, duration, buffer, notice, max_bookings, max_interviewer_bookings,
+        interviewers: [...selectedInterviewers],
+        active_days, recurrence_days: active_days,
+        hours, mode, slots: finalSlots, booked: 0, waiting: 4, status: "Active",
+        start_date: type === 'range' ? document.getElementById('sch-start-date').value : '',
+        end_date: type === 'range' ? document.getElementById('sch-end-date').value : '',
+        end_condition: type === 'recurring' ? document.getElementById('sch-end-condition').value : ''
+      });
+    }
+
+    localStorage.setItem('mmfb_schedules', JSON.stringify(schedules));
+    alert(editingScheduleId ? 'Interview schedule updated successfully!' : 'New interview schedule published successfully!');
+    hideScheduleBuilder();
+  };
+
+  // Run initial loading on ready
+  setTimeout(() => {
+    window.loadSchedulesTab();
+  }, 100);
+
 })();
+

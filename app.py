@@ -9,6 +9,7 @@ import json
 import requests
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for, Response, g
 from dotenv import load_dotenv
+from werkzeug.security import generate_password_hash, check_password_hash
 import cloudinary
 import cloudinary.uploader
 import cloudinary.utils
@@ -143,13 +144,15 @@ def init_db():
                     pass_mark_percent    NUMERIC(5,2) DEFAULT 50,
                     require_identity_verification BOOLEAN DEFAULT TRUE,
                     pre_test_fields       JSONB DEFAULT '[]'::jsonb,
+                    recruitment_portal_open BOOLEAN DEFAULT TRUE,
                     updated_at           TIMESTAMPTZ DEFAULT NOW()
                 );
             """)
             cur.execute("""
                 ALTER TABLE exam_settings
                     ADD COLUMN IF NOT EXISTS require_identity_verification BOOLEAN DEFAULT TRUE,
-                    ADD COLUMN IF NOT EXISTS pre_test_fields JSONB DEFAULT '[]'::jsonb;
+                    ADD COLUMN IF NOT EXISTS pre_test_fields JSONB DEFAULT '[]'::jsonb,
+                    ADD COLUMN IF NOT EXISTS recruitment_portal_open BOOLEAN DEFAULT TRUE;
             """)
 
             # Create quizzes table
@@ -181,14 +184,96 @@ def init_db():
                     active         BOOLEAN DEFAULT TRUE
                 );
             """)
+
+            # Create cohorts table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS cohorts (
+                    id         SERIAL PRIMARY KEY,
+                    name       TEXT NOT NULL UNIQUE,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+            cur.execute("""
+                ALTER TABLE cohorts ADD COLUMN IF NOT EXISTS calendly_url TEXT;
+            """)
+
+            # Create candidate_otps table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS candidate_otps (
+                    id         SERIAL PRIMARY KEY,
+                    email      TEXT NOT NULL,
+                    otp_hash   TEXT NOT NULL,
+                    attempts   INTEGER DEFAULT 0,
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+
+            # Create admin_login_attempts table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS admin_login_attempts (
+                    id           SERIAL PRIMARY KEY,
+                    ip_address   TEXT NOT NULL UNIQUE,
+                    attempts     INTEGER DEFAULT 0,
+                    locked_until TIMESTAMPTZ,
+                    last_attempt TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+
+            # Alter whitelist table
+            cur.execute("""
+                ALTER TABLE whitelist
+                    ADD COLUMN IF NOT EXISTS cohort_id INTEGER REFERENCES cohorts(id) ON DELETE CASCADE,
+                    ADD COLUMN IF NOT EXISTS name TEXT;
+            """)
+
+            # Alter candidates table
+            cur.execute("""
+                ALTER TABLE candidates
+                    ADD COLUMN IF NOT EXISTS cohort_id INTEGER REFERENCES cohorts(id) ON DELETE SET NULL;
+            """)
+
+            # Alter quizzes table
+            cur.execute("""
+                ALTER TABLE quizzes
+                    ADD COLUMN IF NOT EXISTS cohort_id INTEGER REFERENCES cohorts(id) ON DELETE CASCADE;
+            """)
+            cur.execute("""
+                ALTER TABLE scores
+                    ADD COLUMN IF NOT EXISTS quiz_id INTEGER REFERENCES quizzes(id) ON DELETE CASCADE;
+            """)
+            # Drop the unique constraint on number if exists
+            cur.execute("""
+                ALTER TABLE quizzes DROP CONSTRAINT IF EXISTS quizzes_number_key;
+            """)
+
+            # Seed 'Cohort 1' if missing
+            cur.execute("SELECT id FROM cohorts WHERE name = 'Cohort 1';")
+            cohort1_row = cur.fetchone()
+            if not cohort1_row:
+                cur.execute("INSERT INTO cohorts (name) VALUES ('Cohort 1') RETURNING id;")
+                cohort1_id = cur.fetchone()[0]
+            else:
+                cohort1_id = cohort1_row[0]
+
+            # Populate NULL cohort_ids with Cohort 1
+            cur.execute("UPDATE whitelist SET cohort_id = %s WHERE cohort_id IS NULL;", (cohort1_id,))
+            cur.execute("UPDATE candidates SET cohort_id = %s WHERE cohort_id IS NULL;", (cohort1_id,))
+            cur.execute("UPDATE quizzes SET cohort_id = %s WHERE cohort_id IS NULL;", (cohort1_id,))
+            
+            # Map legacy scores rows (where quiz_id is null) to default Quiz 1 under Cohort 1
+            cur.execute("SELECT id FROM quizzes WHERE cohort_id = %s LIMIT 1;", (cohort1_id,))
+            q1_row = cur.fetchone()
+            if q1_row:
+                cur.execute("UPDATE scores SET quiz_id = %s WHERE quiz_id IS NULL;", (q1_row[0],))
             
             # Seed exam_settings if missing
             cur.execute("SELECT count(*) FROM exam_settings WHERE id = 1;")
             if cur.fetchone()[0] == 0:
                 from config import PASS_MARK_PERCENT, SECONDS_PER_QUESTION
                 cur.execute("""
-                    INSERT INTO exam_settings (id, exam_open, seconds_per_question, pass_mark_percent)
-                    VALUES (1, FALSE, %s, %s);
+                    INSERT INTO exam_settings (id, exam_open, seconds_per_question, pass_mark_percent, recruitment_portal_open)
+                    VALUES (1, FALSE, %s, %s, TRUE);
                 """, (SECONDS_PER_QUESTION, PASS_MARK_PERCENT))
             
             # Seed questions if empty
@@ -232,6 +317,36 @@ def init_db():
                 quiz1_id = cur.fetchone()[0]
                 cur.execute("UPDATE questions SET quiz_id = %s WHERE quiz_id IS NULL;", (quiz1_id,))
         conn.commit()
+
+# Global Recruitment Portal Status Gate
+@app.before_request
+def check_portal_status():
+    # Only check for candidate-facing routes
+    path = request.path
+    # Exempt admin dashboard, static files, performance reporting, and login/assets
+    if (path.startswith('/admin') or 
+        path.startswith('/api/admin') or 
+        path.startswith('/static') or 
+        path == '/api/performance'):
+        return None
+
+    # Fetch settings
+    try:
+        with DBConnection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT recruitment_portal_open FROM exam_settings WHERE id = 1;")
+                row = cur.fetchone()
+                portal_open = row[0] if row else True
+    except Exception as e:
+        app.logger.error(f"Error checking portal status: {e}")
+        portal_open = True
+
+    if not portal_open:
+        # If it is an API request, return JSON
+        if request.path.startswith('/api/'):
+            return jsonify({"error": "Recruitment is closed", "code": "recruitment_closed"}), 403
+        # Otherwise, render recruitment_closed.html
+        return render_template('recruitment_closed.html')
 
 # Custom CSRF Protection
 @app.before_request
@@ -289,6 +404,48 @@ def prune_expired_admin_sessions():
                   AND last_activity < NOW() - INTERVAL '{ADMIN_SESSION_TIMEOUT_MINUTES} minutes';
             """)
             conn.commit()
+
+
+def check_admin_login_lockout(ip_address):
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT attempts, locked_until FROM admin_login_attempts
+                WHERE ip_address = %s;
+            """, (ip_address,))
+            row = cur.fetchone()
+            if row:
+                attempts, locked_until = row
+                if locked_until and datetime.datetime.now(datetime.timezone.utc) < locked_until:
+                    # Lagos WAT timezone calculation (UTC + 1 hour)
+                    wat_time = locked_until + datetime.timedelta(hours=1)
+                    return False, f"Too many failed login attempts. IP locked out until {wat_time.strftime('%Y-%m-%d %I:%M %p').lower()} WAT."
+            return True, None
+
+
+def record_admin_login_attempt(ip_address, success):
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            if success:
+                cur.execute("""
+                    INSERT INTO admin_login_attempts (ip_address, attempts, last_attempt)
+                    VALUES (%s, 0, NOW())
+                    ON CONFLICT (ip_address) DO UPDATE
+                    SET attempts = 0, locked_until = NULL, last_attempt = NOW();
+                """, (ip_address,))
+            else:
+                cur.execute("""
+                    INSERT INTO admin_login_attempts (ip_address, attempts, last_attempt)
+                    VALUES (%s, 1, NOW())
+                    ON CONFLICT (ip_address) DO UPDATE
+                    SET attempts = admin_login_attempts.attempts + 1,
+                        locked_until = CASE 
+                            WHEN admin_login_attempts.attempts + 1 >= 5 THEN NOW() + INTERVAL '15 minutes'
+                            ELSE NULL 
+                        END,
+                        last_attempt = NOW();
+                """, (ip_address,))
+        conn.commit()
 
 
 def get_admin_device_fingerprint():
@@ -418,7 +575,7 @@ def exam_summary():
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT exam_open, seconds_per_question, pass_mark_percent,
-                       require_identity_verification, pre_test_fields
+                       require_identity_verification, pre_test_fields, recruitment_portal_open
                 FROM exam_settings
                 WHERE id = 1;
             """)
@@ -435,7 +592,8 @@ def exam_summary():
         "pass_mark_percent": float(settings[2]),
         "total_questions": active_question_count,
         "require_identity_verification": settings[3],
-        "pre_test_fields": settings[4] or []
+        "pre_test_fields": settings[4] or [],
+        "recruitment_portal_open": settings[5]
     })
 
 @app.route('/api/upload-photos', methods=['POST'])
@@ -740,7 +898,41 @@ def admin_dashboard():
         session.pop('admin', None)
         session.pop('admin_session_token', None)
         return redirect(url_for('admin_login'))
-    return render_template('admin.html', authenticated=True)
+
+    import datetime
+    def format_datetime_wat(dt):
+        if not dt:
+            return "-"
+        if dt.tzinfo:
+            dt = dt.astimezone(datetime.timezone.utc)
+        wat_dt = dt + datetime.timedelta(hours=1)
+        return wat_dt.strftime("%Y-%m-%d %I:%M %p").lower()
+
+    settings = None
+    try:
+        with DBConnection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT exam_open, seconds_per_question, pass_mark_percent,
+                           require_identity_verification, pre_test_fields, recruitment_portal_open,
+                           updated_at
+                    FROM exam_settings WHERE id = 1;
+                """)
+                row = cur.fetchone()
+                if row:
+                    settings = {
+                        "exam_open": row[0],
+                        "seconds_per_question": row[1],
+                        "pass_mark_percent": float(row[2]),
+                        "require_identity_verification": row[3],
+                        "pre_test_fields": row[4],
+                        "recruitment_portal_open": row[5],
+                        "updated_at": format_datetime_wat(row[6]) if row[6] else "-"
+                    }
+    except Exception as e:
+        app.logger.error(f"Error loading settings: {e}")
+
+    return render_template('admin.html', authenticated=True, settings=settings)
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
@@ -753,15 +945,31 @@ def admin_login():
         
     # Handle login POST
     data = request.json or {}
-    token = data.get('token', '').strip()
+    username = data.get('username', '').strip() or 'admin'
+    password = data.get('password', '').strip() or data.get('token', '').strip()
     
-    admin_token = os.environ.get("ADMIN_TOKEN", "admin123")
-    
-    # Constant-time comparison
-    if not hmac.compare_digest(token.encode('utf-8'), admin_token.encode('utf-8')):
-        return jsonify({"success": False, "error": "Incorrect access token"}), 401
-
     user_agent, ip_address = get_admin_device_fingerprint()
+    
+    # 1. Enforce IP lockout
+    allowed, lockout_msg = check_admin_login_lockout(ip_address)
+    if not allowed:
+        return jsonify({"success": False, "error": lockout_msg}), 403
+        
+    # 2. Retrieve secure credentials
+    expected_username = os.environ.get("ADMIN_USERNAME", "admin")
+    env_hash = os.environ.get("ADMIN_PASSWORD_HASH")
+    if not env_hash:
+        fallback_pass = os.environ.get("ADMIN_TOKEN", "admin123")
+        env_hash = generate_password_hash(fallback_pass)
+        
+    username_ok = hmac.compare_digest(username.lower().encode('utf-8'), expected_username.lower().encode('utf-8'))
+    password_ok = check_password_hash(env_hash, password)
+    
+    if not (username_ok and password_ok):
+        record_admin_login_attempt(ip_address, False)
+        return jsonify({"success": False, "error": "Incorrect username or password"}), 401
+        
+    record_admin_login_attempt(ip_address, True)
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
@@ -827,7 +1035,7 @@ def admin_settings():
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT exam_open, seconds_per_question, pass_mark_percent, updated_at,
-                           require_identity_verification, pre_test_fields
+                           require_identity_verification, pre_test_fields, recruitment_portal_open
                     FROM exam_settings WHERE id = 1;
                 """)
                 row = cur.fetchone()
@@ -837,9 +1045,10 @@ def admin_settings():
             "exam_open": row[0],
             "seconds_per_question": row[1],
             "pass_mark_percent": float(row[2]),
-            "updated_at": row[3].isoformat(),
+            "updated_at": row[3].isoformat() if row[3] else None,
             "require_identity_verification": row[4],
-            "pre_test_fields": row[5] or []
+            "pre_test_fields": row[5] or [],
+            "recruitment_portal_open": row[6]
         })
         
     # Update settings
@@ -849,6 +1058,7 @@ def admin_settings():
     pass_mark = float(data.get('pass_mark_percent', 50))
     require_identity = bool(data.get('require_identity_verification', True))
     pre_test_fields = data.get('pre_test_fields', [])
+    recruitment_portal_open = bool(data.get('recruitment_portal_open', True))
     
     with DBConnection() as conn:
         with conn.cursor() as cur:
@@ -859,9 +1069,10 @@ def admin_settings():
                     pass_mark_percent = %s,
                     require_identity_verification = %s,
                     pre_test_fields = %s,
+                    recruitment_portal_open = %s,
                     updated_at = NOW()
                 WHERE id = 1;
-            """, (exam_open, seconds_per_q, pass_mark, require_identity, json.dumps(pre_test_fields)))
+            """, (exam_open, seconds_per_q, pass_mark, require_identity, json.dumps(pre_test_fields), recruitment_portal_open))
         conn.commit()
         
     return jsonify({"status": "success", "message": "Settings updated successfully."})
@@ -1268,77 +1479,131 @@ def admin_results():
     auth_err = require_admin()
     if auth_err: return auth_err
     
-    # Sortable columns: name, email, score, time, date, switches
-    sort_column = request.args.get('sort', 'submitted_at')
+    # Sortable columns: name, email, date
+    sort_column = request.args.get('sort', 'created_at')
     sort_order = request.args.get('order', 'DESC').upper()
     page = int(request.args.get('page', 1))
     per_page = 25
     offset = (page - 1) * per_page
     
-    # Mapping request strings to SQL
     allowed_cols = {
         'name': 'C.full_name',
         'email': 'C.email',
-        'score': 'ER.score_percent',
-        'time': 'ER.time_taken_secs',
-        'switches': 'ER.tab_switches',
-        'submitted_at': 'ER.submitted_at'
+        'created_at': 'C.created_at'
     }
-    col_sql = allowed_cols.get(sort_column, 'ER.submitted_at')
+    col_sql = allowed_cols.get(sort_column, 'C.created_at')
     if sort_order not in ['ASC', 'DESC']:
         sort_order = 'DESC'
         
     with DBConnection() as conn:
         with conn.cursor() as cur:
-            # Total counts
-            cur.execute("""
-                SELECT 
-                    COUNT(*),
-                    COALESCE(SUM(CASE WHEN pass_fail = 'PASS' THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN pass_fail = 'FAIL' THEN 1 ELSE 0 END), 0),
-                    COALESCE(ROUND(AVG(score_percent), 2), 0),
-                    COALESCE(ROUND(AVG(time_taken_secs), 0), 0)
-                FROM exam_results;
-            """)
-            summary_row = cur.fetchone()
-            summary = {
-                "total": summary_row[0],
-                "passed": summary_row[1],
-                "failed": summary_row[2],
-                "avg_score": float(summary_row[3]),
-                "avg_time": int(summary_row[4])
-            }
+            # Get total number of candidates
+            cur.execute("SELECT COUNT(*) FROM candidates;")
+            total_cand = cur.fetchone()[0]
             
-            # Fetch results
+            # Fetch all quizzes first to map quiz_id to title
+            cur.execute("SELECT id, title, number FROM quizzes;")
+            quiz_map = {row[0]: (row[1] or f"Quiz #{row[2]}") for row in cur.fetchall()}
+            
+            # Fetch candidates paginated
             query = f"""
-                SELECT ER.id, C.full_name, C.email, ER.score_percent, ER.score_fraction,
-                       ER.pass_fail, ER.time_taken_secs, ER.tab_switches, ER.submitted_at, C.id,
-                       C.phone_number, C.role, C.location
-                FROM exam_results ER
-                JOIN candidates C ON ER.candidate_id = C.id
+                SELECT C.id, C.full_name, C.email, C.phone_number, C.role, C.location, C.created_at, C.stage
+                FROM candidates C
                 ORDER BY {col_sql} {sort_order}
                 LIMIT %s OFFSET %s;
             """
             cur.execute(query, (per_page, offset))
-            rows = cur.fetchall()
+            cand_rows = cur.fetchall()
             
             results = []
-            for r in rows:
+            total_passed = 0
+            total_failed = 0
+            
+            for r in cand_rows:
+                cand_id, name, email, phone, role, location, created_at, stage = r
+                
+                # Fetch exam_results (dashboard/legacy)
+                cur.execute("""
+                    SELECT score_percent, score_fraction, pass_fail, submitted_at, quiz_id, tab_switches, time_taken_secs
+                    FROM exam_results WHERE candidate_id = %s;
+                """, (cand_id,))
+                legacy_rows = cur.fetchall()
+                
+                # Fetch pipeline scores
+                cur.execute("""
+                    SELECT score, score_fraction, pass_fail, taken_at, stage_label, tab_switches, time_taken_secs
+                    FROM scores WHERE candidate_id = %s;
+                """, (cand_id,))
+                pipeline_rows = cur.fetchall()
+                
+                scores_list = []
+                for lr in legacy_rows:
+                    scores_list.append({
+                        "title": quiz_map.get(lr[4], f"Quiz #{lr[4]}"),
+                        "source": "exam_results",
+                        "score_percent": float(lr[0]),
+                        "score_fraction": lr[1],
+                        "pass_fail": lr[2],
+                        "submitted_at": lr[3].isoformat() if lr[3] else None,
+                        "tab_switches": lr[5],
+                        "time_taken_secs": lr[6]
+                    })
+                    
+                for pr in pipeline_rows:
+                    scores_list.append({
+                        "title": f"Pipeline - {pr[4].replace('_', ' ').title()}",
+                        "source": "scores",
+                        "score_percent": float(pr[0]) if pr[0] is not None else 0.0,
+                        "score_fraction": pr[1] or "",
+                        "pass_fail": pr[2] or "PENDING",
+                        "submitted_at": pr[3].isoformat() if pr[3] else None,
+                        "tab_switches": pr[5] or 0,
+                        "time_taken_secs": pr[6] or 0
+                    })
+                
+                # Determine overall status
+                overall_status = "PENDING"
+                if scores_list:
+                    if any(s["pass_fail"] == "FAIL" for s in scores_list):
+                        overall_status = "FAIL"
+                        total_failed += 1
+                    elif all(s["pass_fail"] == "PASS" for s in scores_list):
+                        overall_status = "PASS"
+                        total_passed += 1
+                
                 results.append({
-                    "id": r[0],
-                    "name": r[1],
-                    "email": r[2],
-                    "score_percent": float(r[3]),
-                    "score_fraction": r[4],
-                    "pass_fail": r[5],
-                    "time_taken_secs": r[6],
-                    "tab_switches": r[7],
-                    "submitted_at": r[8].isoformat(),
-                    "candidate_id": r[9],
-                    "phone_number": r[10] or "",
-                    "role": r[11] or "",
-                    "location": r[12] or ""
+                    "id": cand_id, # maintain backward compatibility with client expectations
+                    "candidate_id": cand_id,
+                    "name": name,
+                    "email": email,
+                    "phone_number": phone or "",
+                    "role": role or "",
+                    "location": location or "",
+                    "created_at": created_at.isoformat(),
+                    "submitted_at": created_at.isoformat(), # mock to prevent client errors
+                    "stage": stage,
+                    "scores": scores_list,
+                    "overall_status": overall_status,
+                    "pass_fail": overall_status,
+                    "score_percent": scores_list[0]["score_percent"] if scores_list else 0.0,
+                    "score_fraction": scores_list[0]["score_fraction"] if scores_list else "-",
+                    "time_taken_secs": scores_list[0]["time_taken_secs"] if scores_list else 0,
+                    "tab_switches": scores_list[0]["tab_switches"] if scores_list else 0
                 })
+                
+            summary = {
+                "total": total_cand,
+                "passed": total_passed,
+                "failed": total_failed,
+                "avg_score": 0.0,
+                "avg_time": 0
+            }
+            all_scores = [s["score_percent"] for r in results for s in r["scores"]]
+            if all_scores:
+                summary["avg_score"] = round(sum(all_scores) / len(all_scores), 2)
+            all_times = [s["time_taken_secs"] for r in results for s in r["scores"] if s["time_taken_secs"]]
+            if all_times:
+                summary["avg_time"] = int(sum(all_times) / len(all_times))
                 
     return jsonify({
         "summary": summary,
@@ -1470,6 +1735,296 @@ def job_expire_deadlines():
     from jobs.deadline_expiry import expire_past_deadlines
     count = expire_past_deadlines()
     return jsonify({"transitioned": count})
+
+
+# ── Cohort & Quiz CRUD APIs ──────────────────────────────────────────────────
+
+@app.route('/api/admin/cohorts', methods=['GET'])
+def admin_cohorts():
+    auth_err = require_admin()
+    if auth_err: return auth_err
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT c.id, c.name, c.created_at,
+                       (SELECT COUNT(*) FROM whitelist w WHERE w.cohort_id = c.id) as candidate_count,
+                       (SELECT COUNT(*) FROM quizzes q WHERE q.cohort_id = c.id) as test_count
+                FROM cohorts c
+                ORDER BY c.name ASC;
+            """)
+            rows = cur.fetchall()
+            res = [{
+                "id": r[0],
+                "name": r[1],
+                "created_at": r[2].isoformat(),
+                "candidate_count": r[3],
+                "test_count": r[4]
+            } for r in rows]
+            return jsonify(res)
+
+
+@app.route('/api/admin/cohorts', methods=['POST'])
+def admin_create_cohort():
+    auth_err = require_admin()
+    if auth_err: return auth_err
+    data = request.json or {}
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({"error": "Cohort name is required"}), 400
+    try:
+        with DBConnection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("INSERT INTO cohorts (name) VALUES (%s) RETURNING id, name, created_at;", (name,))
+                row = cur.fetchone()
+            conn.commit()
+        return jsonify({"success": True, "cohort": {"id": row[0], "name": row[1], "created_at": row[2].isoformat()}})
+    except Exception as e:
+        return jsonify({"error": "Cohort name must be unique."}), 400
+
+
+@app.route('/api/admin/cohorts/<int:cid>', methods=['PUT'])
+def admin_rename_cohort(cid):
+    auth_err = require_admin()
+    if auth_err: return auth_err
+    data = request.json or {}
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({"error": "Cohort name is required"}), 400
+    try:
+        with DBConnection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE cohorts SET name = %s WHERE id = %s RETURNING id, name;", (name, cid))
+                row = cur.fetchone()
+                if not row:
+                    return jsonify({"error": "Cohort not found"}), 404
+            conn.commit()
+        return jsonify({"success": True, "cohort": {"id": row[0], "name": row[1]}})
+    except Exception as e:
+        return jsonify({"error": "Cohort name must be unique."}), 400
+
+
+@app.route('/api/admin/cohorts/<int:cid>', methods=['DELETE'])
+def admin_delete_cohort(cid):
+    auth_err = require_admin()
+    if auth_err: return auth_err
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM cohorts WHERE id = %s RETURNING id;", (cid,))
+            if not cur.fetchone():
+                return jsonify({"error": "Cohort not found"}), 404
+        conn.commit()
+    return jsonify({"success": True, "message": "Cohort deleted successfully."})
+
+
+@app.route('/api/admin/cohorts/<int:cid>/candidates', methods=['GET'])
+def admin_cohort_candidates(cid):
+    auth_err = require_admin()
+    if auth_err: return auth_err
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, email, name, added_at FROM whitelist WHERE cohort_id = %s ORDER BY email ASC;", (cid,))
+            rows = cur.fetchall()
+            res = [{
+                "id": r[0],
+                "email": r[1],
+                "name": r[2] or "",
+                "added_at": r[3].isoformat()
+            } for r in rows]
+            return jsonify(res)
+
+
+@app.route('/api/admin/cohorts/<int:cid>/candidates', methods=['POST'])
+def admin_add_cohort_candidate(cid):
+    auth_err = require_admin()
+    if auth_err: return auth_err
+    data = request.json or {}
+    email = data.get('email', '').strip().lower()
+    name = data.get('name', '').strip()
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            # Check if email already in whitelist
+            cur.execute("SELECT id, cohort_id FROM whitelist WHERE LOWER(email) = LOWER(%s);", (email,))
+            row = cur.fetchone()
+            if row:
+                cur.execute("UPDATE whitelist SET cohort_id = %s, name = %s WHERE id = %s;", (cid, name, row[0]))
+            else:
+                cur.execute("INSERT INTO whitelist (email, name, cohort_id) VALUES (%s, %s, %s);", (email, name, cid))
+            cur.execute("UPDATE candidates SET cohort_id = %s WHERE LOWER(email) = LOWER(%s);", (cid, email))
+        conn.commit()
+    return jsonify({"success": True, "message": "Candidate added to cohort whitelist."})
+
+
+@app.route('/api/admin/cohorts/<int:cid>/candidates/bulk', methods=['POST'])
+def admin_bulk_add_cohort_candidates(cid):
+    auth_err = require_admin()
+    if auth_err: return auth_err
+    data = request.json or {}
+    text = data.get('text', '').strip()
+    if not text:
+        return jsonify({"error": "No data provided"}), 400
+        
+    added = 0
+    lines = text.split('\n')
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            for line in lines:
+                line = line.strip()
+                if not line: continue
+                parts = [p.strip() for p in line.split(',')]
+                if len(parts) >= 2:
+                    name = parts[0]
+                    email = parts[1].lower()
+                else:
+                    name = ""
+                    email = parts[0].lower()
+                    
+                if '@' not in email:
+                    continue
+                    
+                cur.execute("SELECT id FROM whitelist WHERE LOWER(email) = LOWER(%s);", (email,))
+                row = cur.fetchone()
+                if row:
+                    cur.execute("UPDATE whitelist SET cohort_id = %s, name = %s WHERE id = %s;", (cid, name, row[0]))
+                else:
+                    cur.execute("INSERT INTO whitelist (email, name, cohort_id) VALUES (%s, %s, %s);", (email, name, cid))
+                cur.execute("UPDATE candidates SET cohort_id = %s WHERE LOWER(email) = LOWER(%s);", (cid, email))
+                added += 1
+        conn.commit()
+    return jsonify({"success": True, "added": added})
+
+
+@app.route('/api/admin/cohorts/<int:cid>/quizzes', methods=['GET'])
+def admin_cohort_quizzes(cid):
+    auth_err = require_admin()
+    if auth_err: return auth_err
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, number, title, active, opens_at, closes_at, duration_minutes, pass_mark
+                FROM quizzes WHERE cohort_id = %s ORDER BY number ASC;
+            """, (cid,))
+            rows = cur.fetchall()
+            res = [{
+                "id": r[0],
+                "number": r[1],
+                "title": r[2] or "",
+                "active": r[3],
+                "opens_at": r[4].isoformat() if r[4] else None,
+                "closes_at": r[5].isoformat() if r[5] else None,
+                "duration_minutes": r[6],
+                "pass_mark": float(r[7])
+            } for r in rows]
+            return jsonify(res)
+
+
+@app.route('/api/admin/cohorts/<int:cid>/quizzes', methods=['POST'])
+def admin_create_cohort_quiz(cid):
+    auth_err = require_admin()
+    if auth_err: return auth_err
+    data = request.json or {}
+    title = data.get('title', '').strip()
+    duration = int(data.get('duration_minutes', 60))
+    pass_mark = float(data.get('pass_mark', 50.0))
+    opens_at = data.get('opens_at') or None
+    closes_at = data.get('closes_at') or None
+    active = bool(data.get('active', False))
+    
+    if not title:
+        return jsonify({"error": "Title is required"}), 400
+        
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COALESCE(MAX(number), 0) FROM quizzes WHERE cohort_id = %s;", (cid,))
+            max_num = cur.fetchone()[0]
+            next_num = max_num + 1
+            
+            cur.execute("""
+                INSERT INTO quizzes (number, title, duration_minutes, pass_mark, opens_at, closes_at, active, cohort_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id;
+            """, (next_num, title, duration, pass_mark, opens_at, closes_at, active, cid))
+            qid = cur.fetchone()[0]
+        conn.commit()
+    return jsonify({"success": True, "quiz_id": qid})
+
+
+@app.route('/api/admin/quizzes/<int:qid>', methods=['PUT'])
+def admin_update_quiz(qid):
+    auth_err = require_admin()
+    if auth_err: return auth_err
+    data = request.json or {}
+    title = data.get('title', '').strip()
+    duration = int(data.get('duration_minutes', 60))
+    pass_mark = float(data.get('pass_mark', 50.0))
+    opens_at = data.get('opens_at') or None
+    closes_at = data.get('closes_at') or None
+    active = bool(data.get('active', False))
+    
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE quizzes
+                SET title = %s, duration_minutes = %s, pass_mark = %s, opens_at = %s, closes_at = %s, active = %s
+                WHERE id = %s RETURNING id;
+            """, (title, duration, pass_mark, opens_at, closes_at, active, qid))
+            if not cur.fetchone():
+                return jsonify({"error": "Quiz not found"}), 404
+        conn.commit()
+    return jsonify({"success": True})
+
+
+@app.route('/api/admin/quizzes/<int:qid>', methods=['DELETE'])
+def admin_delete_quiz(qid):
+    auth_err = require_admin()
+    if auth_err: return auth_err
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM quizzes WHERE id = %s RETURNING id;", (qid,))
+            if not cur.fetchone():
+                return jsonify({"error": "Quiz not found"}), 404
+        conn.commit()
+    return jsonify({"success": True})
+
+
+@app.route('/api/admin/quizzes/<int:qid>/questions', methods=['GET'])
+def admin_quiz_questions(qid):
+    auth_err = require_admin()
+    if auth_err: return auth_err
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, section, stem, quiz_id
+                FROM questions
+                ORDER BY section ASC, position ASC;
+            """)
+            rows = cur.fetchall()
+            res = [{
+                "id": r[0],
+                "section": r[1],
+                "stem": r[2],
+                "assigned": (r[3] == qid)
+            } for r in rows]
+            return jsonify(res)
+
+
+@app.route('/api/admin/quizzes/<int:qid>/questions', methods=['PUT'])
+def admin_quiz_questions_update(qid):
+    auth_err = require_admin()
+    if auth_err: return auth_err
+    data = request.json or {}
+    question_ids = data.get('question_ids', [])
+    
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            if question_ids:
+                cur.execute("UPDATE questions SET quiz_id = NULL WHERE quiz_id = %s AND id NOT IN %s;", (qid, tuple(question_ids)))
+                cur.execute("UPDATE questions SET quiz_id = %s WHERE id IN %s;", (qid, tuple(question_ids)))
+            else:
+                cur.execute("UPDATE questions SET quiz_id = NULL WHERE quiz_id = %s;", (qid,))
+        conn.commit()
+    return jsonify({"success": True})
 
 
 if __name__ == '__main__':

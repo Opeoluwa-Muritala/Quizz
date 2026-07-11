@@ -40,27 +40,27 @@
   </div>
 
   <div class="gateway-grid">
-    <!-- Option 1: Start Application -->
-    <div class="gateway-card">
-      <div class="icon-box">
-        <i class="ti ti-user-plus"></i>
-      </div>
-      <h2>Start Application</h2>
-      <p>Submit your details, select your preferred role and branch location, and upload your CV to start the recruitment process.</p>
-      <a href="{{ url_for('recruitment.apply') }}" class="gateway-btn gateway-btn-primary">
-        Apply Now →
-      </a>
-    </div>
-
-    <!-- Option 2: Check Status -->
+    <!-- Option 1: Check Status -->
     <div class="gateway-card">
       <div class="icon-box">
         <i class="ti ti-login"></i>
       </div>
       <h2>Check Application Status</h2>
       <p>Already applied? Sign in with your email address to check your stage, upload documents, or schedule an interview.</p>
-      <a href="{{ url_for('recruitment.login') }}" class="gateway-btn gateway-btn-outline">
+      <a href="{{ url_for('recruitment.login') }}" class="gateway-btn gateway-btn-primary">
         Check Status →
+      </a>
+    </div>
+
+    <!-- Option 2: Start Application -->
+    <div class="gateway-card">
+      <div class="icon-box">
+        <i class="ti ti-user-plus"></i>
+      </div>
+      <h2>Start Application</h2>
+      <p>Submit your details, select your preferred role and branch location, and upload your CV to start the recruitment process.</p>
+      <a href="{{ url_for('recruitment.apply') }}" class="gateway-btn gateway-btn-outline">
+        Apply Now →
       </a>
     </div>
   </div>

@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+
+{% block title %}Online Assessment - Mainstreet Recruitment Portal{% endblock %}
 {% block extra_head %}
 <style>
   body { background: var(--mfb-off-white); }
@@ -592,7 +594,7 @@ function autoAdvanceOnTimeout() {
     time_spent_secs: (saved ? (saved.time_spent_secs || 0) : 0) + spent
   };
 
-  alert("Time's up! Advancing to the next question.");
+  // Auto advance silently without showing an alert popup
 
   if (currentIdx < questions.length - 1) {
     showQuestion(currentIdx + 1);

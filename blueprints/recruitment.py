@@ -17,7 +17,9 @@ from flask import (Blueprint, request, jsonify, render_template,
                    session, redirect, url_for, g, Response)
 
 from db import DBConnection
-from services.notifications import send_notification
+from services.notifications import send_notification, send_otp_email
+import secrets
+from werkzeug.security import generate_password_hash, check_password_hash
 from services.upload import (validate_file, enqueue_upload, get_job_status,
                               ALLOWED_CV_MIMETYPES, ALLOWED_DOC_MIMETYPES)
 from services.screening import apply_screening
@@ -291,29 +293,167 @@ def _transition_stage(candidate_id: int, new_stage: str, changed_by: str = "syst
 
 # ── Pages ─────────────────────────────────────────────────────────────────────
 
-@recruitment.route("/login", methods=["GET", "POST"])
+@recruitment.route("/login", methods=["GET"])
 def login():
     if session.get("candidate_id"):
         return redirect(url_for("recruitment.dashboard"))
+    return render_template("login.html")
 
-    error = None
-    if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
-        if not email:
-            error = "Email address is required."
-        else:
-            with DBConnection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT id, email, stage FROM candidates WHERE LOWER(email) = %s;", (email,))
-                    row = cur.fetchone()
-            if row:
-                session["candidate_id"] = row[0]
-                session["candidate_email"] = row[1]
-                return _stage_redirect(row[2] or "applied")
+
+@recruitment.route("/request-otp", methods=["POST"])
+def request_otp():
+    data = request.json or {}
+    email = data.get("email", "").strip().lower()
+    if not email:
+        return jsonify({"success": False, "error": "Email address is required."}), 400
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            # Check if exists in candidates or whitelist
+            cur.execute("""
+                SELECT 1 FROM candidates WHERE LOWER(email) = %s 
+                UNION 
+                SELECT 1 FROM whitelist WHERE LOWER(email) = %s 
+                LIMIT 1;
+            """, (email, email))
+            if not cur.fetchone():
+                return jsonify({"success": False, "error": "No application found with that email address. Please apply first."}), 404
+
+            # Generate 6-digit random code
+            otp = "".join(secrets.choice("0123456789") for _ in range(6))
+            otp_hash = generate_password_hash(otp)
+            expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=10)
+
+            # Prune old OTPs for this email
+            cur.execute("DELETE FROM candidate_otps WHERE email = %s;", (email,))
+            
+            # Store OTP
+            cur.execute("""
+                INSERT INTO candidate_otps (email, otp_hash, expires_at)
+                VALUES (%s, %s, %s);
+            """, (email, otp_hash, expires_at))
+        conn.commit()
+
+    # Send verification email
+    send_otp_email(email, otp)
+    return jsonify({"success": True, "message": "Verification code has been sent to your email."})
+
+
+@recruitment.route("/verify-otp", methods=["POST"])
+def verify_otp():
+    data = request.json or {}
+    email = data.get("email", "").strip().lower()
+    otp = data.get("otp", "").strip()
+    if not email or not otp:
+        return jsonify({"success": False, "error": "Email and verification code are required."}), 400
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, otp_hash, attempts, expires_at 
+                FROM candidate_otps 
+                WHERE email = %s;
+            """, (email,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "No verification session found. Please request a new code."}), 400
+
+            otp_id, otp_hash, attempts, expires_at = row
+
+            if attempts >= 5:
+                return jsonify({"success": False, "error": "Too many failed attempts. This code is locked. Please request a new code."}), 403
+
+            now = datetime.datetime.now(datetime.timezone.utc)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=datetime.timezone.utc)
+            if now > expires_at:
+                return jsonify({"success": False, "error": "Verification code has expired. Please request a new code."}), 400
+
+            # Validate OTP hash
+            if not check_password_hash(otp_hash, otp):
+                cur.execute("UPDATE candidate_otps SET attempts = attempts + 1 WHERE id = %s;", (otp_id,))
+                conn.commit()
+                return jsonify({"success": False, "error": "Incorrect verification code."}), 400
+
+            # Successful verification -> clear OTP record
+            cur.execute("DELETE FROM candidate_otps WHERE email = %s;", (email,))
+            
+            # Check if they have a candidate profile already
+            cur.execute("SELECT id, stage FROM candidates WHERE LOWER(email) = %s;", (email,))
+            cand_row = cur.fetchone()
+            if cand_row:
+                session["candidate_id"] = cand_row[0]
+                session["candidate_email"] = email
+                session.pop("temp_verified_email", None)
+                conn.commit()
+                return jsonify({"success": True, "redirect": url_for("recruitment.dashboard")})
             else:
-                error = "No candidate application found with that email address. Please apply first."
+                # Whitelisted candidate who hasn't applied/registered yet
+                # Save verified email in session to allow application registration
+                session["candidate_email"] = email
+                session["temp_verified_email"] = email
+                conn.commit()
+                return jsonify({"success": True, "redirect": url_for("recruitment.apply")})
 
-    return render_template("login.html", error=error)
+
+
+
+
+@recruitment.route("/start-quiz/<int:quiz_id>", methods=["GET"])
+def start_quiz(quiz_id):
+    candidate_id = session.get("candidate_id")
+    if not candidate_id:
+        return redirect(url_for("recruitment.login"))
+        
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            # Check if quiz exists and is active
+            cur.execute("""
+                SELECT c.cohort_id, c.stage, q.active, q.opens_at, q.closes_at
+                FROM candidates c
+                JOIN quizzes q ON q.id = %s
+                WHERE c.id = %s;
+            """, (quiz_id, candidate_id))
+            row = cur.fetchone()
+            if not row:
+                return "Quiz or Candidate not found", 404
+                
+            cohort_id, stage, quiz_active, opens_at, closes_at = row
+            if not quiz_active:
+                return "This quiz is not active", 400
+                
+            # Check availability windows
+            now = datetime.datetime.now(datetime.timezone.utc)
+            t_opens = opens_at.replace(tzinfo=datetime.timezone.utc) if opens_at and opens_at.tzinfo is None else opens_at
+            t_closes = closes_at.replace(tzinfo=datetime.timezone.utc) if closes_at and closes_at.tzinfo is None else closes_at
+            
+            if t_opens and now < t_opens:
+                return "This quiz is not open yet", 400
+            if t_closes and now > t_closes:
+                return "This quiz has closed", 400
+
+            # Check if already completed or started (no resume)
+            cur.execute("""
+                SELECT 1 FROM exam_results WHERE candidate_id = %s AND quiz_id = %s
+                UNION ALL
+                SELECT 1 FROM scores WHERE candidate_id = %s AND quiz_id = %s;
+            """, (candidate_id, quiz_id, candidate_id, quiz_id))
+            if cur.fetchone():
+                return "This quiz has already been started and cannot be resumed or restarted.", 403
+                
+            # Set active_quiz_id in session
+            session['active_quiz_id'] = quiz_id
+            
+            # If stage is screening_passed, update stage to assessment_in_progress
+            if stage in ("screening_passed", "screening_flagged"):
+                cur.execute("UPDATE candidates SET stage = 'assessment_in_progress', stage_updated_at = NOW() WHERE id = %s;", (candidate_id,))
+                cur.execute("""
+                    INSERT INTO candidate_stage_history (candidate_id, from_stage, to_stage, changed_by, reason)
+                    VALUES (%s, %s, 'assessment_in_progress', 'system', 'Candidate started assessment');
+                """, (candidate_id, stage))
+                conn.commit()
+                
+    return redirect(url_for("recruitment.assessment"))
 
 
 @recruitment.route("/apply")
@@ -451,6 +591,76 @@ def dashboard():
                     "closes_at": closes_str
                 }
 
+            # Fetch candidate's cohort tests
+            cur.execute("SELECT cohort_id FROM candidates WHERE id = %s;", (candidate_id,))
+            cohort_row = cur.fetchone()
+            cohort_id = cohort_row[0] if cohort_row else None
+            
+            cohort_tests = []
+            if cohort_id:
+                cur.execute("""
+                    SELECT id, title, duration_minutes, pass_mark, opens_at, closes_at, number
+                    FROM quizzes
+                    WHERE cohort_id = %s AND active = TRUE
+                    ORDER BY number ASC;
+                """, (cohort_id,))
+                quizzes_rows = cur.fetchall()
+                for qr in quizzes_rows:
+                    qid, title, duration, pm, opens, closes, num = qr
+                    
+                    cur.execute("""
+                        SELECT score_percent, pass_fail, submitted_at FROM exam_results
+                        WHERE candidate_id = %s AND quiz_id = %s;
+                    """, (candidate_id, qid))
+                    result_row = cur.fetchone()
+                    if not result_row:
+                        cur.execute("""
+                            SELECT score, pass_fail, taken_at FROM scores
+                            WHERE candidate_id = %s AND quiz_id = %s AND pass_fail IS NOT NULL;
+                        """, (candidate_id, qid))
+                        score_row = cur.fetchone()
+                        if score_row:
+                            result_row = (float(score_row[0]) if score_row[0] is not None else 0.0, score_row[1], score_row[2])
+                    
+                    in_progress = (session.get('active_quiz_id') == qid)
+                    
+                    now_utc = datetime.datetime.now(datetime.timezone.utc)
+                    is_available = True
+                    # Timezone aware checks
+                    t_opens = opens.replace(tzinfo=datetime.timezone.utc) if opens and opens.tzinfo is None else opens
+                    t_closes = closes.replace(tzinfo=datetime.timezone.utc) if closes and closes.tzinfo is None else closes
+                    
+                    if t_opens and now_utc < t_opens:
+                        is_available = False
+                    if t_closes and now_utc > t_closes:
+                        is_available = False
+                        
+                    status = 'not_started'
+                    score_percent = None
+                    pass_fail = None
+                    if result_row:
+                        status = 'completed'
+                        score_percent = float(result_row[0])
+                        pass_fail = result_row[1]
+                    elif in_progress:
+                        status = 'in_progress'
+                        
+                    opens_at_formatted = opens.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %I:%M %p").lower() if opens else None
+                    closes_at_formatted = closes.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %I:%M %p").lower() if closes else None
+                    
+                    cohort_tests.append({
+                        "id": qid,
+                        "title": title or f"Assessment #{num}",
+                        "duration_minutes": duration,
+                        "pass_mark": float(pm),
+                        "opens_at_formatted": opens_at_formatted,
+                        "closes_at_formatted": closes_at_formatted,
+                        "is_available": is_available,
+                        "status": status,
+                        "score_percent": score_percent,
+                        "pass_fail": pass_fail
+                    })
+
     return render_template(
         "candidate_dashboard.html",
         candidate=cand,
@@ -463,6 +673,7 @@ def dashboard():
         stage_windows=stage_windows,
         required_docs=get_role_document_requirements(cand[10] if cand else None),
         now=datetime.datetime.utcnow(),
+        cohort_tests=cohort_tests,
     )
 
 
@@ -686,13 +897,19 @@ def api_apply():
             else:
                 import secrets
                 ref_token = secrets.token_hex(6)
+                
+                # Fetch cohort_id from whitelist if exists
+                cur.execute("SELECT cohort_id FROM whitelist WHERE LOWER(email) = LOWER(%s);", (email,))
+                cohort_row = cur.fetchone()
+                cohort_id = cohort_row[0] if cohort_row else None
+
                 cur.execute("""
                     INSERT INTO candidates
                         (full_name, email, phone_number, dob, nysc_status,
-                         role, location, stage, stage_updated_at, ref_token)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'applied', NOW(), %s)
+                         role, location, stage, stage_updated_at, ref_token, cohort_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'applied', NOW(), %s, %s)
                     RETURNING id;
-                """, (full_name, email, phone_number, dob, nysc_status, role, location, ref_token))
+                """, (full_name, email, phone_number, dob, nysc_status, role, location, ref_token, cohort_id))
                 candidate_id = cur.fetchone()[0]
         conn.commit()
 
@@ -865,20 +1082,36 @@ def assessment_start():
                     "seconds_per_question": seconds_per_q,
                 })
 
-            # Fetch stage config for duration
-            cur.execute("""
-                SELECT duration_minutes FROM stage_config
-                WHERE stage_name = 'assessment' ORDER BY cycle_id DESC LIMIT 1;
-            """)
-            cfg = cur.fetchone()
-            duration_mins = (cfg[0] if cfg and cfg[0] else 60)
+            # Get active quiz from session
+            quiz_id = session.get('active_quiz_id')
+            duration_mins = 60
+            if quiz_id:
+                cur.execute("SELECT duration_minutes, title FROM quizzes WHERE id = %s;", (quiz_id,))
+                qrow = cur.fetchone()
+                if qrow and qrow[0] is not None:
+                    duration_mins = qrow[0]
+            else:
+                # Fetch stage config for duration if no specific quiz active
+                cur.execute("""
+                    SELECT duration_minutes FROM stage_config
+                    WHERE stage_name = 'assessment' ORDER BY cycle_id DESC LIMIT 1;
+                """)
+                cfg = cur.fetchone()
+                duration_mins = (cfg[0] if cfg and cfg[0] else 60)
 
             # Fetch and shuffle questions deterministically
-            cur.execute("""
-                SELECT id, section, stem, option_a, option_b, option_c, option_d, position
-                FROM questions WHERE active = TRUE
-                ORDER BY section, position ASC;
-            """)
+            if quiz_id:
+                cur.execute("""
+                    SELECT id, section, stem, option_a, option_b, option_c, option_d, position
+                    FROM questions WHERE active = TRUE AND quiz_id = %s
+                    ORDER BY section, position ASC;
+                """, (quiz_id,))
+            else:
+                cur.execute("""
+                    SELECT id, section, stem, option_a, option_b, option_c, option_d, position
+                    FROM questions WHERE active = TRUE
+                    ORDER BY section, position ASC;
+                """)
             all_q = cur.fetchall()
 
             by_sec = {"Numerical": [], "Verbal": [], "Logical": []}
@@ -901,10 +1134,10 @@ def assessment_start():
             # Create scores row
             cur.execute("""
                 INSERT INTO scores
-                    (candidate_id, stage_label, started_at, duration_seconds, question_order)
-                VALUES (%s, 'assessment_round_1', NOW(), %s, %s)
+                    (candidate_id, stage_label, started_at, duration_seconds, question_order, quiz_id)
+                VALUES (%s, 'assessment_round_1', NOW(), %s, %s, %s)
                 RETURNING id;
-            """, (candidate_id, duration_mins * 60, json.dumps(question_ids)))
+            """, (candidate_id, duration_mins * 60, json.dumps(question_ids), quiz_id))
             score_id = cur.fetchone()[0]
 
             # Advance stage to assessment_in_progress
@@ -1077,33 +1310,85 @@ def assessment_submit():
             """, (score_pct, score_frac, pf, time_taken, tab_switches,
                   json.dumps(breakdown), score_id))
 
-            # Advance candidate stage
-            cur.execute("""
-                UPDATE candidates SET stage = %s, stage_updated_at = NOW()
-                WHERE id = %s;
-            """, (new_stage, candidate_id))
-            cur.execute("""
-                INSERT INTO candidate_stage_history
-                    (candidate_id, from_stage, to_stage, changed_by, reason)
-                VALUES (%s, 'assessment_in_progress', %s, 'system', %s);
-            """, (candidate_id, new_stage, f"score={score_pct}% pass_mark={pass_mark}%"))
+            # Fetch candidate's cohort_id
+            cur.execute("SELECT cohort_id FROM candidates WHERE id = %s;", (candidate_id,))
+            cohort_row = cur.fetchone()
+            cohort_id = cohort_row[0] if cohort_row else None
 
-            if new_stage == "assessment_passed":
-                # Open interview slot booking
+            pending_quizzes = []
+            if cohort_id:
+                # Fetch all active quizzes for cohort
+                cur.execute("SELECT id FROM quizzes WHERE cohort_id = %s AND active = TRUE;", (cohort_id,))
+                cohort_quizzes = [cr[0] for cr in cur.fetchall()]
+                
+                if cohort_quizzes:
+                    # Fetch all completed quizzes from scores and exam_results
+                    cur.execute("SELECT quiz_id FROM scores WHERE candidate_id = %s AND pass_fail IS NOT NULL AND quiz_id IS NOT NULL;", (candidate_id,))
+                    completed = {cr[0] for cr in cur.fetchall()}
+                    cur.execute("SELECT quiz_id FROM exam_results WHERE candidate_id = %s AND quiz_id IS NOT NULL;", (candidate_id,))
+                    completed.update({cr[0] for cr in cur.fetchall()})
+                    
+                    pending_quizzes = [qid for qid in cohort_quizzes if qid not in completed]
+
+            if pending_quizzes:
+                # Return to screening_passed to allow taking other tests
+                new_stage = "screening_passed"
+                final_stage = "screening_passed"
+                
                 cur.execute("""
-                    UPDATE candidates SET stage = 'interview_slot_pending', stage_updated_at = NOW()
+                    UPDATE candidates SET stage = %s, stage_updated_at = NOW()
                     WHERE id = %s;
-                """, (candidate_id,))
+                """, (new_stage, candidate_id))
                 cur.execute("""
                     INSERT INTO candidate_stage_history
-                        (candidate_id, from_stage, to_stage, changed_by)
-                    VALUES (%s, 'assessment_passed', 'interview_slot_pending', 'system');
-                """, (candidate_id,))
-                final_stage = "interview_slot_pending"
+                        (candidate_id, from_stage, to_stage, changed_by, reason)
+                    VALUES (%s, 'assessment_in_progress', %s, 'system', %s);
+                """, (candidate_id, new_stage, f"Completed quiz. {len(pending_quizzes)} quizzes pending."))
             else:
-                final_stage = new_stage
+                # All quizzes done! Evaluate overall pass/fail status
+                # If they passed all cohort quizzes, they pass assessment round
+                overall_passed = True
+                if cohort_id and cohort_quizzes:
+                    cur.execute("""
+                        SELECT pass_fail FROM scores WHERE candidate_id = %s AND quiz_id IN %s
+                        UNION ALL
+                        SELECT pass_fail FROM exam_results WHERE candidate_id = %s AND quiz_id IN %s;
+                    """, (candidate_id, tuple(cohort_quizzes), candidate_id, tuple(cohort_quizzes)))
+                    statuses = [cr[0] for cr in cur.fetchall()]
+                    if any(s == "FAIL" for s in statuses):
+                        overall_passed = False
+                else:
+                    overall_passed = (pf == "PASS")
+
+                new_stage = "assessment_passed" if overall_passed else "assessment_failed"
+
+                cur.execute("""
+                    UPDATE candidates SET stage = %s, stage_updated_at = NOW()
+                    WHERE id = %s;
+                """, (new_stage, candidate_id))
+                cur.execute("""
+                    INSERT INTO candidate_stage_history
+                        (candidate_id, from_stage, to_stage, changed_by, reason)
+                    VALUES (%s, 'assessment_in_progress', %s, 'system', %s);
+                """, (candidate_id, new_stage, f"All quizzes completed. Final result: {new_stage}"))
+
+                if overall_passed:
+                    # Open interview slot booking
+                    cur.execute("""
+                        UPDATE candidates SET stage = 'interview_slot_pending', stage_updated_at = NOW()
+                        WHERE id = %s;
+                    """, (candidate_id,))
+                    cur.execute("""
+                        INSERT INTO candidate_stage_history
+                            (candidate_id, from_stage, to_stage, changed_by)
+                        VALUES (%s, 'assessment_passed', 'interview_slot_pending', 'system');
+                    """, (candidate_id,))
+                    final_stage = "interview_slot_pending"
+                else:
+                    final_stage = new_stage
 
         conn.commit()
+        session.pop('active_quiz_id', None)
 
     event = "assessment_passed" if pf == "PASS" else "assessment_failed"
     try:
