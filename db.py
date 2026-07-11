@@ -10,7 +10,11 @@ load_dotenv()
 
 # We expect the pooler connection string is provided in NEON_DATABASE_URL
 _db_url = os.environ.get("NEON_DATABASE_URL")
-_default_pool_mode = "serverless" if os.environ.get("VERCEL") else "persistent"
+# Neon's pooler is designed for a small, reused client pool. Opening a fresh
+# TLS/database connection for each Vercel request dominates simple admin reads
+# (candidate lists, schedule cards, counts), often adding seconds of latency.
+# Keep the mode configurable, but reuse a deliberately small pool by default.
+_default_pool_mode = "persistent"
 _pool_mode = os.environ.get("DATABASE_POOL_MODE", _default_pool_mode).lower()
 _pool = None
 _pool_lock = threading.Lock()
@@ -23,10 +27,15 @@ def _persistent_pool():
         # lock, each thread can build its own Neon pool and connection.
         with _pool_lock:
             if _pool is None:
+                max_connections = int(os.environ.get(
+                    "DATABASE_POOL_MAX", "2" if os.environ.get("VERCEL") else "10"
+                ))
                 _pool = ThreadedConnectionPool(
                     int(os.environ.get("DATABASE_POOL_MIN", "1")),
-                    int(os.environ.get("DATABASE_POOL_MAX", "10")),
+                    max_connections,
                     _db_url,
+                    connect_timeout=int(os.environ.get("DATABASE_CONNECT_TIMEOUT", "8")),
+                    application_name="quizzapp",
                 )
     return _pool
 

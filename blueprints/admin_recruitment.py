@@ -20,6 +20,7 @@ from services.notifications import send_notification, resend_notification
 logger = logging.getLogger(__name__)
 from jobs.slot_generator import generate_slots
 from services.schedules import generate_schedule_slots
+from services.cache import cached_admin_json
 
 admin_rec = Blueprint("admin_rec", __name__)
 
@@ -53,6 +54,7 @@ STAGE_EMAIL_EVENT = {
 # ── Candidates ────────────────────────────────────────────────────────────────
 
 @admin_rec.route("/api/admin/recruitment/candidates")
+@cached_admin_json(15)
 def list_candidates():
     err = _require_admin()
     if err: return err
@@ -79,20 +81,21 @@ def list_candidates():
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
+            # Keep the page query index-friendly. COUNT(*) OVER() forces a full
+            # window scan before PostgreSQL can return the first page.
+            cur.execute(f"SELECT COUNT(*) FROM candidates c {where_sql};", params)
+            total = cur.fetchone()[0]
             cur.execute(f"""
                 WITH candidate_page AS (
-                    SELECT c.*, COUNT(*) OVER() AS filtered_total
-                    FROM candidates c
-                    {where_sql}
-                    ORDER BY c.created_at DESC
-                    LIMIT %s OFFSET %s
+                    SELECT c.* FROM candidates c {where_sql}
+                    ORDER BY c.created_at DESC LIMIT %s OFFSET %s
                 )
                 SELECT c.id, c.full_name, c.email, c.phone_number, c.dob,
                        c.nysc_status, c.stage, c.stage_updated_at,
                        c.eligibility_flag, c.eligibility_flag_reason,
                        c.cv_url, c.created_at,
                        s.score, s.pass_fail,
-                       gs.start_time AS interview_time, c.filtered_total,
+                       gs.start_time AS interview_time,
                        c.cohort_id, co.name AS cohort_name, c.interview_round
                 FROM candidate_page c
                 LEFT JOIN cohorts co ON c.cohort_id = co.id
@@ -109,7 +112,6 @@ def list_candidates():
                 ORDER BY c.created_at DESC
             """, params + [per_page, offset])
             rows = cur.fetchall()
-            total = rows[0][15] if rows else 0
 
     candidates = []
     for r in rows:
@@ -124,8 +126,8 @@ def list_candidates():
             "latest_score": float(r[12]) if r[12] is not None else None,
             "latest_pass_fail": r[13],
             "interview_time": r[14].isoformat() if r[14] else None,
-            "cohort_id": r[16],
-            "cohort_name": r[17] or "Cohort 1", "interview_round": r[18],
+            "cohort_id": r[15],
+            "cohort_name": r[16] or "Cohort 1", "interview_round": r[17],
         })
 
     return jsonify({"candidates": candidates, "total": total, "page": page, "per_page": per_page})
@@ -364,6 +366,7 @@ def bulk_candidate_updates():
 # ── Interviewers ──────────────────────────────────────────────────────────────
 
 @admin_rec.route("/api/admin/recruitment/interviewers", methods=["GET", "POST"])
+@cached_admin_json(30)
 def interviewers():
     err = _require_admin()
     if err: return err
@@ -464,18 +467,32 @@ def _schedule_payload(cur, schedule_id=None):
         {where}
         ORDER BY s.created_at DESC
     """, params)
+    rows = cur.fetchall()
+    sch_ids = [r[0] for r in rows]
+    interviewers_by_sch = {}
+    
+    if sch_ids:
+        cur.execute("""
+            SELECT si.schedule_id, i.id, i.name, i.email, i.color FROM schedule_interviewers si
+            JOIN interviewers i ON i.id = si.interviewer_id
+            WHERE si.schedule_id IN %s ORDER BY si.position
+        """, (tuple(sch_ids),))
+        for row in cur.fetchall():
+            interviewers_by_sch.setdefault(row[0], []).append({
+                "id": row[1], "name": row[2], "email": row[3], "color": row[4]
+            })
+
     schedules = []
-    for r in cur.fetchall():
-        cur.execute("""SELECT i.id,i.name,i.email,i.color FROM schedule_interviewers si
-                     JOIN interviewers i ON i.id=si.interviewer_id WHERE si.schedule_id=%s ORDER BY si.position""", (r[0],))
-        schedules.append({"id":r[0],"title":r[1],"role":r[2],"round":r[3],"type":r[4],
+    for r in rows:
+        sch_id = r[0]
+        schedules.append({"id":sch_id,"title":r[1],"role":r[2],"round":r[3],"type":r[4],
             "start_date":r[5].isoformat() if r[5] else None,"end_date":r[6].isoformat() if r[6] else None,
             "active_days":r[7] or [],"recurrence_days":r[7] or [],"hours":r[8] or {},"duration":r[9],"buffer":r[10],
             "notice":r[11],"max_bookings":r[12],"max_interviewer_bookings":r[13],
             "mode":"robin" if r[14]=="round_robin" else r[14],"published":r[15],
             "status":"Active" if r[15] and (not r[6] or r[6] >= datetime.date.today()) else "Ended",
             "generated_at":r[16].isoformat() if r[16] else None,"slots":r[17]+r[18],"booked":r[18],"waiting":r[19],
-            "interviewers":[{"id":i[0],"name":i[1],"email":i[2],"color":i[3]} for i in cur.fetchall()]})
+            "interviewers": interviewers_by_sch.get(sch_id, [])})
     return schedules
 
 
@@ -500,6 +517,7 @@ def _validate_schedule(data):
 
 
 @admin_rec.route("/api/admin/recruitment/schedules", methods=["GET", "POST"])
+@cached_admin_json(20)
 def schedules():
     err = _require_admin()
     if err: return err
@@ -576,6 +594,7 @@ def schedule_preview():
 
 
 @admin_rec.route("/api/admin/recruitment/schedules/candidate-count")
+@cached_admin_json(15)
 def schedule_candidate_count():
     err = _require_admin()
     if err:return err
@@ -696,6 +715,7 @@ def availability_rule_detail(rid):
 # ── Generated slots ───────────────────────────────────────────────────────────
 
 @admin_rec.route("/api/admin/recruitment/slots")
+@cached_admin_json(15)
 def list_slots():
     err = _require_admin()
     if err: return err
