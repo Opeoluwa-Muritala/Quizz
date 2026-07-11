@@ -20,7 +20,7 @@ from db import DBConnection
 from services.notifications import send_notification, send_otp_email
 import secrets
 from werkzeug.security import generate_password_hash, check_password_hash
-from services.upload import (validate_file, enqueue_upload, get_job_status,
+from services.upload import (validate_file, prepare_upload_file, enqueue_upload, get_job_status,
                               ALLOWED_CV_MIMETYPES, ALLOWED_DOC_MIMETYPES)
 from services.screening import apply_screening
 from services.meetings import create_meeting
@@ -605,20 +605,24 @@ def dashboard():
                     ORDER BY number ASC;
                 """, (cohort_id,))
                 quizzes_rows = cur.fetchall()
+                
+                cur.execute("""
+                    SELECT quiz_id, score_percent, pass_fail, submitted_at FROM exam_results
+                    WHERE candidate_id = %s;
+                """, (candidate_id,))
+                legacy_dict = {row[0]: row[1:] for row in cur.fetchall()}
+                
+                cur.execute("""
+                    SELECT quiz_id, score, pass_fail, taken_at FROM scores
+                    WHERE candidate_id = %s AND pass_fail IS NOT NULL;
+                """, (candidate_id,))
+                pipeline_dict = {row[0]: row[1:] for row in cur.fetchall()}
+                
                 for qr in quizzes_rows:
                     qid, title, duration, pm, opens, closes, num = qr
-                    
-                    cur.execute("""
-                        SELECT score_percent, pass_fail, submitted_at FROM exam_results
-                        WHERE candidate_id = %s AND quiz_id = %s;
-                    """, (candidate_id, qid))
-                    result_row = cur.fetchone()
+                    result_row = legacy_dict.get(qid)
                     if not result_row:
-                        cur.execute("""
-                            SELECT score, pass_fail, taken_at FROM scores
-                            WHERE candidate_id = %s AND quiz_id = %s AND pass_fail IS NOT NULL;
-                        """, (candidate_id, qid))
-                        score_row = cur.fetchone()
+                        score_row = pipeline_dict.get(qid)
                         if score_row:
                             result_row = (float(score_row[0]) if score_row[0] is not None else 0.0, score_row[1], score_row[2])
                     
@@ -869,8 +873,8 @@ def api_apply():
     if cv_file:
         cv_file_bytes = cv_file.read()
         cv_mimetype   = cv_file.mimetype
-        err = validate_file(cv_file_bytes, cv_mimetype, ALLOWED_CV_MIMETYPES,
-                            cv_file.filename)
+        cv_file_bytes, cv_mimetype, err = prepare_upload_file(
+            cv_file_bytes, cv_mimetype, ALLOWED_CV_MIMETYPES, cv_file.filename)
         if err:
             return jsonify({"error": err}), 400
 
@@ -923,7 +927,7 @@ def api_apply():
         upload_job_id = enqueue_upload(
             cv_file_bytes, folder, "cv",
             candidate_id=candidate_id,
-            resource_type="image",
+            resource_type="auto",
             target_field="cv_url",
         )
 
@@ -1599,8 +1603,8 @@ def upload_document():
 
     file_bytes = doc_file.read()
     mimetype   = doc_file.mimetype
-    err = validate_file(file_bytes, mimetype, ALLOWED_DOC_MIMETYPES,
-                        doc_file.filename)
+    file_bytes, mimetype, err = prepare_upload_file(
+        file_bytes, mimetype, ALLOWED_DOC_MIMETYPES, doc_file.filename)
     if err:
         return jsonify({"error": err}), 400
 
@@ -1622,7 +1626,7 @@ def upload_document():
     job_id = enqueue_upload(
         file_bytes, folder, doc_type,
         candidate_id=candidate_id,
-        resource_type="image",
+        resource_type="auto",
         doc_type=doc_type,
     )
 

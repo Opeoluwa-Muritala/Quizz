@@ -1515,26 +1515,33 @@ def admin_results():
             cur.execute(query, (per_page, offset))
             cand_rows = cur.fetchall()
             
+            cand_ids = [r[0] for r in cand_rows]
+            legacy_by_cand = {}
+            pipeline_by_cand = {}
+            
+            if cand_ids:
+                cur.execute("""
+                    SELECT candidate_id, score_percent, score_fraction, pass_fail, submitted_at, quiz_id, tab_switches, time_taken_secs
+                    FROM exam_results WHERE candidate_id IN %s;
+                """, (tuple(cand_ids),))
+                for row in cur.fetchall():
+                    legacy_by_cand.setdefault(row[0], []).append(row[1:])
+                
+                cur.execute("""
+                    SELECT candidate_id, score, score_fraction, pass_fail, taken_at, stage_label, tab_switches, time_taken_secs
+                    FROM scores WHERE candidate_id IN %s;
+                """, (tuple(cand_ids),))
+                for row in cur.fetchall():
+                    pipeline_by_cand.setdefault(row[0], []).append(row[1:])
+
             results = []
             total_passed = 0
             total_failed = 0
             
             for r in cand_rows:
                 cand_id, name, email, phone, role, location, created_at, stage = r
-                
-                # Fetch exam_results (dashboard/legacy)
-                cur.execute("""
-                    SELECT score_percent, score_fraction, pass_fail, submitted_at, quiz_id, tab_switches, time_taken_secs
-                    FROM exam_results WHERE candidate_id = %s;
-                """, (cand_id,))
-                legacy_rows = cur.fetchall()
-                
-                # Fetch pipeline scores
-                cur.execute("""
-                    SELECT score, score_fraction, pass_fail, taken_at, stage_label, tab_switches, time_taken_secs
-                    FROM scores WHERE candidate_id = %s;
-                """, (cand_id,))
-                pipeline_rows = cur.fetchall()
+                legacy_rows = legacy_by_cand.get(cand_id, [])
+                pipeline_rows = pipeline_by_cand.get(cand_id, [])
                 
                 scores_list = []
                 for lr in legacy_rows:

@@ -5,6 +5,7 @@ Uploads run inline in the request handler so they block until completed.
 import os
 import uuid
 import logging
+import io
 from pathlib import Path
 import cloudinary
 import cloudinary.uploader
@@ -21,14 +22,16 @@ ALLOWED_FILE_TYPES = {
 ALLOWED_CV_MIMETYPES = set(ALLOWED_FILE_TYPES.values())
 ALLOWED_DOC_MIMETYPES = ALLOWED_CV_MIMETYPES
 MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_IMAGE_DIMENSION = 2200
+JPEG_QUALITY = 82
 
 
 def validate_file(file_bytes: bytes, mimetype: str, allowed: set,
-                  filename: str = "") -> str | None:
+                  filename: str = "", enforce_size: bool = True) -> str | None:
     """Return error string or None if valid."""
     if not file_bytes:
         return "The selected file is empty."
-    if len(file_bytes) > MAX_FILE_BYTES:
+    if enforce_size and len(file_bytes) > MAX_FILE_BYTES:
         return f"File exceeds 10 MB limit ({len(file_bytes)//1024//1024} MB uploaded)."
     if mimetype not in allowed:
         return "Only PDF, JPEG, and PNG files are allowed."
@@ -45,6 +48,54 @@ def validate_file(file_bytes: bytes, mimetype: str, allowed: set,
     if not signatures_valid.get(mimetype, False):
         return "This file appears to be damaged or in an unsupported format."
     return None
+
+
+def compress_image(file_bytes: bytes, mimetype: str) -> tuple[bytes, str]:
+    """Downsize camera images before Cloudinary upload; PDFs are never altered."""
+    if mimetype not in {"image/jpeg", "image/png"}:
+        return file_bytes, mimetype
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        # Deployments install Pillow from requirements.txt. Do not reject a
+        # valid file solely because a local development environment lacks it.
+        logger.warning("Pillow is unavailable; uploading image without compression")
+        return file_bytes, mimetype
+    try:
+        with Image.open(io.BytesIO(file_bytes)) as image:
+            image = ImageOps.exif_transpose(image)
+            image.thumbnail((MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION), Image.Resampling.LANCZOS)
+            # JPEG is substantially smaller for photos/scans. Flatten PNG
+            # transparency onto white so identity/document scans remain legible.
+            if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
+                background = Image.new("RGB", image.size, "white")
+                alpha = image.convert("RGBA").getchannel("A")
+                background.paste(image.convert("RGB"), mask=alpha)
+                image = background
+            elif image.mode != "RGB":
+                image = image.convert("RGB")
+            output = io.BytesIO()
+            image.save(output, format="JPEG", quality=JPEG_QUALITY, optimize=True, progressive=True)
+            compressed = output.getvalue()
+            # Do not inflate small illustrations/screenshots by converting them.
+            if len(compressed) >= len(file_bytes):
+                return file_bytes, mimetype
+            return compressed, "image/jpeg"
+    except Exception:
+        logger.exception("Image compression failed; using original upload")
+        return file_bytes, mimetype
+
+
+def prepare_upload_file(file_bytes: bytes, mimetype: str, allowed: set,
+                        filename: str = "") -> tuple[bytes, str, str | None]:
+    """Validate content, compress images, then enforce the final upload limit."""
+    error = validate_file(file_bytes, mimetype, allowed, filename, enforce_size=False)
+    if error:
+        return file_bytes, mimetype, error
+    file_bytes, mimetype = compress_image(file_bytes, mimetype)
+    if len(file_bytes) > MAX_FILE_BYTES:
+        return file_bytes, mimetype, f"File remains above the 10 MB upload limit after compression."
+    return file_bytes, mimetype, None
 
 
 def enqueue_upload(file_bytes: bytes, folder: str, public_id: str,
