@@ -750,7 +750,39 @@
           <div class="form-group"><label>Start</label><input class="rec-ctrl" id="manualSlotStart" type="datetime-local" value="${toLocal(date, startMinutes)}"></div>
           <div class="form-group"><label>End</label><input class="rec-ctrl" id="manualSlotEnd" type="datetime-local" value="${toLocal(date, Math.max(endMinutes, startMinutes + 15))}"></div>
         </div>
-        <div class="form-group"><label>Interviewers</label>
+        
+        <div class="form-group" style="margin-top:8px">
+          <label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer">
+            <input type="checkbox" id="manualSlotSplit" onchange="toggleManualSlotSplitFields()">
+            Split range into multiple slots automatically
+          </label>
+        </div>
+        
+        <div id="manualSlotSplitFields" class="rec-row" style="display:none;margin-top:10px;gap:16px">
+          <div class="form-group" style="flex:1">
+            <label>Meeting Length</label>
+            <select class="rec-ctrl" id="manualSlotMeetingLength">
+              <option value="15">15 minutes</option>
+              <option value="30" selected>30 minutes</option>
+              <option value="45">45 minutes</option>
+              <option value="60">60 minutes</option>
+              <option value="90">90 minutes</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>Gap Length</label>
+            <select class="rec-ctrl" id="manualSlotGapLength">
+              <option value="0">No gap</option>
+              <option value="5">5 minutes</option>
+              <option value="10" selected>10 minutes</option>
+              <option value="15">15 minutes</option>
+              <option value="20">20 minutes</option>
+              <option value="30">30 minutes</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top:12px"><label>Interviewers</label>
           <div style="max-height:180px;overflow:auto;border:1px solid #ddd;border-radius:6px;padding:8px">
             ${interviewers.map((i, index) => `<label style="display:flex;gap:8px;padding:5px;align-items:center"><input type="checkbox" class="manual-slot-interviewer" value="${i.id}" ${index === 0 ? 'checked' : ''}> ${esc(i.name)}${index === 0 ? ' <span style="color:#777;font-size:.8rem">(primary)</span>' : ''}</label>`).join('') || '<span style="color:#b3261e">Add an active interviewer first.</span>'}
           </div>
@@ -761,6 +793,11 @@
     modal.classList.remove('hidden');
   };
 
+  window.toggleManualSlotSplitFields = function () {
+    const checked = document.getElementById('manualSlotSplit').checked;
+    document.getElementById('manualSlotSplitFields').style.display = checked ? 'flex' : 'none';
+  };
+
   window.closeManualSlotModal = function () {
     document.getElementById('manualSlotModal')?.classList.add('hidden');
   };
@@ -769,12 +806,18 @@
     const interviewerIds = Array.from(document.querySelectorAll('.manual-slot-interviewer:checked')).map(i => Number(i.value));
     const message = document.getElementById('manualSlotMessage');
     if (!interviewerIds.length) { message.textContent = 'Select at least one interviewer.'; return; }
-    const data = await recApiPost('/api/admin/recruitment/slots', {
+    
+    const payload = {
       title: document.getElementById('manualSlotTitle').value,
       start_time: document.getElementById('manualSlotStart').value,
       end_time: document.getElementById('manualSlotEnd').value,
       interviewer_ids: interviewerIds,
-    });
+      split_automatically: document.getElementById('manualSlotSplit').checked,
+      meeting_length: Number(document.getElementById('manualSlotMeetingLength').value),
+      gap_length: Number(document.getElementById('manualSlotGapLength').value)
+    };
+
+    const data = await recApiPost('/api/admin/recruitment/slots', payload);
     if (data?.status === 'success') {
       closeManualSlotModal();
       window.calendarState.slots = [];

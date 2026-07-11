@@ -899,37 +899,69 @@ def create_manual_slot():
     if end <= start:
         return jsonify({"error": "End time must be after the start time."}), 400
 
+    split_automatically = data.get("split_automatically", False)
+    duration = data.get("meeting_length")
+    buffer = data.get("gap_length", 0)
+
+    if split_automatically:
+        try:
+            duration = int(duration)
+            buffer = int(buffer)
+            if duration <= 0:
+                return jsonify({"error": "Meeting length must be greater than 0."}), 400
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid meeting length or gap length."}), 400
+
     with DBConnection() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id FROM interviewers WHERE id = ANY(%s) AND active = TRUE;", (interviewer_ids,))
             active_ids = {row[0] for row in cur.fetchall()}
             if active_ids != set(interviewer_ids):
                 return jsonify({"error": "One or more selected interviewers are inactive or unavailable."}), 400
-            cur.execute("""
-                SELECT i.name FROM generated_slots gs
-                JOIN interviewers i ON i.id = gs.interviewer_id
-                WHERE gs.interviewer_id = ANY(%s) AND gs.is_blocked = FALSE
-                  AND gs.start_time < %s AND gs.end_time > %s
-                UNION
-                SELECT i.name FROM slot_interviewers si
-                JOIN generated_slots gs ON gs.id = si.slot_id
-                JOIN interviewers i ON i.id = si.interviewer_id
-                WHERE si.interviewer_id = ANY(%s) AND gs.is_blocked = FALSE
-                  AND gs.start_time < %s AND gs.end_time > %s;
-            """, (interviewer_ids, end, start, interviewer_ids, end, start))
-            conflicts = [row[0] for row in cur.fetchall()]
-            if conflicts:
-                return jsonify({"error": f"Time overlaps an existing slot for: {', '.join(conflicts)}."}), 409
-            cur.execute("""
-                INSERT INTO generated_slots (interviewer_id, start_time, end_time, title)
-                VALUES (%s, %s, %s, %s) RETURNING id;
-            """, (interviewer_ids[0], start, end, title))
-            slot_id = cur.fetchone()[0]
-            for interviewer_id in interviewer_ids[1:]:
-                cur.execute("INSERT INTO slot_interviewers (slot_id, interviewer_id) VALUES (%s, %s);",
-                            (slot_id, interviewer_id))
+
+            slots_to_create = []
+            if split_automatically:
+                current_start = start
+                step = datetime.timedelta(minutes=duration + buffer)
+                while current_start + datetime.timedelta(minutes=duration) <= end:
+                    current_end = current_start + datetime.timedelta(minutes=duration)
+                    slots_to_create.append((current_start, current_end))
+                    current_start += step
+            else:
+                slots_to_create.append((start, end))
+
+            if not slots_to_create:
+                return jsonify({"error": "No slots fit within the specified time range."}), 400
+
+            created_ids = []
+            for s_start, s_end in slots_to_create:
+                cur.execute("""
+                    SELECT i.name FROM generated_slots gs
+                    JOIN interviewers i ON i.id = gs.interviewer_id
+                    WHERE gs.interviewer_id = ANY(%s) AND gs.is_blocked = FALSE
+                      AND gs.start_time < %s AND gs.end_time > %s
+                    UNION
+                    SELECT i.name FROM slot_interviewers si
+                    JOIN generated_slots gs ON gs.id = si.slot_id
+                    JOIN interviewers i ON i.id = si.interviewer_id
+                    WHERE si.interviewer_id = ANY(%s) AND gs.is_blocked = FALSE
+                      AND gs.start_time < %s AND gs.end_time > %s;
+                """, (interviewer_ids, s_end, s_start, interviewer_ids, s_end, s_start))
+                conflicts = [row[0] for row in cur.fetchall()]
+                if conflicts:
+                    return jsonify({"error": f"Time overlaps an existing slot for: {', '.join(conflicts)}."}), 409
+
+                cur.execute("""
+                    INSERT INTO generated_slots (interviewer_id, start_time, end_time, title)
+                    VALUES (%s, %s, %s, %s) RETURNING id;
+                """, (interviewer_ids[0], s_start, s_end, title))
+                slot_id = cur.fetchone()[0]
+                created_ids.append(slot_id)
+                for interviewer_id in interviewer_ids[1:]:
+                    cur.execute("INSERT INTO slot_interviewers (slot_id, interviewer_id) VALUES (%s, %s);",
+                                (slot_id, interviewer_id))
         conn.commit()
-    return jsonify({"status": "success", "slot_id": slot_id}), 201
+    return jsonify({"status": "success", "slot_ids": created_ids}), 201
 
 
 @admin_rec.route("/api/admin/recruitment/slots/batch-block", methods=["POST"])
