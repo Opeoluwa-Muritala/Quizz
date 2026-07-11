@@ -24,19 +24,44 @@ function formatWAT(dateOrStr) {
   if (!dateOrStr) return '—';
   const d = new Date(dateOrStr);
   if (isNaN(d.getTime())) return '—';
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Africa/Lagos',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true
-  });
-  const parts = formatter.formatToParts(d);
-  const m = {};
-  parts.forEach(p => m[p.type] = p.value);
-  return `${m.year}-${m.month}-${m.day} ${m.hour}:${m.minute} ${m.dayPeriod.toLowerCase()}`;
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Africa/Lagos',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    const parts = formatter.formatToParts(d);
+    const m = {};
+    parts.forEach(p => m[p.type] = p.value);
+    
+    const year = m.year || d.getUTCFullYear();
+    const month = m.month || String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = m.day || String(d.getUTCDate()).padStart(2, '0');
+    
+    let hourVal = d.getUTCHours() + 1;
+    if (hourVal >= 24) hourVal -= 24;
+    
+    let ampm = hourVal >= 12 ? 'pm' : 'am';
+    let displayHour = hourVal % 12;
+    if (displayHour === 0) displayHour = 12;
+    
+    const hour = m.hour || String(displayHour).padStart(2, '0');
+    const minute = m.minute || String(d.getUTCMinutes()).padStart(2, '0');
+    const period = (m.dayPeriod || m.dayperiod || ampm).toLowerCase();
+    
+    return `${year}-${month}-${day} ${hour}:${minute} ${period}`;
+  } catch (e) {
+    const y = d.getUTCFullYear();
+    const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const da = String(d.getUTCDate()).padStart(2, '0');
+    const ho = String(d.getUTCHours()).padStart(2, '0');
+    const mi = String(d.getUTCMinutes()).padStart(2, '0');
+    return `${y}-${mo}-${da} ${ho}:${mi} utc`;
+  }
 }
 
 // Global AJAX Request helper with CSRF Header support
@@ -59,6 +84,10 @@ window.getAdminCached = async function (url, loader = () => fetch(url).then(r =>
         adminPrefetchCache.delete(url);
         throw error;
     }
+};
+
+window.clearAdminCached = function () {
+    adminPrefetchCache.clear();
 };
 
 async function apiRequest(url, method = "GET", body = null) {
@@ -875,11 +904,12 @@ function initAdminLogin(form) {
         const errorEl = document.getElementById("login-error");
         errorEl.classList.add("hidden");
         
-        const token = document.getElementById("admin-token").value.trim();
-        if (!token) return;
+        const username = document.getElementById("admin-username").value.trim();
+        const password = document.getElementById("admin-password").value.trim();
+        if (!username || !password) return;
         
         try {
-            const res = await apiRequest("/admin/login", "POST", { token });
+            const res = await apiRequest("/admin/login", "POST", { username, password });
             if (res.success) {
                 window.location.href = "/admin";
             }
@@ -973,6 +1003,7 @@ function initAdminOperations() {
             
             // Tab specific triggers
             if (tab.dataset.tab === "settings") loadSettingsTab();
+            if (tab.dataset.tab === "cohorts") window.loadCohortsTab();
             if (tab.dataset.tab === "questions") loadQuestionsTab();
             if (tab.dataset.tab === "candidates") loadResultsTab();
             if (tab.dataset.tab === "whitelist") loadWhitelistTab();
@@ -986,9 +1017,11 @@ function initAdminOperations() {
     // ── Panel 1: Exam Settings ──
     const settingsForm = document.getElementById("settings-form");
     const switchOpen = document.getElementById("setting-exam-open");
-    const statusText = document.getElementById("setting-status-text");
+    const statusText = document.getElementById("setting-status-chip");
+    const switchRecruitmentOpen = document.getElementById("setting-recruitment-open");
+    const recruitmentStatusText = document.getElementById("setting-recruitment-status-chip");
     const requireIdentityToggle = document.getElementById("setting-require-identity");
-    const identityStatusText = document.getElementById("identity-status-text");
+    const identityStatusText = document.getElementById("identity-status-chip");
     const pretestPanel = document.getElementById("pretest-fields-panel");
     const pretestList = document.getElementById("pretestFieldsList");
     const pretestFieldTypes = [
@@ -1001,58 +1034,218 @@ function initAdminOperations() {
         { key: "location", label: "Location/Branch" },
     ];
 
+    function debounce(func, wait) {
+        let timeout;
+        return function(...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), wait);
+        };
+    }
+
+    function updateSwitchChip(checkbox, chipEl, onLabel = "Open", offLabel = "Closed") {
+        if (!chipEl) return;
+        if (checkbox.checked) {
+            chipEl.textContent = onLabel;
+            chipEl.classList.remove("off");
+            chipEl.classList.add("on");
+        } else {
+            chipEl.textContent = offLabel;
+            chipEl.classList.remove("on");
+            chipEl.classList.add("off");
+        }
+    }
+
     function normalizePretestFields(fields) {
-        const map = new Map((fields || []).map(f => [f.key, f]));
-        return pretestFieldTypes.map(base => ({
-            key: base.key,
-            label: map.get(base.key)?.label || base.label,
-            enabled: base.locked || Boolean(map.get(base.key)?.enabled),
-            required: base.locked || Boolean(map.get(base.key)?.required),
-            locked: Boolean(base.locked),
-        })).concat((fields || []).filter(f => f.key?.startsWith("custom_")));
+        const savedList = fields || [];
+        const savedKeys = new Set(savedList.map(f => f.key));
+        
+        const result = savedList.map(f => {
+            const base = pretestFieldTypes.find(b => b.key === f.key);
+            return {
+                key: f.key,
+                label: f.label,
+                enabled: base?.locked || Boolean(f.enabled),
+                required: base?.locked || Boolean(f.required),
+                locked: Boolean(base?.locked)
+            };
+        });
+
+        pretestFieldTypes.forEach(base => {
+            if (!savedKeys.has(base.key)) {
+                result.push({
+                    key: base.key,
+                    label: base.label,
+                    enabled: Boolean(base.locked),
+                    required: Boolean(base.locked),
+                    locked: Boolean(base.locked)
+                });
+            }
+        });
+
+        return result;
     }
 
     function renderPretestFields(fields) {
         const normalized = normalizePretestFields(fields);
-        pretestList.innerHTML = normalized.map((f, idx) => `
-            <div class="card" style="padding:12px;display:grid;grid-template-columns:24px 1fr auto auto;gap:10px;align-items:center">
-                <span class="font-mono" style="color:var(--mfb-gray-600)">::</span>
-                <input class="form-control pretest-label" data-key="${f.key}" value="${f.label}" ${f.locked ? 'readonly' : ''}>
-                <label style="font-size:13px;color:var(--mfb-gray-600)">
-                    <input type="checkbox" class="pretest-enabled" data-key="${f.key}" ${f.enabled ? 'checked' : ''} ${f.locked ? 'disabled' : ''}> Show
+        pretestList.innerHTML = normalized.map((f, idx) => {
+            const isCustom = f.key?.startsWith("custom_");
+            return `
+            <div class="pretest-row" draggable="${(!f.locked) ? 'true' : 'false'}" data-key="${f.key}">
+                <span class="drag-handle" style="${f.locked ? 'visibility:hidden' : ''}"><i class="ti ti-menu-2"></i></span>
+                <label class="checkbox-wrapper">
+                    <input type="checkbox" class="pretest-enabled" data-key="${f.key}" ${f.enabled ? 'checked' : ''} ${f.locked ? 'disabled' : ''}>
+                    ${isCustom 
+                        ? `<input type="text" class="custom-field-edit-input" data-key="${f.key}" value="${f.label}">` 
+                        : `<span class="field-label-text ${f.locked ? 'locked' : ''}">${f.label}</span>`
+                    }
                 </label>
-                <label style="font-size:13px;color:var(--mfb-gray-600)">
-                    <input type="checkbox" class="pretest-required" data-key="${f.key}" ${f.required ? 'checked' : ''} ${f.locked ? 'disabled' : ''}> Required
-                </label>
+                <div class="required-toggle-wrapper">
+                    <span class="required-label">Required</span>
+                    <label class="switch-container switch-sm">
+                        <input type="checkbox" class="pretest-required" data-key="${f.key}" ${f.required ? 'checked' : ''} ${f.locked ? 'disabled' : ''}>
+                        <span class="switch-slider"></span>
+                    </label>
+                    ${isCustom 
+                        ? `<button type="button" class="btn-delete-custom" data-key="${f.key}">&times;</button>` 
+                        : ''
+                    }
+                </div>
             </div>
-        `).join("");
+            `;
+        }).join("");
+
+        initDragAndDrop();
+
+        pretestList.querySelectorAll(".pretest-enabled, .pretest-required").forEach(el => {
+            el.addEventListener("change", savePretestFieldsImmediately);
+        });
+
+        pretestList.querySelectorAll(".custom-field-edit-input").forEach(el => {
+            el.addEventListener("input", debounce(() => {
+                savePretestFieldsImmediately();
+            }, 500));
+        });
+
+        pretestList.querySelectorAll(".btn-delete-custom").forEach(el => {
+            el.addEventListener("click", () => {
+                const key = el.dataset.key;
+                const current = readPretestFields();
+                const filtered = current.filter(f => f.key !== key);
+                renderPretestFields(filtered);
+                savePretestFieldsImmediately();
+            });
+        });
+    }
+
+    function initDragAndDrop() {
+        let dragSrcEl = null;
+        pretestList.querySelectorAll(".pretest-row").forEach(row => {
+            if (row.dataset.key === 'full_name' || row.dataset.key === 'email') {
+                row.setAttribute('draggable', 'false');
+                return;
+            }
+
+            row.addEventListener("dragstart", (e) => {
+                dragSrcEl = row;
+                e.dataTransfer.effectAllowed = "move";
+                row.classList.add("dragging");
+            });
+
+            row.addEventListener("dragend", () => {
+                row.classList.remove("dragging");
+                savePretestFieldsImmediately();
+            });
+
+            row.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                const draggingEl = pretestList.querySelector(".dragging");
+                const siblings = Array.from(pretestList.querySelectorAll(".pretest-row:not(.dragging)"));
+                const nextSibling = siblings.find(sibling => {
+                    if (sibling.dataset.key === 'full_name' || sibling.dataset.key === 'email') return false;
+                    const rect = sibling.getBoundingClientRect();
+                    return e.clientY <= rect.top + rect.height / 2;
+                });
+                if (nextSibling) {
+                    pretestList.insertBefore(draggingEl, nextSibling);
+                } else {
+                    pretestList.appendChild(draggingEl);
+                }
+            });
+        });
     }
 
     function readPretestFields() {
-        return Array.from(pretestList.querySelectorAll(".pretest-label")).map(input => {
-            const key = input.dataset.key;
-            const enabled = pretestList.querySelector(`.pretest-enabled[data-key="${key}"]`);
-            const required = pretestList.querySelector(`.pretest-required[data-key="${key}"]`);
-            return {
-                key,
-                label: input.value.trim(),
-                enabled: enabled ? enabled.checked || enabled.disabled : true,
-                required: required ? required.checked || required.disabled : true,
-            };
-        }).filter(f => f.enabled);
+        const fields = [];
+        pretestList.querySelectorAll(".pretest-row").forEach(row => {
+            const key = row.dataset.key;
+            const enabledInput = row.querySelector(".pretest-enabled");
+            const requiredInput = row.querySelector(".pretest-required");
+            
+            let label = "";
+            const textSpan = row.querySelector(".field-label-text");
+            if (textSpan) {
+                label = textSpan.textContent.trim();
+            } else {
+                const editInput = row.querySelector(".custom-field-edit-input");
+                if (editInput) {
+                    label = editInput.value.trim();
+                }
+            }
+
+            fields.push({
+                key: key,
+                label: label,
+                enabled: enabledInput ? enabledInput.checked || enabledInput.disabled : true,
+                required: requiredInput ? requiredInput.checked || requiredInput.disabled : true
+            });
+        });
+        return fields;
     }
 
     function syncIdentityPanel() {
         if (!requireIdentityToggle) return;
-        identityStatusText.textContent = requireIdentityToggle.checked ? "Verification on" : "Verification off";
-        pretestPanel.style.display = requireIdentityToggle.checked ? "none" : "block";
+        updateSwitchChip(requireIdentityToggle, identityStatusText, "Verification on", "Verification off");
+        if (requireIdentityToggle.checked) {
+            pretestPanel.classList.remove("expanded");
+        } else {
+            pretestPanel.classList.add("expanded");
+        }
+    }
+
+    async function savePretestFieldsImmediately() {
+        const secondsInput = document.getElementById("setting-seconds-per-q");
+        const passMarkInput = document.getElementById("setting-pass-mark");
+        
+        let seconds = parseInt(secondsInput.value);
+        if (isNaN(seconds) || seconds < 10 || seconds > 300) seconds = 60;
+        
+        let passMark = parseFloat(passMarkInput.value);
+        if (isNaN(passMark) || passMark < 0 || passMark > 100) passMark = 50;
+
+        const payload = {
+            exam_open: switchOpen.checked,
+            seconds_per_question: seconds,
+            pass_mark_percent: passMark,
+            require_identity_verification: requireIdentityToggle ? requireIdentityToggle.checked : true,
+            pre_test_fields: readPretestFields(),
+            recruitment_portal_open: switchRecruitmentOpen ? switchRecruitmentOpen.checked : true
+        };
+        try {
+            await apiRequest("/api/admin/settings", "POST", payload);
+        } catch (err) {
+            console.error("Failed to auto-save field configurations:", err);
+        }
     }
 
     async function loadSettingsTab() {
         try {
             const s = await apiRequest("/api/admin/settings");
             switchOpen.checked = s.exam_open;
-            statusText.textContent = s.exam_open ? "Exam open" : "Exam closed";
+            updateSwitchChip(switchOpen, statusText, "Open", "Closed");
+            if (switchRecruitmentOpen) {
+                switchRecruitmentOpen.checked = s.recruitment_portal_open !== false;
+                updateSwitchChip(switchRecruitmentOpen, recruitmentStatusText, "Open", "Closed");
+            }
             document.getElementById("setting-seconds-per-q").value = s.seconds_per_question;
             document.getElementById("setting-pass-mark").value = s.pass_mark_percent;
             if (requireIdentityToggle) {
@@ -1067,34 +1260,123 @@ function initAdminOperations() {
     }
 
     switchOpen.addEventListener("change", () => {
-        statusText.textContent = switchOpen.checked ? "Exam open" : "Exam closed";
+        updateSwitchChip(switchOpen, statusText, "Open", "Closed");
     });
-    if (requireIdentityToggle) {
-        requireIdentityToggle.addEventListener("change", syncIdentityPanel);
-    }
-    document.getElementById("btn-add-pretest-field")?.addEventListener("click", () => {
-        const current = readPretestFields();
-        current.push({
-            key: `custom_${Date.now()}`,
-            label: "Custom text field",
-            enabled: true,
-            required: false,
+    if (switchRecruitmentOpen) {
+        switchRecruitmentOpen.addEventListener("change", () => {
+            updateSwitchChip(switchRecruitmentOpen, recruitmentStatusText, "Open", "Closed");
         });
-        renderPretestFields(current);
-    });
+    }
+    if (requireIdentityToggle) {
+        requireIdentityToggle.addEventListener("change", () => {
+            syncIdentityPanel();
+            savePretestFieldsImmediately();
+        });
+    }
+
+    // Custom fields events setup
+    const linkAddCustom = document.getElementById("link-add-custom-field");
+    const customInputBox = document.getElementById("custom-field-input-box");
+    const customLabelInput = document.getElementById("custom-field-label-input");
+    const btnConfirmAddCustom = document.getElementById("btn-confirm-add-custom");
+    const btnCancelAddCustom = document.getElementById("btn-cancel-add-custom");
+
+    if (linkAddCustom) {
+        linkAddCustom.addEventListener("click", (e) => {
+            e.preventDefault();
+            linkAddCustom.style.display = "none";
+            customInputBox.style.display = "flex";
+            customLabelInput.value = "";
+            customLabelInput.focus();
+        });
+    }
+
+    if (btnCancelAddCustom) {
+        btnCancelAddCustom.addEventListener("click", () => {
+            linkAddCustom.style.display = "inline";
+            customInputBox.style.display = "none";
+        });
+    }
+
+    if (btnConfirmAddCustom) {
+        btnConfirmAddCustom.addEventListener("click", () => {
+            const label = customLabelInput.value.trim();
+            if (!label) return;
+
+            const current = readPretestFields();
+            current.push({
+                key: `custom_${Date.now()}`,
+                label: label,
+                enabled: true,
+                required: false
+            });
+            renderPretestFields(current);
+            savePretestFieldsImmediately();
+
+            linkAddCustom.style.display = "inline";
+            customInputBox.style.display = "none";
+        });
+    }
+
+    const secondsInput = document.getElementById("setting-seconds-per-q");
+    const passMarkInput = document.getElementById("setting-pass-mark");
+    const errorSeconds = document.getElementById("error-seconds-per-q");
+    const errorPassMark = document.getElementById("error-pass-mark");
+
+    function validateSettingsForm() {
+        let isValid = true;
+        
+        const seconds = parseInt(secondsInput.value);
+        if (isNaN(seconds) || seconds < 10 || seconds > 300) {
+            secondsInput.classList.add("error-state");
+            if (errorSeconds) errorSeconds.style.display = "block";
+            isValid = false;
+        } else {
+            secondsInput.classList.remove("error-state");
+            if (errorSeconds) errorSeconds.style.display = "none";
+        }
+
+        const passMark = parseFloat(passMarkInput.value);
+        if (isNaN(passMark) || passMark < 0 || passMark > 100) {
+            passMarkInput.classList.add("error-state");
+            if (errorPassMark) errorPassMark.style.display = "block";
+            isValid = false;
+        } else {
+            passMarkInput.classList.remove("error-state");
+            if (errorPassMark) errorPassMark.style.display = "none";
+        }
+
+        return isValid;
+    }
+
+    if (secondsInput) secondsInput.addEventListener("input", validateSettingsForm);
+    if (passMarkInput) passMarkInput.addEventListener("input", validateSettingsForm);
 
     settingsForm.addEventListener("submit", async (e) => {
         e.preventDefault();
+        if (!validateSettingsForm()) return;
+
         const payload = {
             exam_open: switchOpen.checked,
-            seconds_per_question: parseInt(document.getElementById("setting-seconds-per-q").value),
-            pass_mark_percent: parseFloat(document.getElementById("setting-pass-mark").value),
+            seconds_per_question: parseInt(secondsInput.value),
+            pass_mark_percent: parseFloat(passMarkInput.value),
             require_identity_verification: requireIdentityToggle ? requireIdentityToggle.checked : true,
-            pre_test_fields: pretestList ? readPretestFields() : []
+            pre_test_fields: readPretestFields(),
+            recruitment_portal_open: switchRecruitmentOpen ? switchRecruitmentOpen.checked : true
         };
         try {
             await apiRequest("/api/admin/settings", "POST", payload);
-            toastSuccess("Settings saved successfully.");
+            
+            // Flash save button label to "Saved"
+            const saveBtn = document.getElementById("btn-save-settings");
+            const originalText = saveBtn.textContent;
+            saveBtn.textContent = "Saved";
+            saveBtn.classList.add("btn-saved-flash");
+            setTimeout(() => {
+                saveBtn.textContent = originalText;
+                saveBtn.classList.remove("btn-saved-flash");
+            }, 1500);
+
             loadSettingsTab();
         } catch (err) {
             toastError(err.message);
@@ -1627,13 +1909,26 @@ function initAdminOperations() {
             tdLocation.textContent = r.location;
             
             const tdScore = document.createElement("td");
-            tdScore.className = "font-mono";
-            tdScore.textContent = `${r.score_percent}% (${r.score_fraction})`;
+            if (r.scores && r.scores.length > 0) {
+                r.scores.forEach(s => {
+                    const pill = document.createElement("span");
+                    pill.className = `badge ${s.pass_fail === 'PASS' ? 'badge-pass' : 'badge-fail'}`;
+                    pill.style.display = "inline-block";
+                    pill.style.margin = "2px";
+                    pill.style.fontSize = "11px";
+                    pill.style.padding = "4px 8px";
+                    pill.title = `${s.title}: Taken at ${s.submitted_at ? formatWAT(s.submitted_at) : 'N/A'} (Switches: ${s.tab_switches}, Time: ${formatTime(s.time_taken_secs)})`;
+                    pill.textContent = `${s.title}: ${s.score_percent}% (${s.score_fraction})`;
+                    tdScore.appendChild(pill);
+                });
+            } else {
+                tdScore.textContent = "-";
+            }
             
             const tdBadge = document.createElement("td");
             const badge = document.createElement("span");
-            badge.className = `badge ${r.pass_fail === 'PASS' ? 'badge-pass' : 'badge-fail'}`;
-            badge.textContent = r.pass_fail;
+            badge.className = `badge ${r.overall_status === 'PASS' ? 'badge-pass' : (r.overall_status === 'FAIL' ? 'badge-fail' : 'badge-pending')}`;
+            badge.textContent = r.stage.replace('_', ' ').toUpperCase();
             tdBadge.appendChild(badge);
             
             const tdTime = document.createElement("td");
@@ -1924,6 +2219,409 @@ function initAdminOperations() {
             loadWhitelistTab();
         } catch (err) {
             toastError("Whitelist CSV Import failed.");
+        }
+    });
+
+    // ── Cohorts & Tests Tab Manager ──────────────────────────────────────────
+    let activeCohortId = null;
+
+    window.loadCohortsTab = async function() {
+        try {
+            const cohorts = await apiRequest("/api/admin/cohorts");
+            const sidebar = document.getElementById("cohorts-sidebar-list");
+            sidebar.innerHTML = "";
+            
+            if (cohorts.length === 0) {
+                sidebar.innerHTML = `<div style="color:var(--mfb-gray-600); font-style:italic; font-size:13px; text-align:center; padding:20px 0;">No cohorts found.</div>`;
+                document.getElementById("cohort-detail-card").style.display = "none";
+                document.getElementById("cohort-placeholder-card").style.display = "flex";
+                return;
+            }
+            
+            cohorts.forEach(c => {
+                const div = document.createElement("div");
+                div.style.cssText = "padding:12px; border-radius:6px; border:1px solid var(--mfb-gray-300); background:#fff; cursor:pointer; display:flex; justify-content:space-between; align-items:center; transition:all 0.2s;";
+                if (c.id === activeCohortId) {
+                    div.style.borderColor = "var(--mfb-purple)";
+                    div.style.background = "#f6f0ff";
+                }
+                
+                div.innerHTML = `
+                    <div style="flex:1;">
+                        <strong style="font-size:14px; color:var(--mfb-ink);">${c.name}</strong>
+                        <div style="font-size:11px; color:var(--mfb-gray-600); margin-top:2px;">
+                            ${c.candidate_count} candidates · ${c.test_count} tests
+                        </div>
+                    </div>
+                    <i class="ti ti-chevron-right" style="color:var(--mfb-gray-600);"></i>
+                `;
+                
+                div.addEventListener("click", () => {
+                    activeCohortId = c.id;
+                    loadCohortsTab();
+                    loadCohortDetail(c.id, c.name);
+                });
+                
+                sidebar.appendChild(div);
+            });
+            
+            if (activeCohortId) {
+                const act = cohorts.find(c => c.id === activeCohortId);
+                if (act) loadCohortDetail(act.id, act.name);
+            }
+        } catch (err) {
+            toastError("Failed to load cohorts list.");
+        }
+    };
+
+    async function loadCohortDetail(cid, cname) {
+        document.getElementById("cohort-placeholder-card").style.display = "none";
+        document.getElementById("cohort-detail-card").style.display = "block";
+        
+        const inputName = document.getElementById("input-cohort-name");
+        inputName.value = cname;
+        inputName.readOnly = true;
+        inputName.style.borderBottomColor = "transparent";
+        document.getElementById("btn-rename-cohort").classList.remove("hidden");
+        document.getElementById("btn-save-cohort-name").classList.add("hidden");
+        
+        // Load active subtab
+        const activeBtn = document.querySelector(".cohort-subtab-btn.active");
+        if (activeBtn) {
+            loadCohortSubtab(cid, activeBtn.dataset.subtab);
+        }
+    }
+
+    async function loadCohortSubtab(cid, subtab) {
+        if (subtab === "candidates") {
+            try {
+                const candidates = await apiRequest(`/api/admin/cohorts/${cid}/candidates`);
+                const tbody = document.getElementById("cohort-candidates-table-body");
+                tbody.innerHTML = "";
+                
+                if (candidates.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:20px; color:var(--mfb-gray-600); font-style:italic;">No whitelisted candidates in this cohort.</td></tr>`;
+                    return;
+                }
+                
+                candidates.forEach(cand => {
+                    const tr = document.createElement("tr");
+                    tr.style.borderBottom = "1px solid var(--mfb-gray-300)";
+                    
+                    tr.innerHTML = `
+                        <td style="padding:10px 4px; font-weight:600;">${cand.name || '-'}</td>
+                        <td style="padding:10px 4px;">${cand.email}</td>
+                        <td style="padding:10px 4px; text-align:right;">
+                            <button type="button" class="btn-icon text-danger" title="Remove whitelist candidate" onclick="deleteCohortCandidate(${cand.id})">
+                                <i class="ti ti-trash" style="color:var(--mfb-error);"></i>
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                toastError("Failed to load cohort candidates.");
+            }
+        } else if (subtab === "tests") {
+            try {
+                const quizzes = await apiRequest(`/api/admin/cohorts/${cid}/quizzes`);
+                const container = document.getElementById("cohort-tests-container");
+                container.innerHTML = "";
+                
+                if (quizzes.length === 0) {
+                    container.innerHTML = `<div style="text-align:center; padding:30px; color:var(--mfb-gray-600); font-style:italic;">No tests created for this cohort.</div>`;
+                    return;
+                }
+                
+                quizzes.forEach(q => {
+                    const div = document.createElement("div");
+                    div.style.cssText = "padding:16px; border:1px solid var(--mfb-gray-300); border-radius:8px; display:flex; justify-content:space-between; align-items:center;";
+                    
+                    div.innerHTML = `
+                        <div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <strong style="font-size:15px; color:var(--mfb-ink);">${q.title}</strong>
+                                <span class="badge ${q.active ? 'badge-pass' : 'badge-pending'}" style="font-size:10px; padding:2px 6px;">
+                                    ${q.active ? 'Active' : 'Draft'}
+                                </span>
+                            </div>
+                            <div style="font-size:12px; color:var(--mfb-gray-600); margin-top:4px;">
+                                Duration: <strong>${q.duration_minutes} mins</strong> · Pass Mark: <strong>${q.pass_mark}%</strong>
+                                ${q.opens_at ? ` · Opens: <strong>${q.opens_at.replace('T', ' ')}</strong>` : ''}
+                                ${q.closes_at ? ` · Closes: <strong>${q.closes_at.replace('T', ' ')}</strong>` : ''}
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <button type="button" class="btn btn-ghost btn-sm" onclick="manageQuizQuestions(${q.id}, '${q.title.replace(/'/g, "\\'")}')" style="padding:6px 12px; font-size:12px; border:1px solid var(--mfb-purple); color:var(--mfb-purple);">
+                                <i class="ti ti-list-check"></i> Questions
+                            </button>
+                            <button type="button" class="btn btn-ghost btn-sm" onclick="editCohortQuiz(${JSON.stringify(q).replace(/"/g, '&quot;')})" style="padding:6px 12px; font-size:12px;">
+                                <i class="ti ti-edit"></i> Edit
+                            </button>
+                            <button type="button" class="btn btn-ghost btn-sm" onclick="deleteCohortQuiz(${q.id})" style="padding:6px 12px; font-size:12px; color:var(--mfb-error);">
+                                <i class="ti ti-trash"></i>
+                            </button>
+                        </div>
+                    `;
+                    container.appendChild(div);
+                });
+            } catch (err) {
+                toastError("Failed to load cohort tests.");
+            }
+        }
+    }
+
+    // Bind subtab clicks
+    document.querySelectorAll(".cohort-subtab-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".cohort-subtab-btn").forEach(b => {
+                b.classList.remove("active");
+                b.style.color = "var(--mfb-gray-600)";
+                b.style.borderBottomColor = "transparent";
+            });
+            btn.classList.add("active");
+            btn.style.color = "var(--mfb-purple)";
+            btn.style.borderBottomColor = "var(--mfb-purple)";
+            
+            document.querySelectorAll(".cohort-pane").forEach(p => p.style.display = "none");
+            if (btn.dataset.subtab === "candidates") {
+                document.getElementById("pane-cohort-candidates").style.display = "block";
+            } else {
+                document.getElementById("pane-cohort-tests").style.display = "block";
+            }
+            if (activeCohortId) loadCohortSubtab(activeCohortId, btn.dataset.subtab);
+        });
+    });
+
+    // Create Cohort button
+    document.getElementById("btn-create-cohort").addEventListener("click", async () => {
+        const name = prompt("Enter Cohort Name:");
+        if (!name || !name.trim()) return;
+        try {
+            const res = await apiRequest("/api/admin/cohorts", "POST", { name: name.trim() });
+            toastSuccess("Cohort created successfully.");
+            activeCohortId = res.cohort.id;
+            loadCohortsTab();
+        } catch (err) {
+            toastError(err.message || "Failed to create cohort.");
+        }
+    });
+
+    // Delete Cohort button
+    document.getElementById("btn-delete-cohort").addEventListener("click", async () => {
+        if (!activeCohortId) return;
+        if (!confirm("Are you sure you want to delete this cohort? All quizzes and whitelisted candidates linked to it will be removed!")) return;
+        try {
+            await apiRequest(`/api/admin/cohorts/${activeCohortId}`, "DELETE");
+            toastSuccess("Cohort deleted successfully.");
+            activeCohortId = null;
+            loadCohortsTab();
+        } catch (err) {
+            toastError("Failed to delete cohort.");
+        }
+    });
+
+    // Rename Cohort toggle/save
+    const inputCohortName = document.getElementById("input-cohort-name");
+    const btnRenameCohort = document.getElementById("btn-rename-cohort");
+    const btnSaveCohortName = document.getElementById("btn-save-cohort-name");
+
+    btnRenameCohort.addEventListener("click", () => {
+        inputCohortName.readOnly = false;
+        inputCohortName.style.borderBottomColor = "var(--mfb-purple)";
+        inputCohortName.focus();
+        btnRenameCohort.classList.add("hidden");
+        btnSaveCohortName.classList.remove("hidden");
+    });
+
+    btnSaveCohortName.addEventListener("click", async () => {
+        const newName = inputCohortName.value.trim();
+        if (!newName) return;
+        try {
+            await apiRequest(`/api/admin/cohorts/${activeCohortId}`, "PUT", { name: newName });
+            toastSuccess("Cohort renamed successfully.");
+            loadCohortsTab();
+        } catch (err) {
+            toastError("Failed to rename cohort.");
+        }
+    });
+
+    // Single candidate add form
+    document.getElementById("form-cohort-add-candidate").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!activeCohortId) return;
+        const nameInput = document.getElementById("add-cand-name");
+        const emailInput = document.getElementById("add-cand-email");
+        try {
+            await apiRequest(`/api/admin/cohorts/${activeCohortId}/candidates`, "POST", {
+                name: nameInput.value.trim(),
+                email: emailInput.value.trim()
+            });
+            toastSuccess("Candidate added to cohort whitelist.");
+            nameInput.value = "";
+            emailInput.value = "";
+            loadCohortSubtab(activeCohortId, "candidates");
+        } catch (err) {
+            toastError("Failed to add candidate.");
+        }
+    });
+
+    // Bulk candidates add button
+    document.getElementById("btn-bulk-add-candidates").addEventListener("click", async () => {
+        if (!activeCohortId) return;
+        const textInput = document.getElementById("bulk-cand-text");
+        const val = textInput.value.trim();
+        if (!val) return;
+        try {
+            const res = await apiRequest(`/api/admin/cohorts/${activeCohortId}/candidates/bulk`, "POST", { text: val });
+            toastSuccess(`Bulk upload processed. Added/Updated: ${res.added}`);
+            textInput.value = "";
+            loadCohortSubtab(activeCohortId, "candidates");
+        } catch (err) {
+            toastError("Bulk upload failed.");
+        }
+    });
+
+    window.deleteCohortCandidate = async function(wid) {
+        if (!confirm("Are you sure you want to remove this candidate from the cohort whitelist?")) return;
+        try {
+            await apiRequest(`/api/admin/whitelist/${wid}`, "DELETE");
+            toastSuccess("Candidate removed from whitelist.");
+            if (activeCohortId) loadCohortSubtab(activeCohortId, "candidates");
+        } catch (err) {
+            toastError("Failed to remove candidate.");
+        }
+    };
+
+    // Test Creator/Editor Popups & Save
+    const testModal = document.getElementById("modal-test-editor");
+    const testForm = document.getElementById("form-test-editor");
+    
+    document.getElementById("btn-add-cohort-test").addEventListener("click", () => {
+        document.getElementById("test-editor-title").textContent = "Create New Test";
+        document.getElementById("edit-test-id").value = "";
+        testForm.reset();
+        testModal.classList.remove("hidden");
+    });
+
+    document.getElementById("btn-close-test-editor").addEventListener("click", () => testModal.classList.add("hidden"));
+    document.getElementById("btn-cancel-test-editor").addEventListener("click", () => testModal.classList.add("hidden"));
+
+    window.editCohortQuiz = function(q) {
+        document.getElementById("test-editor-title").textContent = "Edit Test / Assessment";
+        document.getElementById("edit-test-id").value = q.id;
+        document.getElementById("edit-test-title").value = q.title;
+        document.getElementById("edit-test-duration").value = q.duration_minutes;
+        document.getElementById("edit-test-passmark").value = q.pass_mark;
+        document.getElementById("edit-test-opens").value = q.opens_at ? q.opens_at.substring(0, 16) : "";
+        document.getElementById("edit-test-closes").value = q.closes_at ? q.closes_at.substring(0, 16) : "";
+        document.getElementById("edit-test-active").checked = q.active;
+        testModal.classList.remove("hidden");
+    };
+
+    testForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!activeCohortId) return;
+        const qid = document.getElementById("edit-test-id").value;
+        const payload = {
+            title: document.getElementById("edit-test-title").value.trim(),
+            duration_minutes: document.getElementById("edit-test-duration").value,
+            pass_mark: document.getElementById("edit-test-passmark").value,
+            opens_at: document.getElementById("edit-test-opens").value || null,
+            closes_at: document.getElementById("edit-test-closes").value || null,
+            active: document.getElementById("edit-test-active").checked
+        };
+        
+        try {
+            if (qid) {
+                await apiRequest(`/api/admin/quizzes/${qid}`, "PUT", payload);
+                toastSuccess("Test updated successfully.");
+            } else {
+                await apiRequest(`/api/admin/cohorts/${activeCohortId}/quizzes`, "POST", payload);
+                toastSuccess("Test created successfully.");
+            }
+            testModal.classList.add("hidden");
+            loadCohortSubtab(activeCohortId, "tests");
+        } catch (err) {
+            toastError("Failed to save test.");
+        }
+    });
+
+    window.deleteCohortQuiz = async function(qid) {
+        if (!confirm("Are you sure you want to delete this test? All questions mapping and candidate scores for it will be deleted!")) return;
+        try {
+            await apiRequest(`/api/admin/quizzes/${qid}`, "DELETE");
+            toastSuccess("Test deleted successfully.");
+            if (activeCohortId) loadCohortSubtab(activeCohortId, "tests");
+        } catch (err) {
+            toastError("Failed to delete test.");
+        }
+    };
+
+    // Question selection mapper modal
+    const mapperModal = document.getElementById("modal-question-mapper");
+    let currentMappingQuizId = null;
+
+    window.manageQuizQuestions = async function(qid, qtitle) {
+        currentMappingQuizId = qid;
+        document.getElementById("question-mapper-title").textContent = `Manage Questions: ${qtitle}`;
+        const container = document.getElementById("mapper-questions-list");
+        container.innerHTML = `<div style="text-align:center; padding:20px;">Loading questions...</div>`;
+        mapperModal.classList.remove("hidden");
+        
+        try {
+            const questions = await apiRequest(`/api/admin/quizzes/${qid}/questions`);
+            container.innerHTML = "";
+            
+            if (questions.length === 0) {
+                container.innerHTML = `<div style="text-align:center; padding:20px; color:var(--mfb-gray-600); font-style:italic;">No questions found in the system. Go to Question Editor to add questions.</div>`;
+                return;
+            }
+            
+            const sections = {"Numerical": [], "Verbal": [], "Logical": []};
+            questions.forEach(q => {
+                if (sections[q.section]) sections[q.section].push(q);
+            });
+            
+            for (const sec in sections) {
+                if (sections[sec].length === 0) continue;
+                
+                const secHeader = document.createElement("div");
+                secHeader.style.cssText = "font-weight:700; font-size:12px; text-transform:uppercase; color:var(--mfb-purple); margin-top:12px; margin-bottom:4px; padding-bottom:2px; border-bottom:1px solid var(--mfb-gray-300);";
+                secHeader.textContent = sec;
+                container.appendChild(secHeader);
+                
+                sections[sec].forEach(q => {
+                    const label = document.createElement("label");
+                    label.style.cssText = "display:flex; align-items:flex-start; gap:8px; padding:6px; cursor:pointer; font-size:13px; transition:background 0.2s;";
+                    label.addEventListener("mouseenter", () => label.style.background = "#f9f9f9");
+                    label.addEventListener("mouseleave", () => label.style.background = "transparent");
+                    
+                    label.innerHTML = `
+                        <input type="checkbox" class="mapper-question-cb" value="${q.id}" ${q.assigned ? 'checked' : ''} style="margin-top:3px;">
+                        <div>${q.stem}</div>
+                    `;
+                    container.appendChild(label);
+                });
+            }
+        } catch (err) {
+            toastError("Failed to load questions list.");
+        }
+    };
+
+    document.getElementById("btn-close-question-mapper").addEventListener("click", () => mapperModal.classList.add("hidden"));
+    document.getElementById("btn-cancel-mapper").addEventListener("click", () => mapperModal.classList.add("hidden"));
+
+    document.getElementById("btn-save-mapper").addEventListener("click", async () => {
+        if (!currentMappingQuizId) return;
+        const cbs = document.querySelectorAll(".mapper-question-cb:checked");
+        const ids = Array.from(cbs).map(cb => parseInt(cb.value));
+        try {
+            await apiRequest(`/api/admin/quizzes/${currentMappingQuizId}/questions`, "PUT", { question_ids: ids });
+            toastSuccess("Questions mapping updated successfully.");
+            mapperModal.classList.add("hidden");
+        } catch (err) {
+            toastError("Failed to update questions mapping.");
         }
     });
 

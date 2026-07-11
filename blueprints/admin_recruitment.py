@@ -55,6 +55,7 @@ def list_candidates():
 
     stage_filter = request.args.get("stage", "")
     flag_filter  = request.args.get("flagged", "")
+    cohort_filter = request.args.get("cohort_id", "")
     page     = int(request.args.get("page", 1))
     per_page = 50
     offset   = (page - 1) * per_page
@@ -66,35 +67,45 @@ def list_candidates():
         params.append(stage_filter)
     if flag_filter == "1":
         where_clauses.append("c.eligibility_flag = TRUE")
+    if cohort_filter:
+        where_clauses.append("c.cohort_id = %s")
+        params.append(int(cohort_filter))
 
     where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
             cur.execute(f"""
+                WITH candidate_page AS (
+                    SELECT c.*, COUNT(*) OVER() AS filtered_total
+                    FROM candidates c
+                    {where_sql}
+                    ORDER BY c.created_at DESC
+                    LIMIT %s OFFSET %s
+                )
                 SELECT c.id, c.full_name, c.email, c.phone_number, c.dob,
                        c.nysc_status, c.stage, c.stage_updated_at,
                        c.eligibility_flag, c.eligibility_flag_reason,
                        c.cv_url, c.created_at,
                        s.score, s.pass_fail,
-                       gs.start_time AS interview_time
-                FROM candidates c
+                       gs.start_time AS interview_time, c.filtered_total,
+                       c.cohort_id, co.name AS cohort_name
+                FROM candidate_page c
+                LEFT JOIN cohorts co ON c.cohort_id = co.id
                 LEFT JOIN LATERAL (
                     SELECT score, pass_fail FROM scores
                     WHERE candidate_id = c.id
                     ORDER BY taken_at DESC LIMIT 1
                 ) s ON TRUE
-                LEFT JOIN generated_slots gs ON gs.candidate_id = c.id AND gs.is_booked = TRUE
-                {where_sql}
+                LEFT JOIN LATERAL (
+                    SELECT start_time FROM generated_slots
+                    WHERE candidate_id = c.id AND is_booked = TRUE
+                    ORDER BY start_time DESC LIMIT 1
+                ) gs ON TRUE
                 ORDER BY c.created_at DESC
-                LIMIT %s OFFSET %s;
             """, params + [per_page, offset])
             rows = cur.fetchall()
-
-            cur.execute(f"""
-                SELECT COUNT(*) FROM candidates c {where_sql};
-            """, params)
-            total = cur.fetchone()[0]
+            total = rows[0][15] if rows else 0
 
     candidates = []
     for r in rows:
@@ -109,6 +120,8 @@ def list_candidates():
             "latest_score": float(r[12]) if r[12] is not None else None,
             "latest_pass_fail": r[13],
             "interview_time": r[14].isoformat() if r[14] else None,
+            "cohort_id": r[16],
+            "cohort_name": r[17] or "Cohort 1",
         })
 
     return jsonify({"candidates": candidates, "total": total, "page": page, "per_page": per_page})
@@ -125,8 +138,11 @@ def get_candidate(cand_id):
                 SELECT c.id, c.full_name, c.email, c.phone_number, c.dob,
                        c.nysc_status, c.stage, c.stage_updated_at,
                        c.eligibility_flag, c.eligibility_flag_reason,
-                       c.cv_url, c.created_at, c.role, c.location
-                FROM candidates c WHERE c.id = %s;
+                       c.cv_url, c.created_at, c.role, c.location,
+                       c.cohort_id, co.name AS cohort_name
+                FROM candidates c 
+                LEFT JOIN cohorts co ON c.cohort_id = co.id
+                WHERE c.id = %s;
             """, (cand_id,))
             cand = cur.fetchone()
 
@@ -163,16 +179,34 @@ def get_candidate(cand_id):
             """, (cand_id,))
             history = cur.fetchall()
 
+            # Query quizzes for candidate's cohort
+            cohort_id_for_quizzes = cand[14]
+            if not cohort_id_for_quizzes:
+                cur.execute("SELECT id FROM cohorts WHERE name = 'Cohort 1';")
+                crow = cur.fetchone()
+                cohort_id_for_quizzes = crow[0] if crow else None
+
+            cohort_quizzes = []
+            if cohort_id_for_quizzes:
+                cur.execute("""
+                    SELECT id, title, pass_mark
+                    FROM quizzes
+                    WHERE cohort_id = %s AND active = TRUE
+                    ORDER BY number ASC;
+                """, (cohort_id_for_quizzes,))
+                cohort_quizzes = [{"id": r[0], "title": r[1], "pass_mark": float(r[2])} for r in cur.fetchall()]
+
     return jsonify({
         "candidate": {
             "id": cand[0], "name": cand[1], "email": cand[2], "phone": cand[3],
             "dob": cand[4].isoformat() if cand[4] else None,
-            "id": cand_id, "nysc_status": cand[5], "stage": cand[6],
+            "nysc_status": cand[5], "stage": cand[6],
             "stage_updated_at": cand[7].isoformat() if cand[7] else None,
             "eligibility_flag": cand[8], "flag_reason": cand[9],
             "cv_url": f"/api/admin/recruitment/candidates/{cand_id}/cv" if cand[10] else None,
             "created_at": cand[11].isoformat() if cand[11] else None,
             "role": cand[12], "location": cand[13],
+            "cohort_id": cand[14], "cohort_name": cand[15] or "Cohort 1",
         },
         "scores": [{
             "id": s[0], "label": s[1], "score": float(s[2]) if s[2] is not None else None,
@@ -201,6 +235,7 @@ def get_candidate(cand_id):
             "by": h[3],
             "reason": None if (h[4] and "override" in h[4].lower()) else h[4],
         } for h in history],
+        "cohort_quizzes": cohort_quizzes,
     })
 
 
@@ -240,13 +275,23 @@ def set_candidate_stage(cand_id):
     if new_stage == 'screening_passed':
         with DBConnection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT email FROM candidates WHERE id = %s;", (cand_id,))
+                cur.execute("SELECT email, cohort_id, full_name FROM candidates WHERE id = %s;", (cand_id,))
                 row = cur.fetchone()
                 if row:
-                    cur.execute(
-                        "INSERT INTO whitelist (email) VALUES (%s) ON CONFLICT (email) DO NOTHING;",
-                        (row[0],)
-                    )
+                    email, cohort_id, full_name = row
+                    if not cohort_id:
+                        cur.execute("SELECT id FROM cohorts WHERE name = 'Cohort 1';")
+                        crow = cur.fetchone()
+                        cohort_id = crow[0] if crow else None
+                        if cohort_id:
+                            cur.execute("UPDATE candidates SET cohort_id = %s WHERE id = %s;", (cohort_id, cand_id))
+                    cur.execute("""
+                        INSERT INTO whitelist (email, name, cohort_id)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (email) DO UPDATE
+                        SET name = COALESCE(whitelist.name, EXCLUDED.name),
+                            cohort_id = COALESCE(whitelist.cohort_id, EXCLUDED.cohort_id);
+                    """, (email, full_name, cohort_id))
             conn.commit()
 
     if notify and new_stage in STAGE_EMAIL_EVENT:
@@ -615,6 +660,64 @@ def block_slot(slot_id):
         conn.commit()
 
     return jsonify({"status": "success", "blocked": blocked})
+
+
+@admin_rec.route("/api/admin/recruitment/slots", methods=["POST"])
+def create_manual_slot():
+    """Create one interview slot with one primary interviewer and optional panelists."""
+    err = _require_admin()
+    if err: return err
+
+    data = request.json or {}
+    interviewer_ids = list(dict.fromkeys(data.get("interviewer_ids") or []))
+    start_raw, end_raw = data.get("start_time"), data.get("end_time")
+    title = (data.get("title") or "").strip() or None
+    if not interviewer_ids or not start_raw or not end_raw:
+        return jsonify({"error": "Select at least one interviewer and a start and end time."}), 400
+    try:
+        interviewer_ids = [int(i) for i in interviewer_ids]
+        from zoneinfo import ZoneInfo
+        wat = ZoneInfo("Africa/Lagos")
+        start = datetime.datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
+        end = datetime.datetime.fromisoformat(end_raw.replace("Z", "+00:00"))
+        if start.tzinfo is None: start = start.replace(tzinfo=wat)
+        if end.tzinfo is None: end = end.replace(tzinfo=wat)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Use valid start and end date-times."}), 400
+    if end <= start:
+        return jsonify({"error": "End time must be after the start time."}), 400
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM interviewers WHERE id = ANY(%s) AND active = TRUE;", (interviewer_ids,))
+            active_ids = {row[0] for row in cur.fetchall()}
+            if active_ids != set(interviewer_ids):
+                return jsonify({"error": "One or more selected interviewers are inactive or unavailable."}), 400
+            cur.execute("""
+                SELECT i.name FROM generated_slots gs
+                JOIN interviewers i ON i.id = gs.interviewer_id
+                WHERE gs.interviewer_id = ANY(%s) AND gs.is_blocked = FALSE
+                  AND gs.start_time < %s AND gs.end_time > %s
+                UNION
+                SELECT i.name FROM slot_interviewers si
+                JOIN generated_slots gs ON gs.id = si.slot_id
+                JOIN interviewers i ON i.id = si.interviewer_id
+                WHERE si.interviewer_id = ANY(%s) AND gs.is_blocked = FALSE
+                  AND gs.start_time < %s AND gs.end_time > %s;
+            """, (interviewer_ids, end, start, interviewer_ids, end, start))
+            conflicts = [row[0] for row in cur.fetchall()]
+            if conflicts:
+                return jsonify({"error": f"Time overlaps an existing slot for: {', '.join(conflicts)}."}), 409
+            cur.execute("""
+                INSERT INTO generated_slots (interviewer_id, start_time, end_time, title)
+                VALUES (%s, %s, %s, %s) RETURNING id;
+            """, (interviewer_ids[0], start, end, title))
+            slot_id = cur.fetchone()[0]
+            for interviewer_id in interviewer_ids[1:]:
+                cur.execute("INSERT INTO slot_interviewers (slot_id, interviewer_id) VALUES (%s, %s);",
+                            (slot_id, interviewer_id))
+        conn.commit()
+    return jsonify({"status": "success", "slot_id": slot_id}), 201
 
 
 @admin_rec.route("/api/admin/recruitment/slots/batch-block", methods=["POST"])
@@ -1540,6 +1643,71 @@ def role_document_requirements():
         conn.commit()
 
     return jsonify({"status": "success", "role": role})
+
+
+@admin_rec.route("/api/admin/recruitment/candidates/<int:cand_id>/assign-quiz", methods=["POST"])
+def assign_or_reset_quiz(cand_id):
+    err = _require_admin()
+    if err:
+        return err
+
+    data = request.json or {}
+    quiz_id = data.get("quiz_id")
+    if not quiz_id:
+        return jsonify({"error": "Quiz ID is required."}), 400
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            # Check candidate cohort mapping
+            cur.execute("SELECT cohort_id, email, full_name, stage FROM candidates WHERE id = %s;", (cand_id,))
+            cand_row = cur.fetchone()
+            if not cand_row:
+                return jsonify({"error": "Candidate not found."}), 404
+            cohort_id, email, full_name, stage = cand_row
+
+            # Check if quiz exists
+            cur.execute("SELECT title, cohort_id FROM quizzes WHERE id = %s;", (quiz_id,))
+            quiz_row = cur.fetchone()
+            if not quiz_row:
+                return jsonify({"error": "Quiz not found."}), 404
+            q_title, q_cohort_id = quiz_row
+
+            # Enforce cohort matching (but default to Cohort 1 if none set)
+            effective_cohort = cohort_id
+            if not effective_cohort:
+                cur.execute("SELECT id FROM cohorts WHERE name = 'Cohort 1';")
+                crow = cur.fetchone()
+                effective_cohort = crow[0] if crow else None
+
+            # Reset logic: delete previous exam_results and scores attempts
+            cur.execute("DELETE FROM exam_results WHERE candidate_id = %s AND quiz_id = %s;", (cand_id, quiz_id))
+            cur.execute("DELETE FROM scores WHERE candidate_id = %s AND quiz_id = %s;", (cand_id, quiz_id))
+
+            # Update candidate stage to screening_passed so they can view and take it on their dashboard
+            if stage not in ("screening_passed", "screening_flagged", "assessment_in_progress"):
+                cur.execute("""
+                    UPDATE candidates
+                    SET stage = 'screening_passed', stage_updated_at = NOW()
+                    WHERE id = %s;
+                """, (cand_id,))
+                cur.execute("""
+                    INSERT INTO candidate_stage_history
+                        (candidate_id, from_stage, to_stage, changed_by, reason)
+                    VALUES (%s, %s, 'screening_passed', 'admin', %s);
+                """, (cand_id, stage, f"Assigned assessment: {q_title}"))
+
+            # Also ensure whitelist contains candidate to allow OTP login
+            cur.execute("""
+                INSERT INTO whitelist (email, name, cohort_id)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (email) DO UPDATE
+                SET name = COALESCE(whitelist.name, EXCLUDED.name),
+                    cohort_id = COALESCE(whitelist.cohort_id, EXCLUDED.cohort_id);
+            """, (email, full_name, effective_cohort))
+
+        conn.commit()
+
+    return jsonify({"status": "success", "message": f"Quiz '{q_title}' assigned successfully."})
 
 
 # ── Admin recruitment dashboard page ─────────────────────────────────────────

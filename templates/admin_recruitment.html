@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+
+{% block title %}Recruitment Admin - Mainstreet Recruitment Portal{% endblock %}
 {% block extra_head %}
 <style>
   .rec-wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 80px; }
@@ -150,65 +152,271 @@
   <!-- Slots tab -->
   <div class="rec-panel" id="panel-slots">
     <div class="card">
-      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px">
-        <div class="form-group">
-          <label>From</label>
-          <input class="form-control" type="date" id="slotsFrom"
-                 value="{{ '' }}">
-        </div>
-        <div class="form-group">
-          <label>To</label>
-          <input class="form-control" type="date" id="slotsTo">
-        </div>
-        <button class="btn btn-primary" onclick="loadSlots()">Load Slots</button>
-        <button class="btn btn-primary" style="background:#276749"
-                onclick="triggerGenerate()">↻ Generate Slots</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+        <h3 style="margin:0;font-size:1.1rem;font-family:var(--font-heading)">Interview Slots Calendar</h3>
+        <button class="btn btn-primary" style="background:#276749" onclick="triggerGenerate()">↻ Generate Slots (4 Weeks Ahead)</button>
       </div>
-      <div id="slotsTableWrap">Set date range and click Load Slots.</div>
+      <div id="slotsTableWrap">Loading calendar...</div>
     </div>
-    <div class="card">
-      <h3>Add Availability Rule</h3>
-      <div class="form-row">
-        <div class="form-group"><label>Interviewer</label>
-          <select class="form-control" id="arInterviewer" style="min-width:160px"></select></div>
-        <div class="form-group"><label>Rule Type</label>
-          <select class="form-control" id="arType" onchange="toggleRuleType()">
-            <option value="recurring">Recurring (day of week)</option>
-            <option value="date_range">Date Range</option>
-          </select></div>
+    <!-- ── Schedules List & Builder (Calendly / Google Calendar Style) ── -->
+    <div class="card" id="schedules-list-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+        <h3 style="margin:0;font-size:1.1rem;font-family:var(--font-heading)">Interview Schedules</h3>
+        <button class="btn btn-primary" onclick="showScheduleBuilder()">+ New Schedule</button>
       </div>
-      <div id="arRecurring" class="form-row">
-        <div class="form-group"><label>Day of Week</label>
-          <select class="form-control" id="arDow">
-            <option value="0">Monday</option><option value="1">Tuesday</option>
-            <option value="2">Wednesday</option><option value="3">Thursday</option>
-            <option value="4">Friday</option><option value="5">Saturday</option>
-            <option value="6">Sunday</option>
-          </select></div>
-        <div></div>
+      <div id="schedules-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(320px,1fr));gap:20px;">
+        <!-- Dynamically populated schedules list -->
       </div>
-      <div id="arDateRange" class="form-row" style="display:none">
-        <div class="form-group"><label>From</label>
-          <input class="form-control" type="date" id="arDateFrom"></div>
-        <div class="form-group"><label>To</label>
-          <input class="form-control" type="date" id="arDateTo"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Start Time</label>
-          <input class="form-control" type="time" id="arStart" value="09:00"></div>
-        <div class="form-group"><label>End Time</label>
-          <input class="form-control" type="time" id="arEnd" value="17:00"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Slot Duration (min)</label>
-          <input class="form-control" type="number" id="arDuration" value="30" min="15"></div>
-        <div class="form-group"><label>Buffer (min)</label>
-          <input class="form-control" type="number" id="arBuffer" value="10" min="0"></div>
-      </div>
-      <div class="form-group" style="margin-bottom:12px"><label>Lead Time (hours)</label>
-        <input class="form-control" type="number" id="arLead" value="24" min="0"></div>
-      <button class="btn btn-primary" onclick="addRule()">Save Rule</button>
     </div>
+
+    <div class="card hidden" id="schedule-builder-card" style="padding: 24px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;border-bottom:1px solid var(--mfb-gray-300);padding-bottom:14px;">
+        <h3 style="margin:0;font-size:1.2rem;font-family:var(--font-heading)" id="builder-title-label">New Interview Schedule</h3>
+        <button class="btn btn-ghost" onclick="hideScheduleBuilder()" style="padding:6px 12px;border:1px solid var(--mfb-gray-300);background:none;">Cancel</button>
+      </div>
+
+      <!-- Two column layout -->
+      <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:32px;" class="builder-columns-wrap">
+        
+        <!-- Left column: Form -->
+        <div style="display:flex;flex-direction:column;gap:24px;overflow-y:auto;max-height:85vh;padding-right:8px;">
+          
+          <!-- 2.1 Basic info -->
+          <div>
+            <h4 style="margin:0 0 12px;font-size:0.85rem;color:var(--mfb-gray-600);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #eee;padding-bottom:4px;">1. Basic Info</h4>
+            <div class="form-group" style="margin-bottom:14px;">
+              <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Schedule Title</label>
+              <input class="form-control" type="text" id="sch-title" placeholder="e.g. Loan Officer Interviews — Week 3" oninput="updateLivePreview()" style="width:100%;">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+              <div class="form-group">
+                <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Role / Position</label>
+                <select class="form-control" id="sch-role" onchange="updateRoleWaitingCount()" style="width:100%;">
+                  <option value="">Select Role...</option>
+                  <option value="Software Engineer">Software Engineer</option>
+                  <option value="Loan Officer">Loan Officer</option>
+                  <option value="HR Associate">HR Associate</option>
+                  <option value="Product Manager">Product Manager</option>
+                </select>
+                <div id="sch-waiting-count" style="font-size:0.78rem;color:#dd6b20;margin-top:4px;font-weight:600;"></div>
+              </div>
+              <div class="form-group">
+                <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Interview Round</label>
+                <select class="form-control" id="sch-round" onchange="updateLivePreview()" style="width:100%;">
+                  <option value="Screening Call">Screening Call</option>
+                  <option value="Technical">Technical</option>
+                  <option value="Panel">Panel</option>
+                  <option value="Final">Final</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2.2 Date range & recurrence -->
+          <div>
+            <h4 style="margin:0 0 12px;font-size:0.85rem;color:var(--mfb-gray-600);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #eee;padding-bottom:4px;">2. Date & Recurrence</h4>
+            <div style="display:flex;gap:20px;margin-bottom:14px;">
+              <label style="cursor:pointer;font-size:0.88rem;display:flex;align-items:center;gap:6px;">
+                <input type="radio" name="sch-type" value="range" checked onchange="toggleSchType()"> Single Date Range
+              </label>
+              <label style="cursor:pointer;font-size:0.88rem;display:flex;align-items:center;gap:6px;">
+                <input type="radio" name="sch-type" value="recurring" onchange="toggleSchType()"> Recurring Weekly
+              </label>
+            </div>
+
+            <div id="sch-date-range-fields" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+              <div class="form-group">
+                <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Start Date</label>
+                <input class="form-control" type="date" id="sch-start-date" onchange="updateLivePreview()" style="width:100%;">
+              </div>
+              <div class="form-group">
+                <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">End Date</label>
+                <input class="form-control" type="date" id="sch-end-date" onchange="updateLivePreview()" style="width:100%;">
+              </div>
+            </div>
+
+            <div id="sch-recurring-fields" class="hidden">
+              <label style="font-weight:600;font-size:0.85rem;margin-bottom:6px;display:block;">Days of Week</label>
+              <div style="display:flex;gap:6px;margin-bottom:14px;">
+                <span class="day-pill" data-day="1" onclick="toggleDayPill(this)">M</span>
+                <span class="day-pill" data-day="2" onclick="toggleDayPill(this)">T</span>
+                <span class="day-pill" data-day="3" onclick="toggleDayPill(this)">W</span>
+                <span class="day-pill" data-day="4" onclick="toggleDayPill(this)">T</span>
+                <span class="day-pill" data-day="5" onclick="toggleDayPill(this)">F</span>
+                <span class="day-pill" data-day="6" onclick="toggleDayPill(this)">S</span>
+                <span class="day-pill" data-day="0" onclick="toggleDayPill(this)">S</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div class="form-group">
+                  <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">End Condition</label>
+                  <select class="form-control" id="sch-end-condition" onchange="toggleEndCondition()" style="width:100%;">
+                    <option value="never">Never Ends</option>
+                    <option value="date">Ends on Date</option>
+                    <option value="weeks">Ends after N weeks</option>
+                  </select>
+                </div>
+                <div class="form-group hidden" id="sch-end-date-wrap">
+                  <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">End Date</label>
+                  <input class="form-control" type="date" id="sch-recur-end-date" onchange="updateLivePreview()" style="width:100%;">
+                </div>
+                <div class="form-group hidden" id="sch-end-weeks-wrap">
+                  <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Number of Weeks</label>
+                  <input class="form-control" type="number" id="sch-recur-end-weeks" value="4" min="1" max="52" oninput="updateLivePreview()" style="width:100%;">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2.3 Daily hours -->
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #eee;padding-bottom:4px;">
+              <h4 style="margin:0;font-size:0.85rem;color:var(--mfb-gray-600);text-transform:uppercase;letter-spacing:.05em;">3. Daily Hours</h4>
+              <a href="javascript:void(0)" onclick="copyFirstDayHours()" style="font-size:0.75rem;color:var(--mfb-purple);font-weight:700;text-decoration:none;">Copy to all days</a>
+            </div>
+            <div id="sch-hours-container" style="display:flex;flex-direction:column;gap:8px;">
+              <!-- Populated dynamically based on selected days -->
+            </div>
+          </div>
+
+          <!-- 2.4 Duration & spacing -->
+          <div>
+            <h4 style="margin:0 0 12px;font-size:0.85rem;color:var(--mfb-gray-600);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #eee;padding-bottom:4px;">4. Duration & Spacing</h4>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+              <div class="form-group">
+                <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Slot Duration</label>
+                <select class="form-control" id="sch-duration" onchange="updateLivePreview()" style="width:100%;">
+                  <option value="15">15 minutes</option>
+                  <option value="30" selected>30 minutes</option>
+                  <option value="45">45 minutes</option>
+                  <option value="60">60 minutes</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Buffer Space</label>
+                <select class="form-control" id="sch-buffer" onchange="updateLivePreview()" style="width:100%;">
+                  <option value="0">None</option>
+                  <option value="5">5 minutes</option>
+                  <option value="10" selected>10 minutes</option>
+                  <option value="15">15 minutes</option>
+                  <option value="30">30 minutes</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Min Notice</label>
+                <select class="form-control" id="sch-notice" style="width:100%;">
+                  <option value="4">4 hours before</option>
+                  <option value="12" selected>12 hours before</option>
+                  <option value="24">24 hours before</option>
+                  <option value="48">48 hours before</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2.5 Booking limits -->
+          <details style="border: 1px solid var(--mfb-gray-300); border-radius: 8px; padding: 12px 16px;">
+            <summary style="cursor:pointer;font-weight:700;font-size:0.85rem;color:#1a1a2e;">Booking Limits (Optional)</summary>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;">
+              <div class="form-group">
+                <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Max bookings/day</label>
+                <input class="form-control" type="number" id="sch-max-bookings" placeholder="Unlimited" style="width:100%;">
+              </div>
+              <div class="form-group">
+                <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Max bookings/interviewer/day</label>
+                <input class="form-control" type="number" id="sch-max-interviewer-bookings" placeholder="Unlimited" style="width:100%;">
+              </div>
+            </div>
+          </details>
+
+          <!-- 2.6 Interviewers selection -->
+          <div>
+            <h4 style="margin:0 0 12px;font-size:0.85rem;color:var(--mfb-gray-600);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #eee;padding-bottom:4px;">5. Interviewers & Booking Mode</h4>
+            <div class="form-group" style="position:relative;margin-bottom:14px;">
+              <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Add Interviewer</label>
+              <input class="form-control" type="text" id="sch-interviewer-search" placeholder="Type a name to search..." onfocus="showInterviewerDropdown()" onblur="hideInterviewerDropdownDelayed()" style="width:100%;">
+              <div id="sch-interviewer-dropdown" class="hidden" style="position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--mfb-gray-300);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:10;max-height:160px;overflow-y:auto;">
+                <!-- Dropped search items dynamically populated -->
+              </div>
+            </div>
+
+            <div id="sch-interviewers-chips" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+              <!-- Selected interviewer tags -->
+            </div>
+
+            <div id="sch-mode-container" class="hidden">
+              <label style="font-weight:600;font-size:0.85rem;margin-bottom:6px;display:block;">Booking Mode</label>
+              <div style="display:flex;border:1px solid var(--mfb-gray-300);border-radius:8px;overflow:hidden;width:max-content;margin-bottom:8px;">
+                <span class="mode-segment active" data-mode="collective" onclick="toggleSchMode('collective')">Collective</span>
+                <span class="mode-segment" data-mode="robin" onclick="toggleSchMode('robin')">Round Robin</span>
+              </div>
+              <div id="sch-mode-help" style="font-size:0.82rem;color:var(--mfb-gray-600);font-style:italic;"></div>
+            </div>
+          </div>
+
+          <!-- 3. Publish action -->
+          <div style="border-top:1px solid var(--mfb-gray-300);padding-top:20px;display:flex;gap:12px;margin-top:12px;">
+            <button class="btn btn-primary" id="sch-publish-btn" onclick="publishSchedule()" style="padding:12px 28px;">Publish schedule</button>
+            <button class="btn btn-ghost" onclick="hideScheduleBuilder()" style="padding:12px 24px;border:1px solid var(--mfb-gray-300);background:none;">Cancel</button>
+          </div>
+          <div id="sch-update-booked-note" class="hidden" style="font-size:0.82rem;color:#855d14;background:#fefcbf;border:1px solid #faf089;border-radius:6px;padding:10px 12px;margin-top:8px;"></div>
+        </div>
+
+        <!-- Right column: Live preview sticky panel -->
+        <div style="position:-webkit-sticky;position:sticky;top:10px;display:flex;flex-direction:column;gap:16px;background:#fafafb;border:1.5px dashed var(--mfb-gray-300);border-radius:8px;padding:20px;height:max-content;max-height:85vh;overflow-y:auto;">
+          <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--mfb-gray-300);padding-bottom:10px;">
+            <h4 style="margin:0;font-size:0.92rem;font-weight:700;color:var(--mfb-ink);">Live Preview</h4>
+            <span style="font-size:0.75rem;background:var(--mfb-purple-tint);color:var(--mfb-purple);font-weight:700;padding:2px 8px;border-radius:100px;" id="sch-preview-count">0 slots</span>
+          </div>
+          <div id="sch-preview-calendar" style="display:flex;flex-direction:column;gap:10px;">
+            <!-- Time blocks will render here dynamically -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <style>
+      .day-pill {
+        width: 36px; height: 36px; border-radius: 50%; border: 1.5px solid var(--mfb-gray-300);
+        display: inline-flex; align-items: center; justify-content: center; font-weight: 700;
+        cursor: pointer; font-size: 0.82rem; color: var(--mfb-gray-600); transition: all .15s; background: #fff;
+      }
+      .day-pill:hover { border-color: var(--mfb-purple); color: var(--mfb-purple); }
+      .day-pill.active { background: var(--mfb-purple); border-color: var(--mfb-purple); color: #fff; }
+      
+      .mode-segment {
+        padding: 8px 16px; cursor: pointer; font-size: 0.88rem; font-weight: 600;
+        color: var(--mfb-gray-600); background: #f9f9fb; transition: all .15s;
+      }
+      .mode-segment:hover { color: var(--mfb-purple); }
+      .mode-segment.active { background: var(--mfb-purple); color: #fff; }
+      
+      .sch-card {
+        background: #fff; border: 1px solid var(--mfb-gray-300); border-radius: 8px;
+        padding: 18px; box-shadow: var(--mfb-shadow-soft); display: flex; flex-direction: column;
+        justify-content: space-between; min-height: 180px; cursor: pointer; transition: all .15s;
+      }
+      .sch-card:hover { border-color: var(--mfb-purple); transform: translateY(-2px); }
+      
+      .avatar-circle {
+        width: 28px; height: 28px; border-radius: 50%; border: 2px solid #fff;
+        display: flex; align-items: center; justify-content: center; font-size: 0.72rem;
+        font-weight: 700; color: #fff; margin-left: -8px; position: relative;
+      }
+      .avatar-circle:first-child { margin-left: 0; }
+      
+      .sch-status {
+        font-size: 0.72rem; font-weight: 700; border-radius: 100px; padding: 2px 10px;
+        text-transform: uppercase; letter-spacing: 0.05em; display: inline-block;
+      }
+      .sch-status.active { background: var(--mfb-success-tint); color: var(--mfb-success); }
+      .sch-status.ended { background: var(--mfb-gray-300); color: var(--mfb-gray-600); }
+
+      .preview-slot-block {
+        background: #fff; border: 1px solid var(--mfb-gray-300); border-radius: 6px;
+        padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05); font-size: 0.82rem;
+      }
+    </style>
   </div>
 
   <!-- Stage Config tab -->
@@ -312,14 +520,23 @@ function getLocalDateString(d) {
 }
 
 function switchTab(name) {
-  document.querySelectorAll('.rec-tab').forEach((t,i) => t.classList.remove('active'));
+  document.querySelectorAll('.rec-tab').forEach((t) => t.classList.remove('active'));
   document.querySelectorAll('.rec-panel').forEach(p => p.classList.remove('active'));
-  event.target.classList.add('active');
+  
+  const targetTab = Array.from(document.querySelectorAll('.rec-tab')).find(t => {
+    const attr = t.getAttribute('onclick');
+    return attr && attr.includes(`'${name}'`);
+  });
+  if (targetTab) {
+    targetTab.classList.add('active');
+  }
+  
   document.getElementById(`panel-${name}`).classList.add('active');
+  localStorage.setItem("adminRecruitmentActiveTab", name);
 
   if (name === 'candidates') loadCandidates(1);
   if (name === 'interviewers') { loadInterviewers(); populateInterviewerSelect(); }
-  if (name === 'slots') populateInterviewerSelect();
+  if (name === 'slots') { populateInterviewerSelect(); loadSlots(); if (window.loadSchedulesTab) window.loadSchedulesTab(); }
   if (name === 'config') loadStageConfig();
   if (name === 'emaillog') loadEmailLog(1);
 }
@@ -1864,6 +2081,7 @@ window.advanceToNext = async function (currentStageName, nextStageName) {
 };
 
 // Init
-loadCandidates(1);
+const activeTab = localStorage.getItem("adminRecruitmentActiveTab") || 'candidates';
+switchTab(activeTab);
 </script>
 {% endblock %}

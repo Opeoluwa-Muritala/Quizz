@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+
+{% block title %}Dashboard - Mainstreet Recruitment Portal{% endblock %}
 {% block extra_head %}
 <style>
   .dash-wrap { max-width: 800px; margin: 40px auto; padding: 0 16px 80px; }
@@ -176,37 +178,13 @@
   {% elif stage in ('screening_passed', 'screening_flagged') %}
   <div class="stage-card">
     <h2><span class="stage-badge badge-pass">✓ Screening Passed</span></h2>
-    <p>Your application has cleared the initial screening. You may now take the <strong>online assessment</strong>. Ensure you're in a quiet environment with a stable internet connection.</p>
-    <a href="/assessment" class="action-btn">Start Assessment →</a>
-    {% if stage_windows and stage_windows.get('assessment') %}
-      {% set sw = stage_windows.get('assessment') %}
-      {% if sw.opens_at or sw.closes_at %}
-      <p style="margin-top:12px;font-size:0.82rem;color:#888;">
-        Assessment window:
-        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
-        {% if sw.opens_at and sw.closes_at %} · {% endif %}
-        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
-      </p>
-      {% endif %}
-    {% endif %}
+    <p>Your application has cleared the initial screening. Please scroll down to complete the online assessments assigned to your cohort.</p>
   </div>
 
   {% elif stage == 'assessment_in_progress' %}
   <div class="stage-card">
     <h2><span class="stage-badge badge-progress">▶ Assessment In Progress</span></h2>
-    <p>You have an ongoing assessment session. Click below to continue — your timer is still running.</p>
-    <a href="/assessment" class="action-btn">Resume Assessment →</a>
-    {% if stage_windows and stage_windows.get('assessment') %}
-      {% set sw = stage_windows.get('assessment') %}
-      {% if sw.opens_at or sw.closes_at %}
-      <p style="margin-top:12px;font-size:0.82rem;color:#888;">
-        Assessment window:
-        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
-        {% if sw.opens_at and sw.closes_at %} · {% endif %}
-        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
-      </p>
-      {% endif %}
-    {% endif %}
+    <p>You have an ongoing assessment session. Scroll down to resume or start your tests.</p>
   </div>
 
   {% elif stage == 'assessment_failed' %}
@@ -387,6 +365,48 @@
     <p>Your application is being processed. Current stage: <strong>{{ stage.replace('_', ' ')|title }}</strong></p>
   </div>
   {% endif %}
+
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-pass">✓ Online Assessments</span></h2>
+    <p>Online assessments assigned to your cohort. Ensure you're in a quiet environment with a stable internet connection. You must pass all tests to proceed.</p>
+    
+    <div style="display:flex; flex-direction:column; gap:16px; margin-top:20px;">
+      {% if cohort_tests %}
+        {% for test in cohort_tests %}
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:18px; border:1px solid var(--mfb-gray-300); border-radius:8px; background:var(--mfb-off-white); gap:12px;">
+            <div style="flex:1;">
+              <h3 style="margin:0 0 4px 0; font-size:16px; font-weight:700; color:var(--mfb-ink);">{{ test.title }}</h3>
+              <p style="margin:0; font-size:13px; color:var(--mfb-gray-600); line-height:18px;">
+                Duration: <strong>{{ test.duration_minutes }} min</strong> · Pass Mark: <strong>{{ test.pass_mark }}%</strong>
+                {% if test.opens_at_formatted or test.closes_at_formatted %}
+                  <br>Window: 
+                  {% if test.opens_at_formatted %}opens <strong>{{ test.opens_at_formatted }}</strong>{% endif %}
+                  {% if test.closes_at_formatted %} · closes <strong>{{ test.closes_at_formatted }}</strong>{% endif %}
+                {% endif %}
+              </p>
+            </div>
+            <div>
+              {% if test.status == 'completed' %}
+                <span class="stage-badge {% if test.pass_fail == 'PASS' %}badge-pass{% else %}badge-fail{% endif %}" style="padding:6px 12px; font-size:11px;">
+                  {{ test.pass_fail }} ({{ test.score_percent }}%)
+                </span>
+              {% elif test.status == 'in_progress' %}
+                <span class="stage-badge badge-progress" style="padding:6px 12px; font-size:11px;">In Progress</span>
+              {% else %}
+                {% if test.is_available %}
+                  <a href="{{ url_for('recruitment.start_quiz', quiz_id=test.id) }}" class="action-btn" style="padding:10px 18px; font-size:13px;">Start Test</a>
+                {% else %}
+                  <span class="stage-badge badge-pending" style="padding:6px 12px; font-size:11px; color:#999; background:#eee;">Unavailable</span>
+                {% endif %}
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p style="font-style:italic; color:var(--mfb-gray-600); margin:0;">No assessments have been assigned to your cohort yet.</p>
+      {% endif %}
+    </div>
+  </div>
 
   <div class="stage-card">
     <h2>Application timeline</h2>

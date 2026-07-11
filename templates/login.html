@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block title %}Sign In - Mainstreet Recruitment Portal{% endblock %}
+
 {% block content %}
 <div class="apply-wrap candidate-page mfb-page" style="max-width: 500px; margin: 80px auto;">
   <div class="apply-card" style="background: var(--mfb-white); border: 1px solid var(--mfb-gray-300); border-radius: 8px; box-shadow: var(--mfb-shadow-soft); padding: 32px;">
@@ -9,26 +11,46 @@
       Check Application Status
     </h1>
     <p style="color: var(--mfb-gray-600); margin: 0 0 24px; font-size: 14px; line-height: 20px; text-align: center;">
-      Enter your registered email address to see your current recruitment stage and proceed.
+      Enter your registered email to receive a secure login verification passcode.
     </p>
 
-    {% if error %}
-    <div style="background: var(--mfb-error-tint); border: 1px solid var(--mfb-error); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; color: var(--mfb-error); font-size: 13px; line-height: 18px;">
-      ⚠ {{ error }}
+    <div id="login-error-msg" style="display: none; background: var(--mfb-error-tint); border: 1px solid var(--mfb-error); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; color: var(--mfb-error); font-size: 13px; line-height: 18px;">
     </div>
-    {% endif %}
+    <div id="login-success-msg" style="display: none; background: var(--mfb-success-tint); border: 1px solid var(--mfb-success); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; color: var(--mfb-success); font-size: 13px; line-height: 18px;">
+    </div>
 
-    <form method="POST" action="{{ url_for('recruitment.login') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <!-- Step 1: Request OTP -->
+    <form id="request-otp-form">
       <div class="form-group" style="margin-bottom: 24px;">
-        <label for="email" style="display: block; color: var(--mfb-ink); font-size: 13px; line-weight: 18px; font-weight: 600; margin-bottom: 6px;">
+        <label for="email" style="display: block; color: var(--mfb-ink); font-size: 13px; font-weight: 600; margin-bottom: 6px;">
           Email address
         </label>
-        <input class="form-control" id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required style="width: 100%; height: 48px; border: 1px solid var(--mfb-gray-300); border-radius: 8px; padding: 0 14px; color: var(--mfb-ink); font: inherit; outline: none;">
+        <input class="form-control" id="email" type="email" autocomplete="email" placeholder="you@example.com" required style="width: 100%; height: 48px; border: 1px solid var(--mfb-gray-300); border-radius: 8px; padding: 0 14px; color: var(--mfb-ink); font: inherit; outline: none;">
       </div>
-
       <button class="btn-submit" type="submit" style="width: 100%; border: 0; border-radius: 8px; background: var(--mfb-purple); color: var(--mfb-white); padding: 14px 16px; font: inherit; font-weight: 700; cursor: pointer;">
-        Continue →
+        Send Verification Code →
+      </button>
+    </form>
+
+    <!-- Step 2: Verify OTP (hidden initially) -->
+    <form id="verify-otp-form" style="display: none;">
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label style="display: block; color: var(--mfb-ink); font-size: 13px; font-weight: 600; margin-bottom: 6px;">
+          Email address
+        </label>
+        <div id="display-email" style="font-weight: 700; color: var(--mfb-ink); font-size: 14px; margin-bottom: 12px;"></div>
+      </div>
+      <div class="form-group" style="margin-bottom: 24px;">
+        <label for="otp" style="display: block; color: var(--mfb-ink); font-size: 13px; font-weight: 600; margin-bottom: 6px;">
+          6-Digit Verification Code
+        </label>
+        <input class="form-control" id="otp" type="text" pattern="[0-9]{6}" maxlength="6" placeholder="123456" required style="width: 100%; height: 48px; border: 1px solid var(--mfb-gray-300); border-radius: 8px; padding: 0 14px; color: var(--mfb-ink); font: inherit; text-align: center; letter-spacing: 6px; font-size: 18px; font-weight: 700; outline: none;">
+      </div>
+      <button class="btn-submit" type="submit" style="width: 100%; border: 0; border-radius: 8px; background: var(--mfb-purple); color: var(--mfb-white); padding: 14px 16px; font: inherit; font-weight: 700; cursor: pointer; margin-bottom: 12px;">
+        Verify & Sign In →
+      </button>
+      <button type="button" id="btn-back-to-email" style="width: 100%; border: 1px solid var(--mfb-gray-300); border-radius: 8px; background: transparent; color: var(--mfb-gray-600); padding: 12px 16px; font: inherit; cursor: pointer;">
+        Back
       </button>
     </form>
 
@@ -37,4 +59,108 @@
     </div>
   </div>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const requestForm = document.getElementById("request-otp-form");
+    const verifyForm = document.getElementById("verify-otp-form");
+    const emailInput = document.getElementById("email");
+    const otpInput = document.getElementById("otp");
+    const displayEmail = document.getElementById("display-email");
+    const errorEl = document.getElementById("login-error-msg");
+    const successEl = document.getElementById("login-success-msg");
+    const backBtn = document.getElementById("btn-back-to-email");
+
+    let currentEmail = "";
+
+    function csrfMeta() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.getAttribute('content') : '';
+    }
+
+    function showError(msg) {
+        errorEl.textContent = msg;
+        errorEl.style.display = "block";
+    }
+
+    function showSuccess(msg) {
+        successEl.textContent = msg;
+        successEl.style.display = "block";
+    }
+
+    function clearMessages() {
+        errorEl.style.display = "none";
+        successEl.style.display = "none";
+    }
+
+    requestForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        clearMessages();
+        const email = emailInput.value.trim().toLowerCase();
+        if (!email) return;
+
+        try {
+            const res = await fetch("{{ url_for('recruitment.request_otp') }}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": csrfMeta()
+                },
+                body: JSON.stringify({ email })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showError(data.error || "Failed to request code.");
+                return;
+            }
+
+            currentEmail = email;
+            displayEmail.textContent = email;
+            requestForm.style.display = "none";
+            verifyForm.style.display = "block";
+            showSuccess("Verification code sent! Please check your email (and spam folder).");
+            otpInput.focus();
+        } catch (err) {
+            showError("Network error. Please try again.");
+        }
+    });
+
+    verifyForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        clearMessages();
+        const otp = otpInput.value.trim();
+        if (!otp || otp.length !== 6) {
+            showError("Please enter a valid 6-digit code.");
+            return;
+        }
+
+        try {
+            const res = await fetch("{{ url_for('recruitment.verify_otp') }}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": csrfMeta()
+                },
+                body: JSON.stringify({ email: currentEmail, otp })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showError(data.error || "Verification failed.");
+                return;
+            }
+
+            // Redirect as specified by backend
+            window.location.href = data.redirect || "/dashboard";
+        } catch (err) {
+            showError("Network error. Please try again.");
+        }
+    });
+
+    backBtn.addEventListener("click", () => {
+        clearMessages();
+        verifyForm.style.display = "none";
+        requestForm.style.display = "block";
+    });
+});
+</script>
 {% endblock %}
