@@ -19,6 +19,7 @@ def init_recruitment_db():
                     ADD COLUMN IF NOT EXISTS eligibility_flag_reason TEXT,
                     ADD COLUMN IF NOT EXISTS ref_token TEXT;
             """)
+            cur.execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS interview_round TEXT;")
             cur.execute("SELECT id FROM candidates WHERE ref_token IS NULL;")
             rows_to_update = cur.fetchall()
             if rows_to_update:
@@ -232,6 +233,45 @@ def init_recruitment_db():
                     PRIMARY KEY (slot_id, interviewer_id)
                 );
             """)
+
+            # Named schedule builder. The legacy availability tables stay in place so
+            # existing slots (especially booked ones) remain valid.
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS interview_schedules (
+                    id SERIAL PRIMARY KEY, title TEXT NOT NULL, role TEXT NOT NULL,
+                    interview_round TEXT NOT NULL,
+                    schedule_type TEXT NOT NULL DEFAULT 'range'
+                        CHECK (schedule_type IN ('range', 'recurring')),
+                    start_date DATE, end_date DATE,
+                    active_days INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
+                    availability_windows JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    duration_minutes INTEGER NOT NULL DEFAULT 30,
+                    buffer_minutes INTEGER NOT NULL DEFAULT 10,
+                    booking_lead_time_hours INTEGER NOT NULL DEFAULT 24,
+                    daily_booking_cap INTEGER, interviewer_booking_cap INTEGER,
+                    booking_mode TEXT NOT NULL DEFAULT 'single'
+                        CHECK (booking_mode IN ('single', 'collective', 'round_robin')),
+                    published BOOLEAN NOT NULL DEFAULT FALSE, generated_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS schedule_interviewers (
+                    schedule_id INTEGER REFERENCES interview_schedules(id) ON DELETE CASCADE,
+                    interviewer_id INTEGER REFERENCES interviewers(id) ON DELETE RESTRICT,
+                    position INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (schedule_id, interviewer_id)
+                );
+            """)
+            cur.execute("""
+                ALTER TABLE generated_slots
+                    ADD COLUMN IF NOT EXISTS schedule_id INTEGER REFERENCES interview_schedules(id),
+                    ADD COLUMN IF NOT EXISTS interview_round TEXT,
+                    ADD COLUMN IF NOT EXISTS booking_mode TEXT,
+                    ADD COLUMN IF NOT EXISTS booking_lead_time_hours INTEGER,
+                    ADD COLUMN IF NOT EXISTS daily_booking_cap INTEGER;
+            """)
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_generated_schedule_start ON generated_slots(schedule_id, start_time) WHERE schedule_id IS NOT NULL;")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_schedules_role_round_active ON interview_schedules(role, interview_round, published);")
 
             # ── add interview_instructions column if missing ────────────
             cur.execute("""

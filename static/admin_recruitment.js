@@ -2264,11 +2264,9 @@
     }
   ];
 
-  let schedules = JSON.parse(localStorage.getItem('mmfb_schedules') || 'null');
-  if (!schedules) {
-    schedules = defaultSchedules;
-    localStorage.setItem('mmfb_schedules', JSON.stringify(schedules));
-  }
+  // Schedules are persisted on the server. Keep the old mock data declaration
+  // above only as a harmless fallback while an admin session is loading.
+  let schedules = [];
 
   let editingScheduleId = null;
   let allInterviewers = [];
@@ -2283,7 +2281,13 @@
     const fetched = await recApiGet('/api/admin/recruitment/interviewers');
     allInterviewers = fetched ? fetched.filter(i => i.active) : [];
 
+    const saved = await recApiGet('/api/admin/recruitment/schedules');
+    schedules = Array.isArray(saved) ? saved : [];
     grid.innerHTML = '';
+    if (!schedules.length) {
+      grid.innerHTML = '<p style="color:#777">No interview schedules yet. Create one to generate candidate-bookable slots.</p>';
+      return;
+    }
     schedules.forEach(sch => {
       const interviewerAvatars = sch.interviewers.map((intv, idx) => {
         if (idx < 4) {
@@ -2932,7 +2936,7 @@
   }
 
   // Publish / Save configured schedule
-  window.publishSchedule = function() {
+  window.publishSchedule = async function() {
     const title = document.getElementById('sch-title').value.trim();
     const role = document.getElementById('sch-role').value;
     const round = document.getElementById('sch-round').value;
@@ -2970,56 +2974,14 @@
     const activeSeg = document.querySelector('.mode-segment.active');
     const mode = selectedInterviewers.length > 1 ? (activeSeg ? activeSeg.dataset.mode : 'collective') : 'collective';
 
-    // Calculate slots count
-    let slotsCount = 0;
-    Object.keys(hours).forEach(day => {
-      hours[day].forEach(win => {
-        const [sh, sm] = win.start.split(':').map(Number);
-        const [eh, em] = win.end.split(':').map(Number);
-        let startM = sh * 60 + sm;
-        const endM = eh * 60 + em;
-        while (startM + duration <= endM) {
-          slotsCount++;
-          startM += duration + buffer;
-        }
-      });
-    });
-    // Slots count scales by number of weeks (roughly 4 weeks for default recurring)
-    const multiplier = type === 'range' ? 1 : 4;
-    const finalSlots = slotsCount * multiplier;
-
-    if (editingScheduleId) {
-      // Update existing
-      const idx = schedules.findIndex(s => s.id === editingScheduleId);
-      if (idx !== -1) {
-        schedules[idx] = {
-          ...schedules[idx],
-          title, role, round, type, duration, buffer, notice, max_bookings, max_interviewer_bookings,
-          interviewers: [...selectedInterviewers],
-          active_days, recurrence_days: active_days,
-          hours, mode, slots: finalSlots,
-          start_date: type === 'range' ? document.getElementById('sch-start-date').value : '',
-          end_date: type === 'range' ? document.getElementById('sch-end-date').value : '',
-          end_condition: type === 'recurring' ? document.getElementById('sch-end-condition').value : ''
-        };
-      }
-    } else {
-      // Create new
-      const newId = schedules.length ? Math.max(...schedules.map(s => s.id)) + 1 : 1;
-      schedules.push({
-        id: newId,
-        title, role, round, type, duration, buffer, notice, max_bookings, max_interviewer_bookings,
-        interviewers: [...selectedInterviewers],
-        active_days, recurrence_days: active_days,
-        hours, mode, slots: finalSlots, booked: 0, waiting: 4, status: "Active",
-        start_date: type === 'range' ? document.getElementById('sch-start-date').value : '',
-        end_date: type === 'range' ? document.getElementById('sch-end-date').value : '',
-        end_condition: type === 'recurring' ? document.getElementById('sch-end-condition').value : ''
-      });
-    }
-
-    localStorage.setItem('mmfb_schedules', JSON.stringify(schedules));
-    alert(editingScheduleId ? 'Interview schedule updated successfully!' : 'New interview schedule published successfully!');
+    const body = { title, role, round, type, duration, buffer, notice, max_bookings, max_interviewer_bookings,
+      interviewer_ids: selectedInterviewers.map(i => i.id), active_days, hours, mode,
+      start_date: type === 'range' ? document.getElementById('sch-start-date').value : null,
+      end_date: type === 'range' ? document.getElementById('sch-end-date').value : document.getElementById('sch-recur-end-date').value };
+    const url = editingScheduleId ? `/api/admin/recruitment/schedules/${editingScheduleId}` : '/api/admin/recruitment/schedules';
+    const result = editingScheduleId ? await recApiPost(url, body, 'PUT') : await recApiPost(url, body);
+    if (!result || result.error) { alert(result?.error || 'Unable to save the schedule.'); return; }
+    alert(`${editingScheduleId ? 'Interview schedule updated' : 'Interview schedule published'} (${result.slots_generated || 0} slots generated).`);
     hideScheduleBuilder();
   };
 
@@ -3029,4 +2991,3 @@
   }, 100);
 
 })();
-
