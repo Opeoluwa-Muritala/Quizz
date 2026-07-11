@@ -244,3 +244,60 @@ def resend_notification(log_id: int) -> tuple[bool, int | None]:
 
     candidate_id, stage, event_type = row
     return send_notification(candidate_id, stage, event_type)
+
+
+def send_otp_email(email: str, otp: str) -> bool:
+    base_style = """
+        font-family: 'IBM Plex Sans', Arial, sans-serif;
+        color: #1a1a2e; max-width: 600px; margin: 0 auto; padding: 32px 24px;
+    """
+    header = """
+        <div style="background:#89268B;padding:20px 24px;border-radius:8px 8px 0 0">
+          <span style="color:#fff;font-size:18px;font-weight:700;">Mainstreet MFB — Recruitment</span>
+        </div>
+    """
+    html = f"""
+    <!DOCTYPE html><html><body>
+    <div style="{base_style}">
+      {header}
+      <div style="background:#f9f9fb;padding:24px;border-radius:0 0 8px 8px;border:1px solid #e5e5ef">
+        <p>Hello,</p>
+        <p>Your one-time verification passcode for the Mainstreet Recruitment Portal is:</p>
+        <div style="background:#f3e7f4;padding:16px;text-align:center;font-size:28px;font-weight:700;letter-spacing:4px;border-radius:6px;margin:20px 0;color:#89268B;border:1px solid #89268B;">
+          {otp}
+        </div>
+        <p>This code is valid for 10 minutes. Please do not share it with anyone.</p>
+        <hr style="border:none;border-top:1px solid #e5e5ef;margin:24px 0">
+        <p style="font-size:12px;color:#888">
+          Mainstreet Microfinance Bank · Recruitment Team<br>
+          This is an automated message – please do not reply directly.
+        </p>
+      </div>
+    </div>
+    </body></html>
+    """
+    subject = "Your Verification Code - Mainstreet Recruitment Portal"
+    status = "sent"
+
+    if GMAIL_USER and GMAIL_PASSWORD:
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"]    = FROM_EMAIL
+            msg["To"]      = email
+            msg.attach(MIMEText(html, "html"))
+
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as smtp:
+                smtp.login(GMAIL_USER, GMAIL_PASSWORD)
+                smtp.sendmail(GMAIL_USER, email, msg.as_string())
+        except Exception as exc:
+            status = "failed"
+            print(f"[EMAIL ERROR] Failed to send OTP to {email}: {exc}")
+    else:
+        status = "skipped"
+        print(f"\n==================================================")
+        print(f"[OTP EMAIL] To: {email}")
+        print(f"[OTP EMAIL] Code: {otp}")
+        print(f"==================================================\n")
+
+    return status == "sent"

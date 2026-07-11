@@ -1,5 +1,6 @@
 import os
 import time
+import threading
 import psycopg2
 from psycopg2 import OperationalError
 from psycopg2.pool import ThreadedConnectionPool
@@ -12,16 +13,21 @@ _db_url = os.environ.get("NEON_DATABASE_URL")
 _default_pool_mode = "serverless" if os.environ.get("VERCEL") else "persistent"
 _pool_mode = os.environ.get("DATABASE_POOL_MODE", _default_pool_mode).lower()
 _pool = None
+_pool_lock = threading.Lock()
 
 
 def _persistent_pool():
     global _pool
     if _pool is None:
-        _pool = ThreadedConnectionPool(
-            int(os.environ.get("DATABASE_POOL_MIN", "1")),
-            int(os.environ.get("DATABASE_POOL_MAX", "10")),
-            _db_url,
-        )
+        # Flask may receive several startup API requests at once. Without a
+        # lock, each thread can build its own Neon pool and connection.
+        with _pool_lock:
+            if _pool is None:
+                _pool = ThreadedConnectionPool(
+                    int(os.environ.get("DATABASE_POOL_MIN", "1")),
+                    int(os.environ.get("DATABASE_POOL_MAX", "10")),
+                    _db_url,
+                )
     return _pool
 
 

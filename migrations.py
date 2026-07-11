@@ -321,12 +321,14 @@ def init_recruitment_db():
 
             # Read-path indexes used by candidate pages and paginated admin APIs.
             for statement in (
+                "CREATE INDEX IF NOT EXISTS idx_candidates_created ON candidates(created_at DESC)",
                 "CREATE INDEX IF NOT EXISTS idx_candidates_stage_created ON candidates(stage, created_at DESC)",
                 "CREATE INDEX IF NOT EXISTS idx_stage_history_candidate_changed ON candidate_stage_history(candidate_id, changed_at DESC)",
                 "CREATE INDEX IF NOT EXISTS idx_stage_history_candidate_to ON candidate_stage_history(candidate_id, to_stage, changed_at DESC)",
                 "CREATE INDEX IF NOT EXISTS idx_candidate_documents_candidate ON candidate_documents(candidate_id, uploaded_at DESC)",
                 "CREATE INDEX IF NOT EXISTS idx_upload_jobs_candidate_target ON upload_jobs(candidate_id, target_field, updated_at DESC)",
                 "CREATE INDEX IF NOT EXISTS idx_scores_candidate_taken ON scores(candidate_id, taken_at DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_slots_candidate_booked_start ON generated_slots(candidate_id, start_time DESC) WHERE is_booked = TRUE",
                 "CREATE INDEX IF NOT EXISTS idx_stage_config_name_cycle ON stage_config(stage_name, cycle_id DESC)",
                 "CREATE INDEX IF NOT EXISTS idx_admin_sessions_token_active ON admin_sessions(session_token) WHERE active = TRUE",
                 "CREATE INDEX IF NOT EXISTS idx_email_log_sent ON email_log(sent_at DESC)",
