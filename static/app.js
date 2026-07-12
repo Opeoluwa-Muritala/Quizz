@@ -1913,6 +1913,11 @@ function initAdminOperations() {
                     pill.title = `${s.title}: Taken at ${s.submitted_at ? formatWAT(s.submitted_at) : 'N/A'} (Switches: ${s.tab_switches}, Time: ${formatTime(s.time_taken_secs)})`;
                     pill.textContent = `${s.title}: ${s.score_percent}% (${s.score_fraction})`;
                     tdScore.appendChild(pill);
+
+                    const switches = document.createElement("span");
+                    switches.className = `tab-switches-count${s.tab_switches > 5 ? " tab-switches-warning" : ""}`;
+                    switches.textContent = `${s.tab_switches} switches`;
+                    tdScore.appendChild(switches);
                 });
             } else {
                 tdScore.textContent = "-";
