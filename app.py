@@ -321,13 +321,11 @@ def init_db():
 # Global Recruitment Portal Status Gate
 @app.before_request
 def check_portal_status():
-    # Only check for candidate-facing routes
+    # Closing recruitment stops new applications only. Existing candidates must
+    # still be able to sign in and use their dashboard to follow their progress.
     path = request.path
-    # Exempt admin dashboard, static files, performance reporting, and login/assets
-    if (path.startswith('/admin') or 
-        path.startswith('/api/admin') or 
-        path.startswith('/static') or 
-        path == '/api/performance'):
+    application_paths = {'/apply', '/api/apply'}
+    if path not in application_paths:
         return None
 
     # Fetch settings
@@ -345,7 +343,7 @@ def check_portal_status():
         # If it is an API request, return JSON
         if request.path.startswith('/api/'):
             return jsonify({"error": "Recruitment is closed", "code": "recruitment_closed"}), 403
-        # Otherwise, render recruitment_closed.html
+        # Otherwise, render the closed notice for the application form.
         return render_template('recruitment_closed.html')
 
 # Custom CSRF Protection
