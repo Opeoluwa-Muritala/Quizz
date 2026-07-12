@@ -356,6 +356,9 @@ input:checked + .switch-slider:before {
 #tab-candidates .score-stack { display:flex; gap:4px; flex-wrap:wrap; }
 #tab-candidates .tab-switches-count { align-self:center; color:var(--mfb-gray-600); font-size:11px; white-space:nowrap; }
 #tab-candidates .tab-switches-warning { color:#8a5a00; background:#fff4cf; border-radius:999px; padding:3px 6px; font-weight:700; }
+#tab-cohorts.active { height: 100%; min-height: 0; }
+#tab-cohorts.active > div:first-child { height: 100%; min-height: 0 !important; }
+#tab-cohorts.active > div:first-child > .card { min-height: 0; }
 body:has(.admin-tab-content:has(#tab-candidates.active)) { overflow: hidden; }
 .admin-tab-content.candidates-scroll-active,
 .admin-tab-content:has(#tab-candidates.active) { overflow: hidden !important; padding: 0; }
