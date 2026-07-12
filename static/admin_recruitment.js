@@ -760,25 +760,30 @@
         
         <div id="manualSlotSplitFields" class="rec-row" style="display:none;margin-top:10px;gap:16px">
           <div class="form-group" style="flex:1">
-            <label>Meeting Length</label>
-            <select class="rec-ctrl" id="manualSlotMeetingLength">
-              <option value="15">15 minutes</option>
-              <option value="30" selected>30 minutes</option>
-              <option value="45">45 minutes</option>
-              <option value="60">60 minutes</option>
-              <option value="90">90 minutes</option>
-            </select>
+            <label>Meeting Length (minutes)</label>
+            <input class="rec-ctrl" id="manualSlotMeetingLength" type="number" min="1" max="300" value="30">
           </div>
           <div class="form-group" style="flex:1">
-            <label>Gap Length</label>
-            <select class="rec-ctrl" id="manualSlotGapLength">
-              <option value="0">No gap</option>
-              <option value="5">5 minutes</option>
-              <option value="10" selected>10 minutes</option>
-              <option value="15">15 minutes</option>
-              <option value="20">20 minutes</option>
-              <option value="30">30 minutes</option>
-            </select>
+            <label>Gap Length (minutes)</label>
+            <input class="rec-ctrl" id="manualSlotGapLength" type="number" min="0" max="180" value="10">
+          </div>
+        </div>
+        
+        <div class="form-group" id="manualSlotRangeEndWrap" style="display:none;margin-top:10px;">
+          <label>Repeat daily until date (optional date range end)</label>
+          <input class="rec-ctrl" id="manualSlotRangeEnd" type="date" style="width:100%">
+        </div>
+
+        <div id="manualSlotWeekdaysWrap" style="display:none;margin-top:10px;">
+          <label style="display:block;margin-bottom:6px;font-weight:600;font-size:0.85rem;">Active Weekdays</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:4px;background:#f5f5f9;padding:4px 10px;border-radius:6px;font-size:0.85rem;cursor:pointer;font-weight:600;"><input type="checkbox" class="manual-day-chk" value="1" checked> M</label>
+            <label style="display:flex;align-items:center;gap:4px;background:#f5f5f9;padding:4px 10px;border-radius:6px;font-size:0.85rem;cursor:pointer;font-weight:600;"><input type="checkbox" class="manual-day-chk" value="2" checked> T</label>
+            <label style="display:flex;align-items:center;gap:4px;background:#f5f5f9;padding:4px 10px;border-radius:6px;font-size:0.85rem;cursor:pointer;font-weight:600;"><input type="checkbox" class="manual-day-chk" value="3" checked> W</label>
+            <label style="display:flex;align-items:center;gap:4px;background:#f5f5f9;padding:4px 10px;border-radius:6px;font-size:0.85rem;cursor:pointer;font-weight:600;"><input type="checkbox" class="manual-day-chk" value="4" checked> T</label>
+            <label style="display:flex;align-items:center;gap:4px;background:#f5f5f9;padding:4px 10px;border-radius:6px;font-size:0.85rem;cursor:pointer;font-weight:600;"><input type="checkbox" class="manual-day-chk" value="5" checked> F</label>
+            <label style="display:flex;align-items:center;gap:4px;background:#f5f5f9;padding:4px 10px;border-radius:6px;font-size:0.85rem;cursor:pointer;font-weight:600;color:#d9534f;"><input type="checkbox" class="manual-day-chk" value="6"> S</label>
+            <label style="display:flex;align-items:center;gap:4px;background:#f5f5f9;padding:4px 10px;border-radius:6px;font-size:0.85rem;cursor:pointer;font-weight:600;color:#d9534f;"><input type="checkbox" class="manual-day-chk" value="0"> S</label>
           </div>
         </div>
 
@@ -796,6 +801,8 @@
   window.toggleManualSlotSplitFields = function () {
     const checked = document.getElementById('manualSlotSplit').checked;
     document.getElementById('manualSlotSplitFields').style.display = checked ? 'flex' : 'none';
+    document.getElementById('manualSlotRangeEndWrap').style.display = checked ? 'block' : 'none';
+    document.getElementById('manualSlotWeekdaysWrap').style.display = checked ? 'block' : 'none';
   };
 
   window.closeManualSlotModal = function () {
@@ -807,6 +814,8 @@
     const message = document.getElementById('manualSlotMessage');
     if (!interviewerIds.length) { message.textContent = 'Select at least one interviewer.'; return; }
     
+    const activeDays = Array.from(document.querySelectorAll('.manual-day-chk:checked')).map(c => Number(c.value));
+    
     const payload = {
       title: document.getElementById('manualSlotTitle').value,
       start_time: document.getElementById('manualSlotStart').value,
@@ -814,7 +823,9 @@
       interviewer_ids: interviewerIds,
       split_automatically: document.getElementById('manualSlotSplit').checked,
       meeting_length: Number(document.getElementById('manualSlotMeetingLength').value),
-      gap_length: Number(document.getElementById('manualSlotGapLength').value)
+      gap_length: Number(document.getElementById('manualSlotGapLength').value),
+      range_end_date: document.getElementById('manualSlotRangeEnd').value || null,
+      active_days: activeDays
     };
 
     const data = await recApiPost('/api/admin/recruitment/slots', payload);

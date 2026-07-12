@@ -919,14 +919,49 @@ def create_manual_slot():
             if active_ids != set(interviewer_ids):
                 return jsonify({"error": "One or more selected interviewers are inactive or unavailable."}), 400
 
+            range_end_raw = data.get("range_end_date")
+            range_end = None
+            if split_automatically and range_end_raw:
+                try:
+                    range_end = datetime.date.fromisoformat(range_end_raw)
+                except ValueError:
+                    return jsonify({"error": "Invalid end date format."}), 400
+
+            active_days = data.get("active_days", [0, 1, 2, 3, 4, 5, 6])
+            try:
+                active_days = [int(x) for x in active_days]
+            except (TypeError, ValueError):
+                return jsonify({"error": "Invalid active weekdays list."}), 400
+
             slots_to_create = []
             if split_automatically:
-                current_start = start
-                step = datetime.timedelta(minutes=duration + buffer)
-                while current_start + datetime.timedelta(minutes=duration) <= end:
-                    current_end = current_start + datetime.timedelta(minutes=duration)
-                    slots_to_create.append((current_start, current_end))
-                    current_start += step
+                start_date = start.date()
+                end_limit_date = range_end if range_end else start_date
+                
+                if end_limit_date < start_date:
+                    return jsonify({"error": "Date range end must be on or after the start date."}), 400
+                if (end_limit_date - start_date).days > 60:
+                    return jsonify({"error": "Date range cannot exceed 60 days."}), 400
+
+                daily_duration = end - start
+                current_date = start_date
+                while current_date <= end_limit_date:
+                    # Check weekday filter: Monday=1, ..., Saturday=6, Sunday=0
+                    js_day_num = (current_date.weekday() + 1) % 7
+                    if js_day_num not in active_days:
+                        current_date += datetime.timedelta(days=1)
+                        continue
+
+                    day_start = datetime.datetime.combine(current_date, start.time(), tzinfo=start.tzinfo)
+                    day_end = day_start + daily_duration
+                    
+                    current_start = day_start
+                    step = datetime.timedelta(minutes=duration + buffer)
+                    while current_start + datetime.timedelta(minutes=duration) <= day_end:
+                        current_end = current_start + datetime.timedelta(minutes=duration)
+                        slots_to_create.append((current_start, current_end))
+                        current_start += step
+                    current_date += datetime.timedelta(days=1)
             else:
                 slots_to_create.append((start, end))
 
@@ -1048,6 +1083,7 @@ def get_slot_rules():
     if err: return err
     with DBConnection() as conn:
         with conn.cursor() as cur:
+            # 1. Fetch legacy availability_rules
             cur.execute("""
                 SELECT ar.id, ar.interviewer_id, i.name, ar.start_time, ar.end_time,
                        ar.slot_duration_minutes, ar.buffer_minutes
@@ -1055,16 +1091,65 @@ def get_slot_rules():
                 JOIN interviewers i ON ar.interviewer_id = i.id
                 WHERE ar.active = TRUE;
             """)
-            rows = cur.fetchall()
-    return jsonify([{
-        "id": r[0],
-        "interviewer_id": r[1],
-        "interviewer_name": r[2],
-        "start_time": str(r[3]),
-        "end_time": str(r[4]),
-        "slot_duration": r[5],
-        "buffer": r[6],
-    } for r in rows])
+            legacy_rows = cur.fetchall()
+            
+            # 2. Fetch new active interview_schedules
+            cur.execute("""
+                SELECT s.id, s.title, s.duration_minutes, s.buffer_minutes, s.availability_windows,
+                       string_agg(i.name, ', ' ORDER BY si.position) AS interviewer_names
+                FROM interview_schedules s
+                JOIN schedule_interviewers si ON s.id = si.schedule_id
+                JOIN interviewers i ON si.interviewer_id = i.id
+                WHERE s.published = TRUE AND (s.end_date IS NULL OR s.end_date >= CURRENT_DATE)
+                GROUP BY s.id, s.title, s.duration_minutes, s.buffer_minutes, s.availability_windows;
+            """)
+            sch_rows = cur.fetchall()
+
+    results = []
+    
+    # Process legacy rules
+    for r in legacy_rows:
+        results.append({
+            "id": r[0],
+            "interviewer_id": r[1],
+            "interviewer_name": r[2],
+            "start_time": str(r[3]),
+            "end_time": str(r[4]),
+            "slot_duration": r[5],
+            "buffer": r[6],
+        })
+
+    # Process new schedules
+    for r in sch_rows:
+        sch_id, title, duration, buffer, windows, names = r
+        start_time = "09:00"
+        end_time = "17:00"
+        try:
+            if isinstance(windows, str):
+                import json
+                win_dict = json.loads(windows)
+            else:
+                win_dict = windows
+            if win_dict:
+                for day, wlist in sorted(win_dict.items()):
+                    if wlist and len(wlist) > 0:
+                        start_time = wlist[0].get("start", "09:00")
+                        end_time = wlist[0].get("end", "17:00")
+                        break
+        except Exception:
+            pass
+
+        results.append({
+            "id": f"sch-{sch_id}",
+            "interviewer_id": None,
+            "interviewer_name": names or "Panel",
+            "start_time": start_time if ":" in start_time else f"{start_time}:00",
+            "end_time": end_time if ":" in end_time else f"{end_time}:00",
+            "slot_duration": duration,
+            "buffer": buffer,
+        })
+
+    return jsonify(results)
 
 
 @admin_rec.route("/api/admin/recruitment/slots/<int:slot_id>", methods=["PUT", "PATCH"])
