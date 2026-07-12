@@ -760,7 +760,7 @@
         <div class="form-group" style="margin-top:8px">
           <label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer">
             <input type="checkbox" id="manualSlotSplit" checked onchange="toggleManualSlotSplitFields()">
-            Create slots across this date range
+            Split each day's time range into multiple slots
           </label>
         </div>
         
@@ -802,7 +802,6 @@
   window.toggleManualSlotSplitFields = function () {
     const checked = document.getElementById('manualSlotSplit').checked;
     document.getElementById('manualSlotSplitFields').style.display = checked ? 'flex' : 'none';
-    document.getElementById('manualSlotWeekdaysWrap').style.display = checked ? 'block' : 'none';
   };
 
   window.closeManualSlotModal = function () {

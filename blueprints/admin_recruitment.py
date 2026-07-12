@@ -920,8 +920,8 @@ def create_manual_slot():
                 return jsonify({"error": "One or more selected interviewers are inactive or unavailable."}), 400
 
             range_end_raw = data.get("range_end_date")
-            range_end = None
-            if split_automatically and range_end_raw:
+            range_end = start.date()
+            if range_end_raw:
                 try:
                     range_end = datetime.date.fromisoformat(range_end_raw)
                 except ValueError:
@@ -933,37 +933,35 @@ def create_manual_slot():
             except (TypeError, ValueError):
                 return jsonify({"error": "Invalid active weekdays list."}), 400
 
+            start_date = start.date()
+            end_limit_date = range_end
+            if end_limit_date < start_date:
+                return jsonify({"error": "Date range end must be on or after the start date."}), 400
+            if (end_limit_date - start_date).days > 60:
+                return jsonify({"error": "Date range cannot exceed 60 days."}), 400
+
             slots_to_create = []
-            if split_automatically:
-                start_date = start.date()
-                end_limit_date = range_end if range_end else start_date
-                
-                if end_limit_date < start_date:
-                    return jsonify({"error": "Date range end must be on or after the start date."}), 400
-                if (end_limit_date - start_date).days > 60:
-                    return jsonify({"error": "Date range cannot exceed 60 days."}), 400
+            daily_duration = end - start
+            current_date = start_date
+            while current_date <= end_limit_date:
+                # Check weekday filter: Monday=1, ..., Saturday=6, Sunday=0
+                js_day_num = (current_date.weekday() + 1) % 7
+                if js_day_num not in active_days:
+                    current_date += datetime.timedelta(days=1)
+                    continue
 
-                daily_duration = end - start
-                current_date = start_date
-                while current_date <= end_limit_date:
-                    # Check weekday filter: Monday=1, ..., Saturday=6, Sunday=0
-                    js_day_num = (current_date.weekday() + 1) % 7
-                    if js_day_num not in active_days:
-                        current_date += datetime.timedelta(days=1)
-                        continue
-
-                    day_start = datetime.datetime.combine(current_date, start.time(), tzinfo=start.tzinfo)
-                    day_end = day_start + daily_duration
-                    
+                day_start = datetime.datetime.combine(current_date, start.time(), tzinfo=start.tzinfo)
+                day_end = day_start + daily_duration
+                if split_automatically:
                     current_start = day_start
                     step = datetime.timedelta(minutes=duration + buffer)
                     while current_start + datetime.timedelta(minutes=duration) <= day_end:
                         current_end = current_start + datetime.timedelta(minutes=duration)
                         slots_to_create.append((current_start, current_end))
                         current_start += step
-                    current_date += datetime.timedelta(days=1)
-            else:
-                slots_to_create.append((start, end))
+                else:
+                    slots_to_create.append((day_start, day_end))
+                current_date += datetime.timedelta(days=1)
 
             if not slots_to_create:
                 return jsonify({"error": "No slots fit within the specified time range."}), 400
