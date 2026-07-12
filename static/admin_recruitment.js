@@ -497,7 +497,10 @@
 
     const resp = await fetch(`/api/admin/recruitment/candidates/${candId}/assign-quiz`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'X-CSRF-Token': csrf,
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({ quiz_id: parseInt(sel.value) })
     });
 
