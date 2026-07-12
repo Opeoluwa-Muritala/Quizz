@@ -1498,6 +1498,36 @@ def admin_results():
             # Get total number of candidates
             cur.execute("SELECT COUNT(*) FROM candidates;")
             total_cand = cur.fetchone()[0]
+
+            # Summary metrics must use the full candidate set, not merely the
+            # paginated rows rendered in the table below. A candidate fails if
+            # any completed assessment failed; otherwise they pass once all
+            # their completed assessments have passed.
+            cur.execute("""
+                WITH attempts AS (
+                    SELECT candidate_id, pass_fail, score_percent::NUMERIC AS score
+                    FROM exam_results
+                    WHERE pass_fail IN ('PASS', 'FAIL')
+                    UNION ALL
+                    SELECT candidate_id, pass_fail, score::NUMERIC AS score
+                    FROM scores
+                    WHERE pass_fail IN ('PASS', 'FAIL')
+                ), outcomes AS (
+                    SELECT candidate_id,
+                           CASE
+                               WHEN BOOL_OR(pass_fail = 'FAIL') THEN 'FAIL'
+                               WHEN BOOL_OR(pass_fail = 'PASS') THEN 'PASS'
+                           END AS outcome
+                    FROM attempts
+                    GROUP BY candidate_id
+                )
+                SELECT
+                    COUNT(*) FILTER (WHERE outcome = 'PASS'),
+                    COUNT(*) FILTER (WHERE outcome = 'FAIL'),
+                    COALESCE(ROUND((SELECT AVG(score) FROM attempts WHERE score IS NOT NULL), 2), 0)
+                FROM outcomes;
+            """)
+            passed_count, failed_count, avg_score = cur.fetchone()
             
             # Fetch all quizzes first to map quiz_id to title
             cur.execute("SELECT id, title, number FROM quizzes;")
@@ -1533,8 +1563,6 @@ def admin_results():
                     pipeline_by_cand.setdefault(row[0], []).append(row[1:])
 
             results = []
-            total_passed = 0
-            total_failed = 0
             
             for r in cand_rows:
                 cand_id, name, email, phone, role, location, created_at, stage = r
@@ -1571,10 +1599,8 @@ def admin_results():
                 if scores_list:
                     if any(s["pass_fail"] == "FAIL" for s in scores_list):
                         overall_status = "FAIL"
-                        total_failed += 1
                     elif all(s["pass_fail"] == "PASS" for s in scores_list):
                         overall_status = "PASS"
-                        total_passed += 1
                 
                 results.append({
                     "id": cand_id, # maintain backward compatibility with client expectations
@@ -1598,17 +1624,11 @@ def admin_results():
                 
             summary = {
                 "total": total_cand,
-                "passed": total_passed,
-                "failed": total_failed,
-                "avg_score": 0.0,
+                "passed": passed_count or 0,
+                "failed": failed_count or 0,
+                "avg_score": float(avg_score),
                 "avg_time": 0
             }
-            all_scores = [s["score_percent"] for r in results for s in r["scores"]]
-            if all_scores:
-                summary["avg_score"] = round(sum(all_scores) / len(all_scores), 2)
-            all_times = [s["time_taken_secs"] for r in results for s in r["scores"] if s["time_taken_secs"]]
-            if all_times:
-                summary["avg_time"] = int(sum(all_times) / len(all_times))
                 
     return jsonify({
         "summary": summary,
