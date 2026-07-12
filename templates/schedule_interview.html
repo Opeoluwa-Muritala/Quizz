@@ -299,6 +299,10 @@ async function confirmBooking() {
       return;
     }
 
+    // Do not leave the claimed slot in this browser's cached calendar.
+    delete slotsCache[`${currentYear}-${currentMonth}`];
+    selectedSlot = null;
+
     // Show success
     document.getElementById('mainLayout').style.display = 'none';
     const sc = document.getElementById('successCard');
@@ -325,6 +329,13 @@ function nextMonth() {
   if (currentMonth > 12) { currentMonth = 1; currentYear++; }
   renderCalendar();
 }
+
+// A slot may be claimed by another candidate while this page is open.
+// Refresh when the candidate returns to the page so stale choices disappear.
+window.addEventListener('focus', () => {
+  delete slotsCache[`${currentYear}-${currentMonth}`];
+  renderCalendar();
+});
 
 renderCalendar();
 </script>
