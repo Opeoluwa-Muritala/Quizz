@@ -283,15 +283,19 @@ def require_stage(*allowed_stages):
 
             with DBConnection() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT stage, email FROM candidates WHERE id = %s",
-                        (candidate_id,)
-                    )
+                    cur.execute("""
+                        SELECT stage, email
+                        FROM candidates
+                        WHERE id = %s
+                          AND dob IS NOT NULL
+                          AND nysc_status IS NOT NULL;
+                    """, (candidate_id,))
                     row = cur.fetchone()
 
             if not row:
                 session.pop("candidate_id", None)
-                return redirect(url_for("recruitment.apply"))
+                session.pop("candidate_email", None)
+                return redirect(url_for("recruitment.login"))
 
             current_stage = row[0] or "applied"
             candidate_email = row[1]
@@ -302,17 +306,7 @@ def require_stage(*allowed_stages):
                 return _stage_redirect(current_stage)
 
             # Stage time-gating validation
-            if request.endpoint == 'recruitment.dashboard':
-                is_app_locked, is_app_closed, app_opens_at, app_stage_config_name = get_stage_time_gating_status(
-                    "applied", candidate_email, candidate_id
-                )
-                if is_app_locked or is_app_closed:
-                    if is_app_locked:
-                        opens_str = app_opens_at.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %I:%M %p WAT")
-                        return render_template("stage_locked.html", stage_label=app_stage_config_name.capitalize(), opens_at=opens_str, closed=False)
-                    else:
-                        return render_template("stage_locked.html", stage_label="Recruitment", closed=True)
-            else:
+            if request.endpoint != 'recruitment.dashboard':
                 is_locked, is_closed, opens_at, stage_config_name = get_stage_time_gating_status(
                     current_stage, candidate_email, candidate_id
                 )
@@ -376,15 +370,19 @@ def request_otp():
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
-            # Check if exists in candidates or whitelist
+            # Status sign-in is for submitted recruitment applications only.
+            # The shared candidates table also contains legacy exam records,
+            # which must not gain access to the recruitment dashboard.
             cur.execute("""
-                SELECT 1 FROM candidates WHERE LOWER(email) = %s 
-                UNION 
-                SELECT 1 FROM whitelist WHERE LOWER(email) = %s 
+                SELECT 1
+                FROM candidates
+                WHERE LOWER(email) = %s
+                  AND dob IS NOT NULL
+                  AND nysc_status IS NOT NULL
                 LIMIT 1;
-            """, (email, email))
+            """, (email,))
             if not cur.fetchone():
-                return jsonify({"success": False, "error": "No application found with that email address. Please apply first."}), 404
+                return jsonify({"success": False, "error": "No submitted application was found for that email address. Please apply first."}), 404
 
             # Generate 6-digit random code
             otp = "".join(secrets.choice("0123456789") for _ in range(6))
@@ -446,7 +444,13 @@ def verify_otp():
             cur.execute("DELETE FROM candidate_otps WHERE email = %s;", (email,))
             
             # Check if they have a candidate profile already
-            cur.execute("SELECT id, stage FROM candidates WHERE LOWER(email) = %s;", (email,))
+            cur.execute("""
+                SELECT id, stage
+                FROM candidates
+                WHERE LOWER(email) = %s
+                  AND dob IS NOT NULL
+                  AND nysc_status IS NOT NULL;
+            """, (email,))
             cand_row = cur.fetchone()
             if cand_row:
                 session["candidate_id"] = cand_row[0]
@@ -454,13 +458,8 @@ def verify_otp():
                 session.pop("temp_verified_email", None)
                 conn.commit()
                 return jsonify({"success": True, "redirect": url_for("recruitment.dashboard")})
-            else:
-                # Whitelisted candidate who hasn't applied/registered yet
-                # Save verified email in session to allow application registration
-                session["candidate_email"] = email
-                session["temp_verified_email"] = email
-                conn.commit()
-                return jsonify({"success": True, "redirect": url_for("recruitment.apply")})
+            conn.commit()
+            return jsonify({"success": False, "error": "No submitted application was found for that email address."}), 404
 
 
 
@@ -527,10 +526,27 @@ def apply():
     if session.get("candidate_id"):
         with DBConnection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT stage FROM candidates WHERE id = %s;", (session["candidate_id"],))
+                cur.execute("""
+                    SELECT stage
+                    FROM candidates
+                    WHERE id = %s
+                      AND dob IS NOT NULL
+                      AND nysc_status IS NOT NULL;
+                """, (session["candidate_id"],))
                 row = cur.fetchone()
-        stage = row[0] if row else "applied"
-        return _stage_redirect(stage)
+        if row:
+            return _stage_redirect(row[0] or "applied")
+        session.pop("candidate_id", None)
+        session.pop("candidate_email", None)
+
+    # Check if application stage is closed or locked
+    is_locked, is_closed, opens_at, stage_config_name = get_stage_time_gating_status("applied", None, None)
+    if is_locked or is_closed:
+        if is_locked:
+            opens_str = opens_at.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %I:%M %p WAT")
+            return render_template("stage_locked.html", stage_label=stage_config_name.capitalize(), opens_at=opens_str, closed=False)
+        else:
+            return render_template("stage_locked.html", stage_label="Application", closed=True)
 
     # Fetch settings from DB
     DEFAULT_FIELDS = {
@@ -857,6 +873,15 @@ def interview():
 
 @recruitment.route("/api/apply", methods=["POST"])
 def api_apply():
+    # Mirror the form-page gate here so a direct API call cannot create a new
+    # application after the application window has closed.
+    is_locked, is_closed, _, _ = get_stage_time_gating_status("applied", None, None)
+    if is_locked or is_closed:
+        return jsonify({
+            "error": "Applications are not currently being accepted.",
+            "code": "application_closed" if is_closed else "application_not_open",
+        }), 403
+
     # Support multipart (file upload) or JSON
     if request.content_type and "multipart" in request.content_type:
         data = request.form
