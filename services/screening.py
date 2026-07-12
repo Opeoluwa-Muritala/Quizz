@@ -48,14 +48,15 @@ def run_screening(candidate_id: int) -> tuple[str, str | None]:
     with DBConnection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT dob, nysc_status FROM candidates WHERE id = %s;
+                SELECT dob, nysc_status, COALESCE((pre_test_responses->>'age_bracket_confirmed')::boolean, FALSE)
+                FROM candidates WHERE id = %s;
             """, (candidate_id,))
             row = cur.fetchone()
 
     if not row:
         return "screening_failed", "Candidate record not found."
 
-    dob, nysc_status = row
+    dob, nysc_status, age_bracket_confirmed = row
     flags = []
 
     if dob:
@@ -64,8 +65,8 @@ def run_screening(candidate_id: int) -> tuple[str, str | None]:
             flags.append(f"Age {age} is below minimum of {rules['min_age']}.")
         elif age > rules["max_age"]:
             flags.append(f"Age {age} exceeds maximum of {rules['max_age']}.")
-    else:
-        flags.append("Date of birth not provided.")
+    elif age_bracket_confirmed is not True:
+        flags.append("Age-bracket requirement was not confirmed.")
 
     if nysc_status:
         if nysc_status not in rules["accepted_nysc_statuses"]:
