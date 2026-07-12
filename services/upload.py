@@ -1,11 +1,9 @@
-"""
-Synchronous Cloudinary upload service for Serverless compatibility.
-Uploads run inline in the request handler so they block until completed.
-"""
+"""Background Cloudinary upload service."""
 import os
 import uuid
 import logging
 import io
+import threading
 from pathlib import Path
 import cloudinary
 import cloudinary.uploader
@@ -21,7 +19,7 @@ ALLOWED_FILE_TYPES = {
 }
 ALLOWED_CV_MIMETYPES = set(ALLOWED_FILE_TYPES.values())
 ALLOWED_DOC_MIMETYPES = ALLOWED_CV_MIMETYPES
-MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_FILE_BYTES = 3 * 1024 * 1024  # 3 MB
 MAX_IMAGE_DIMENSION = 2200
 JPEG_QUALITY = 82
 
@@ -32,7 +30,7 @@ def validate_file(file_bytes: bytes, mimetype: str, allowed: set,
     if not file_bytes:
         return "The selected file is empty."
     if enforce_size and len(file_bytes) > MAX_FILE_BYTES:
-        return f"File exceeds 10 MB limit ({len(file_bytes)//1024//1024} MB uploaded)."
+        return f"File exceeds the 3 MB limit ({len(file_bytes)//1024//1024} MB uploaded)."
     if mimetype not in allowed:
         return "Only PDF, JPEG, and PNG files are allowed."
     extension = Path(filename).suffix.lower()
@@ -94,26 +92,29 @@ def prepare_upload_file(file_bytes: bytes, mimetype: str, allowed: set,
         return file_bytes, mimetype, error
     file_bytes, mimetype = compress_image(file_bytes, mimetype)
     if len(file_bytes) > MAX_FILE_BYTES:
-        return file_bytes, mimetype, f"File remains above the 10 MB upload limit after compression."
+        return file_bytes, mimetype, f"File remains above the 3 MB upload limit after compression."
     return file_bytes, mimetype, None
 
 
-def enqueue_upload(file_bytes: bytes, folder: str, public_id: str,
-                   candidate_id: int, resource_type: str = "auto",
-                   doc_type: str | None = None,
-                   target_field: str | None = None) -> str:
-    """
-    Perform the upload synchronously. Registers the job as 'done' or 'failed' immediately,
-    persisting the results to candidates or candidate_documents.
-    Returns job_id.
-    """
-    job_id = str(uuid.uuid4())
+def _process_upload(job_id: str, file_bytes: bytes, folder: str, public_id: str,
+                    candidate_id: int, resource_type: str, doc_type: str | None,
+                    target_field: str | None) -> None:
+    """Upload a queued file and persist its eventual result."""
     url = None
     pid = None
     error_msg = None
     status = "done"
 
     try:
+        upload_mimetype = (
+            "application/pdf" if file_bytes.startswith(b"%PDF-") else
+            "image/jpeg" if file_bytes.startswith(b"\xff\xd8\xff") else
+            "image/png" if file_bytes.startswith(b"\x89PNG\r\n\x1a\n") else
+            "application/octet-stream"
+        )
+        file_bytes, _ = compress_image(file_bytes, upload_mimetype)
+        if len(file_bytes) > MAX_FILE_BYTES:
+            raise ValueError("File remains above the 3 MB upload limit after compression.")
         result = cloudinary.uploader.upload(
             file_bytes,
             folder=folder,
@@ -133,11 +134,11 @@ def enqueue_upload(file_bytes: bytes, folder: str, public_id: str,
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
-            # Insert completed/failed upload job record
             cur.execute("""
-                INSERT INTO upload_jobs (id, candidate_id, doc_type, target_field, status, url, public_id, error, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW());
-            """, (job_id, candidate_id, doc_type, target_field, status, url, pid, error_msg))
+                UPDATE upload_jobs
+                SET status = %s, url = %s, public_id = %s, error = %s, updated_at = NOW()
+                WHERE id = %s;
+            """, (status, url, pid, error_msg, job_id))
 
             if status == "done":
                 # Persist URL to candidates or candidate_documents
@@ -163,6 +164,29 @@ def enqueue_upload(file_bytes: bytes, folder: str, public_id: str,
                     """, (candidate_id, doc_type))
         conn.commit()
 
+
+
+def enqueue_upload(file_bytes: bytes, folder: str, public_id: str,
+                   candidate_id: int, resource_type: str = "auto",
+                   doc_type: str | None = None,
+                   target_field: str | None = None) -> str:
+    """Register an upload, then perform the Cloudinary call off the request path."""
+    job_id = str(uuid.uuid4())
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO upload_jobs
+                    (id, candidate_id, doc_type, target_field, status, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, 'pending', NOW(), NOW());
+            """, (job_id, candidate_id, doc_type, target_field))
+        conn.commit()
+
+    threading.Thread(
+        target=_process_upload,
+        args=(job_id, file_bytes, folder, public_id, candidate_id, resource_type, doc_type, target_field),
+        name=f"cloudinary-upload-{job_id[:8]}",
+        daemon=True,
+    ).start()
     return job_id
 
 
