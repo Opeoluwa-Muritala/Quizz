@@ -356,6 +356,14 @@ input:checked + .switch-slider:before {
 #tab-candidates .score-stack { display:flex; gap:4px; flex-wrap:wrap; }
 #tab-candidates .tab-switches-count { align-self:center; color:var(--mfb-gray-600); font-size:11px; white-space:nowrap; }
 #tab-candidates .tab-switches-warning { color:#8a5a00; background:#fff4cf; border-radius:999px; padding:3px 6px; font-weight:700; }
+.admin-tab-content.candidates-scroll-active { overflow: hidden; padding: 0; }
+.admin-tab-content.candidates-scroll-active #tab-candidates.active { height: 100%; padding: 32px 24px; box-sizing: border-box; overflow: hidden; }
+.admin-tab-content.candidates-scroll-active #tab-candidates .candidates-results-layout { height: 100%; min-height: 0; }
+.admin-tab-content.candidates-scroll-active #tab-candidates .summary-stats-grid,
+.admin-tab-content.candidates-scroll-active #tab-candidates .results-toolbar,
+.admin-tab-content.candidates-scroll-active #tab-candidates .pagination-row { flex-shrink: 0; }
+.admin-tab-content.candidates-scroll-active #tab-candidates .table-container { flex: 1; min-height: 0; overflow: auto; }
+.admin-tab-content.candidates-scroll-active #tab-candidates .data-table thead th { position: sticky; top: 0; z-index: 2; }
 @media(max-width:720px) {
     #tab-candidates .summary-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     #tab-candidates .results-toolbar { align-items:flex-start; flex-direction:column; }
