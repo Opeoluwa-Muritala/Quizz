@@ -10,8 +10,11 @@
   .apply-section { padding-top: 24px; margin-top: 24px; border-top: 1px solid var(--mfb-gray-300); }
   .apply-section:first-of-type { padding-top: 0; margin-top: 0; border-top: 0; }
   .apply-section h3 { font-family: var(--font-body); font-size: 18px; line-height: 24px;
-    font-weight: 700; color: var(--mfb-ink); margin: 0 0 16px; }
-  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    font-weight: 700; color: var(--mfb-ink); margin: 0 0 16px; border-left:3px solid var(--mfb-purple); padding-left:9px; }
+  .form-row { display: grid; grid-template-columns: 1fr; gap: 0; }
+  .cohort-badge { display:inline-block; margin:8px 0 10px; padding:5px 10px; border-radius:999px; background:var(--mfb-purple-tint); color:var(--mfb-purple); font-size:13px; font-weight:700; }
+  .eligibility-note { display:none; margin-top:7px; padding:9px 11px; border-radius:6px; background:var(--mfb-warning-tint); color:var(--mfb-warning); font-size:13px; line-height:18px; }
+  .next-step { margin:12px 0 0; color:var(--mfb-gray-600); font-size:13px; text-align:center; }
   .form-group { margin-bottom: 20px; }
   .form-group label { display: block; color: var(--mfb-ink); font-size: 13px;
     line-height: 18px; font-weight: 600; margin-bottom: 6px; }
@@ -56,7 +59,8 @@
   <div class="apply-card">
     <img src="{{ url_for('static', filename='logo.png') }}" alt="Mainstreet MFB Logo"
       style="height:36px;margin-bottom:20px;display:block;">
-    <h1>Job Application Form</h1>
+    <h1>Executive Trainee Application</h1>
+    <div class="cohort-badge">Executive Trainee Program — 2026 Cohort</div>
     <p class="sub">Submit your details to register for the Executive Trainee recruitment program.</p>
 
     <div class="existing-banner" id="existingBanner">
@@ -97,13 +101,7 @@
           <input class="form-control" id="dob" type="date" data-required="true">
           <div class="field-error" id="dobError">Date of birth is required.</div>
         </div>
-        <div class="form-group">
-          <label for="ageBracket">Do you fall within the age bracket of 22–32 before year end? <span class="req">*</span></label>
-          <select class="form-control" id="ageBracket" data-required="true">
-            <option value="">Select</option><option value="yes">Yes</option><option value="no">No</option>
-          </select>
-          <div class="field-error" id="ageBracketError">Please select an answer.</div>
-        </div>
+        <div class="eligibility-note" id="eligibilityNote">This program is open to candidates aged 22–32 by year-end. Based on the date entered, you may not meet this requirement.</div>
         <div class="form-group">
           <label for="nyscStatus">NYSC status <span class="req">*</span></label>
           <select class="form-control" id="nyscStatus" data-required="true">
@@ -177,6 +175,7 @@
         <div class="field-error" id="cvError">Upload your CV before submitting.</div>
       </div>
       <button class="btn-submit" id="submitBtn" onclick="submitApplication()">Submit application</button>
+      <p class="next-step">You'll receive an email once your application has been reviewed.</p>
     </div>
 
     <div class="error-msg" id="errorMsg"></div>
@@ -219,8 +218,16 @@ document.querySelectorAll('[data-required="true"]').forEach(el => {
   el.addEventListener('change', () => validateField(el.id));
 });
 
+document.getElementById('dob').addEventListener('change', event => {
+  const dob = new Date(event.target.value);
+  const yearEnd = new Date(new Date().getFullYear(), 11, 31);
+  const age = yearEnd.getFullYear() - dob.getFullYear() -
+    ((yearEnd.getMonth() < dob.getMonth() || (yearEnd.getMonth() === dob.getMonth() && yearEnd.getDate() < dob.getDate())) ? 1 : 0);
+  document.getElementById('eligibilityNote').style.display = Number.isNaN(age) || (age >= 22 && age <= 32) ? 'none' : 'block';
+});
+
 function validateForm() {
-  const fieldsOk = ['fullName', 'email', 'phone', 'houseAddress', 'dob', 'ageBracket', 'nyscStatus', 'role', 'location'].every(validateField);
+  const fieldsOk = ['fullName', 'email', 'phone', 'houseAddress', 'dob', 'nyscStatus', 'role', 'location'].every(validateField);
   const cvOk = Boolean(cvFileData);
   setFieldError('cv', !cvOk);
   return fieldsOk && cvOk;
@@ -306,7 +313,6 @@ async function submitApplication() {
   formData.append('phone_number', document.getElementById('phone').value.trim());
   formData.append('house_address', document.getElementById('houseAddress').value.trim());
   formData.append('dob', document.getElementById('dob').value);
-  formData.append('age_bracket', document.getElementById('ageBracket').value);
   formData.append('nysc_status', document.getElementById('nyscStatus').value);
   formData.append('role', document.getElementById('role').value);
   formData.append('location', document.getElementById('location').value);

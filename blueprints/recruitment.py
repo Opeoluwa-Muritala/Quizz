@@ -828,7 +828,6 @@ def api_apply():
     email        = data.get("email", "").strip().lower()
     phone_number = data.get("phone_number", "").strip()
     house_address = data.get("house_address", "").strip()
-    age_bracket = data.get("age_bracket", "").strip().lower()
     dob_str      = data.get("dob", "").strip()
     nysc_status  = data.get("nysc_status", "").strip()
     role         = data.get("role", "").strip()
@@ -867,8 +866,6 @@ def api_apply():
         return jsonify({"error": "Full name and email are required."}), 400
     if not house_address:
         return jsonify({"error": "House address is required."}), 400
-    if age_bracket not in {"yes", "no"}:
-        return jsonify({"error": "Please confirm the age-bracket question."}), 400
 
     # Dynamic validations
     if fields_config["phone_number"]["enabled"]:
@@ -944,7 +941,7 @@ def api_apply():
                         nysc_status = %s, role = %s, location = %s,
                         stage = 'applied', stage_updated_at = NOW()
                     WHERE id = %s;
-                """, (full_name, phone_number, json.dumps({"house_address": house_address, "age_bracket_confirmed": age_bracket == "yes"}), dob,
+                """, (full_name, phone_number, json.dumps({"house_address": house_address}), dob,
                       nysc_status, role, location, candidate_id))
             else:
                 import secrets
@@ -962,7 +959,7 @@ def api_apply():
                     VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, 'applied', NOW(), %s, %s)
                     RETURNING id;
                 """, (full_name, email, phone_number,
-                      json.dumps({"house_address": house_address, "age_bracket_confirmed": age_bracket == "yes"}),
+                      json.dumps({"house_address": house_address}),
                       dob, nysc_status, role, location, ref_token, cohort_id))
                 candidate_id = cur.fetchone()[0]
         conn.commit()
