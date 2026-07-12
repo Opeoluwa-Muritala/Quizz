@@ -1860,7 +1860,6 @@ function initAdminOperations() {
             document.getElementById("results-stat-passed").textContent = res.summary.passed;
             document.getElementById("results-stat-failed").textContent = res.summary.failed;
             document.getElementById("results-stat-avg").textContent = `${res.summary.avg_score}%`;
-            document.getElementById("results-stat-time").textContent = `${formatTime(res.summary.avg_time)}`;
             
             renderResultsTable(res.results);
             
@@ -1881,7 +1880,7 @@ function initAdminOperations() {
         if (results.length === 0) {
             const tr = document.createElement("tr");
             const td = document.createElement("td");
-            td.setAttribute("colspan", "11");
+            td.setAttribute("colspan", "5");
             td.style.textAlign = "center";
             td.textContent = "No candidate exam results recorded.";
             tr.appendChild(td);
@@ -1893,22 +1892,16 @@ function initAdminOperations() {
             const tr = document.createElement("tr");
             
             const tdName = document.createElement("td");
-            tdName.style.fontWeight = "600";
-            tdName.textContent = r.name;
-            
-            const tdEmail = document.createElement("td");
-            tdEmail.textContent = r.email;
-            
-            const tdPhone = document.createElement("td");
-            tdPhone.textContent = r.phone_number;
-            
-            const tdRole = document.createElement("td");
-            tdRole.textContent = r.role;
-            
-            const tdLocation = document.createElement("td");
-            tdLocation.textContent = r.location;
+            const nameLine = document.createElement("div");
+            nameLine.className = "candidate-cell-name";
+            nameLine.textContent = r.name;
+            const metaLine = document.createElement("div");
+            metaLine.className = "candidate-cell-meta";
+            metaLine.textContent = [r.email, r.role, r.location].filter(Boolean).join(" · ");
+            tdName.append(nameLine, metaLine);
             
             const tdScore = document.createElement("td");
+            tdScore.className = "score-stack";
             if (r.scores && r.scores.length > 0) {
                 r.scores.forEach(s => {
                     const pill = document.createElement("span");
@@ -1930,14 +1923,6 @@ function initAdminOperations() {
             badge.className = `badge ${r.overall_status === 'PASS' ? 'badge-pass' : (r.overall_status === 'FAIL' ? 'badge-fail' : 'badge-pending')}`;
             badge.textContent = r.stage.replace('_', ' ').toUpperCase();
             tdBadge.appendChild(badge);
-            
-            const tdTime = document.createElement("td");
-            tdTime.className = "font-mono";
-            tdTime.textContent = formatTime(r.time_taken_secs);
-            
-            const tdSwitches = document.createElement("td");
-            tdSwitches.className = "font-mono";
-            tdSwitches.textContent = r.tab_switches;
             
             const tdDate = document.createElement("td");
             tdDate.textContent = formatWAT(r.submitted_at);
@@ -1965,14 +1950,8 @@ function initAdminOperations() {
             tdVerification.appendChild(btnId);
             
             tr.appendChild(tdName);
-            tr.appendChild(tdEmail);
-            tr.appendChild(tdPhone);
-            tr.appendChild(tdRole);
-            tr.appendChild(tdLocation);
             tr.appendChild(tdScore);
             tr.appendChild(tdBadge);
-            tr.appendChild(tdTime);
-            tr.appendChild(tdSwitches);
             tr.appendChild(tdDate);
             tr.appendChild(tdVerification);
             
