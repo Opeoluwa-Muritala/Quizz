@@ -199,6 +199,79 @@ def _stage_redirect(stage: str):
     return redirect(url_for(route))
 
 
+def get_stage_time_gating_status(stage, candidate_email, candidate_id):
+    """
+    Returns (is_locked, is_closed, opens_at, stage_config_name).
+    If no time gating configuration is found, returns (False, False, None, None).
+    """
+    STAGE_CONFIG_MAP = {
+        "applied": "application",
+        "screening_passed": "assessment",
+        "screening_flagged": "assessment",
+        "assessment_in_progress": "assessment",
+        "assessment_passed": "interview",
+        "interview_slot_pending": "interview",
+        "interview_scheduled": "interview",
+        "documents_pending": "documents",
+        "documents_submitted": "documents",
+        "interview_completed": "final_decision",
+        "offered": "final_decision"
+    }
+    stage_config_name = STAGE_CONFIG_MAP.get(stage)
+    if not stage_config_name:
+        return False, False, None, None
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT opens_at, closes_at
+                FROM stage_config
+                WHERE stage_name = %s
+                ORDER BY cycle_id DESC LIMIT 1;
+            """, (stage_config_name,))
+            cfg = cur.fetchone()
+
+    if not cfg:
+        return False, False, None, stage_config_name
+
+    opens_at, closes_at = cfg
+    now = datetime.datetime.now(datetime.timezone.utc)
+    
+    is_locked = False
+    is_closed = False
+    
+    t_opens = opens_at.replace(tzinfo=datetime.timezone.utc) if opens_at and opens_at.tzinfo is None else opens_at
+    t_closes = closes_at.replace(tzinfo=datetime.timezone.utc) if closes_at and closes_at.tzinfo is None else closes_at
+
+    if t_opens and now < t_opens:
+        is_locked = True
+    if t_closes and now > t_closes:
+        is_closed = True
+
+    if is_locked or is_closed:
+        # Bypass time gating if:
+        # 1. Candidate is a test/preview candidate (email match)
+        # 2. Stage transition was manually overridden by an admin
+        bypass = False
+        if candidate_email and ("test" in candidate_email.lower() or "preview" in candidate_email.lower()):
+            bypass = True
+        else:
+            with DBConnection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT changed_by FROM candidate_stage_history
+                        WHERE candidate_id = %s AND to_stage = %s
+                        ORDER BY changed_at DESC LIMIT 1;
+                    """, (candidate_id, stage))
+                    history_row = cur.fetchone()
+                    if history_row and history_row[0] == 'admin':
+                        bypass = True
+        if bypass:
+            return False, False, None, stage_config_name
+
+    return is_locked, is_closed, opens_at, stage_config_name
+
+
 def require_stage(*allowed_stages):
     """Decorator: gate a route to candidates whose current stage is in allowed_stages."""
     def decorator(f):
@@ -229,65 +302,26 @@ def require_stage(*allowed_stages):
                 return _stage_redirect(current_stage)
 
             # Stage time-gating validation
-            STAGE_CONFIG_MAP = {
-                "applied": "application",
-                "screening_passed": "assessment",
-                "screening_flagged": "assessment",
-                "assessment_in_progress": "assessment",
-                "interview_slot_pending": "interview",
-                "interview_scheduled": "interview",
-                "documents_pending": "documents",
-                "documents_submitted": "documents",
-                "offered": "decision"
-            }
-            stage_config_name = STAGE_CONFIG_MAP.get(current_stage)
-            if stage_config_name:
-                with DBConnection() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("""
-                            SELECT opens_at, closes_at
-                            FROM stage_config
-                            WHERE stage_name = %s
-                            ORDER BY cycle_id DESC LIMIT 1;
-                        """, (stage_config_name,))
-                        cfg = cur.fetchone()
-                if cfg:
-                    opens_at, closes_at = cfg
-                    now = datetime.datetime.now(datetime.timezone.utc)
-                    
-                    is_locked = False
-                    is_closed = False
-                    
-                    if opens_at and now < opens_at:
-                        is_locked = True
-                    if closes_at and now > closes_at:
-                        is_closed = True
-                        
-                    if is_locked or is_closed:
-                        # Bypass time gating if:
-                        # 1. Candidate is a test/preview candidate (email match)
-                        # 2. Stage transition was manually overridden by an admin
-                        bypass = False
-                        if candidate_email and ("test" in candidate_email.lower() or "preview" in candidate_email.lower()):
-                            bypass = True
-                        else:
-                            with DBConnection() as conn:
-                                with conn.cursor() as cur:
-                                    cur.execute("""
-                                        SELECT changed_by FROM candidate_stage_history
-                                        WHERE candidate_id = %s AND to_stage = %s
-                                        ORDER BY changed_at DESC LIMIT 1;
-                                    """, (candidate_id, current_stage))
-                                    history_row = cur.fetchone()
-                                    if history_row and history_row[0] == 'admin':
-                                        bypass = True
-                        
-                        if not bypass:
-                            if is_locked:
-                                opens_str = opens_at.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %I:%M %p WAT")
-                                return render_template("stage_locked.html", stage_label=stage_config_name.capitalize(), opens_at=opens_str, closed=False)
-                            else:
-                                return render_template("stage_locked.html", stage_label=stage_config_name.capitalize(), closed=True)
+            if request.endpoint == 'recruitment.dashboard':
+                is_app_locked, is_app_closed, app_opens_at, app_stage_config_name = get_stage_time_gating_status(
+                    "applied", candidate_email, candidate_id
+                )
+                if is_app_locked or is_app_closed:
+                    if is_app_locked:
+                        opens_str = app_opens_at.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %I:%M %p WAT")
+                        return render_template("stage_locked.html", stage_label=app_stage_config_name.capitalize(), opens_at=opens_str, closed=False)
+                    else:
+                        return render_template("stage_locked.html", stage_label="Recruitment", closed=True)
+            else:
+                is_locked, is_closed, opens_at, stage_config_name = get_stage_time_gating_status(
+                    current_stage, candidate_email, candidate_id
+                )
+                if is_locked or is_closed:
+                    if is_locked:
+                        opens_str = opens_at.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %I:%M %p WAT")
+                        return render_template("stage_locked.html", stage_label=stage_config_name.capitalize(), opens_at=opens_str, closed=False)
+                    else:
+                        return render_template("stage_locked.html", stage_label=stage_config_name.capitalize(), closed=True)
 
             return f(*args, **kwargs)
         return decorated
@@ -433,10 +467,9 @@ def verify_otp():
 
 
 @recruitment.route("/start-quiz/<int:quiz_id>", methods=["GET"])
+@require_stage("screening_passed", "screening_flagged", "assessment_in_progress")
 def start_quiz(quiz_id):
-    candidate_id = session.get("candidate_id")
-    if not candidate_id:
-        return redirect(url_for("recruitment.login"))
+    candidate_id = g.candidate_id
         
     with DBConnection() as conn:
         with conn.cursor() as cur:
@@ -539,7 +572,15 @@ def dashboard():
     # Stage-aware redirection fallback
     target_route = STAGE_ROUTES.get(stage, "recruitment.dashboard")
     if target_route != "recruitment.dashboard":
-        return redirect(url_for(target_route))
+        with DBConnection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT email FROM candidates WHERE id = %s;", (candidate_id,))
+                row = cur.fetchone()
+                candidate_email = row[0] if row else None
+        
+        is_locked, is_closed, _, _ = get_stage_time_gating_status(stage, candidate_email, candidate_id)
+        if not (is_locked or is_closed):
+            return redirect(url_for(target_route))
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
@@ -1078,7 +1119,7 @@ def assessment_start():
             settings_row = cur.fetchone()
             seconds_per_q = settings_row[0] if settings_row else 60
 
-            cur.execute("SELECT stage FROM candidates WHERE id = %s FOR UPDATE;",
+            cur.execute("SELECT stage, email FROM candidates WHERE id = %s FOR UPDATE;",
                         (candidate_id,))
             row = cur.fetchone()
 
@@ -1086,8 +1127,14 @@ def assessment_start():
                 return jsonify({"error": "Candidate not found."}), 404
 
             stage = row[0]
+            email = row[1]
             if stage not in ("screening_passed", "screening_flagged", "assessment_in_progress"):
                 return jsonify({"error": f"Cannot start assessment in stage '{stage}'."}), 403
+
+            is_locked, is_closed, _, _ = get_stage_time_gating_status(stage, email, candidate_id)
+            if is_locked or is_closed:
+                return jsonify({"error": "The assessment stage is currently locked or closed."}), 403
+
 
             # Check if already in progress with an unexpired attempt
             cur.execute("""
@@ -1523,10 +1570,17 @@ def book_slot(slot_id):
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT stage, role, interview_round FROM candidates WHERE id = %s;", (candidate_id,))
+            cur.execute("SELECT stage, email, role, interview_round FROM candidates WHERE id = %s;", (candidate_id,))
             row = cur.fetchone()
-            if not row or row[0] not in ("interview_slot_pending", "assessment_passed"):
+            if not row:
+                return jsonify({"error": "Candidate not found."}), 404
+            stage, email, role, interview_round = row
+            if stage not in ("interview_slot_pending", "assessment_passed"):
                 return jsonify({"error": "Cannot book a slot at your current stage."}), 403
+
+            is_locked, is_closed, _, _ = get_stage_time_gating_status(stage, email, candidate_id)
+            if is_locked or is_closed:
+                return jsonify({"error": "The interview scheduling stage is currently locked or closed."}), 403
 
             # Atomic slot claim with row lock
             cur.execute("""
@@ -1638,12 +1692,20 @@ def upload_document():
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT stage, role FROM candidates WHERE id = %s;", (candidate_id,))
+            cur.execute("SELECT stage, email, role FROM candidates WHERE id = %s;", (candidate_id,))
             row = cur.fetchone()
 
-    if not row or row[0] not in ("documents_pending", "documents_submitted"):
+    if not row:
+        return jsonify({"error": "Candidate not found."}), 404
+    stage, email, role = row
+    if stage not in ("documents_pending", "documents_submitted"):
         return jsonify({"error": "Document uploads are not open at your current stage."}), 403
-    allowed_docs = [d["document_type"] for d in get_role_document_requirements(row[1])]
+
+    is_locked, is_closed, _, _ = get_stage_time_gating_status(stage, email, candidate_id)
+    if is_locked or is_closed:
+        return jsonify({"error": "The document upload stage is currently locked or closed."}), 403
+
+    allowed_docs = [d["document_type"] for d in get_role_document_requirements(role)]
 
     doc_type  = request.form.get("doc_type", "").strip()
     doc_file  = request.files.get("file")

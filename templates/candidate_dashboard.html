@@ -128,18 +128,18 @@
   <div class="pipeline">
     {% for s_key, s_label in pipeline_stages %}
       {% set s_idx = loop.index0 %}
-      {% if s_idx <= current_order %}
-        {% if s_idx < current_order %}
-          <div class="pip-step done">
-        {% else %}
-          <div class="pip-step current">
-        {% endif %}
+      {% if s_idx < current_order %}
+        <div class="pip-step done">
+      {% elif s_idx == current_order %}
+        <div class="pip-step current">
+      {% else %}
+        <div class="pip-step">
+      {% endif %}
           <div class="pip-dot">
             {% if s_idx < current_order %}✓{% else %}{{ loop.index }}{% endif %}
           </div>
           <div class="pip-label">{{ s_label }}</div>
         </div>
-      {% endif %}
     {% endfor %}
   </div>
 

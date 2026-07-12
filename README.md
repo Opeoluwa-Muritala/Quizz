@@ -1,5 +1,75 @@
 # Mainstreet MFB Quiz and Recruitment App
 
+## Operational guide
+
+This application runs the Mainstreet MFB Executive Trainee recruitment process and the related aptitude-test portal. It has two user groups: candidates and recruitment administrators.
+
+### Candidate actions
+
+1. **Apply** at `/apply` with full name, email, phone number, house address, date of birth, NYSC status, preferred role, closest location, and CV/resume.
+2. **CV handling:** the application is saved first. The browser then uploads the CV directly to Cloudinary from the candidate dashboard, avoiding large file transfers through Vercel. PDFs must be at most 3 MB; images up to 5 MB are compressed toward a 3 MB final limit.
+3. **Eligibility:** applicants under 18 are rejected at submission. The dashboard then runs screening using the administrator’s configured age range and accepted NYSC statuses. A candidate may be passed, flagged for review, or failed.
+4. **Sign in** using email OTP at `/login`; verified candidates return to the dashboard for their current recruitment stage.
+5. **Assessment:** eligible candidates start a timed, server-scored quiz. The app records answers, elapsed time, tab switches, section scores, and pass/fail result.
+6. **Interview:** candidates who pass can view available slots, book one slot, receive a meeting link, and join the interview from the portal.
+7. **Documents:** when requested, candidates upload required employment documents, monitor their upload state, and submit the completed document set for review.
+8. **Resume safely:** candidate email links include a reference token so a candidate can return to the correct dashboard state.
+
+### Administrator actions
+
+- Sign in to the admin area with the configured admin credential.
+- Open or close the recruitment portal and configure aptitude-test settings, pass mark, timer, and identity-verification requirement.
+- Configure **pre-assessment fields**. These fields are used before an assessment; they do not control the fixed recruitment application form.
+- Create, edit, reorder, import, activate, and assign assessment questions and quizzes.
+- Manage whitelists, cohorts, and candidate-to-quiz assignments.
+- Search candidates, open their records, preview CVs/documents, export data, and review stage history.
+- Move one or many candidates between stages, with optional notification emails.
+- Configure screening rules, stage opening/closing windows, deadlines, age range, accepted NYSC statuses, assessment duration, and pass mark.
+- Manage interviewers, availability rules, schedules, generated slots, blocked slots, panel members, and slot exports.
+- Review upload/document status, verify or reject documents, and configure required document types.
+- Review email delivery logs and resend a notification when needed.
+
+### Recruitment lifecycle
+
+`Applied → Screening passed/flagged/failed → Assessment → Interview slot pending → Interview scheduled → Documents pending/submitted → Offered or rejected`
+
+Administrators can override a stage when operationally necessary. Each change is recorded in candidate stage history.
+
+### Email delivery
+
+Gmail SMTP is the primary sender. If it is unavailable, the app sends the same payload to `EMAIL_BASE_URL`, the HTTP EmailJS microservice. Email delivery is intentionally non-blocking for candidate application and stage-update responses.
+
+### Required environment variables
+
+```env
+NEON_DATABASE_URL=postgresql://...
+FLASK_SECRET_KEY=replace-with-a-long-random-value
+ADMIN_TOKEN=replace-with-a-strong-admin-secret
+APP_BASE_URL=https://your-live-site
+
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+
+GMAIL_USER=...
+GMAIL_APP_PASSWORD=...
+EMAIL_BASE_URL=https://your-email-service/
+
+JOB_SECRET=replace-with-a-strong-secret
+DATABASE_POOL_MODE=persistent
+DATABASE_POOL_MIN=1
+DATABASE_POOL_MAX=2
+```
+
+Never commit actual secrets to source control. Configure them in the host’s environment-variable dashboard.
+
+### Vercel deployment notes
+
+- Deploy the Flask `app` as the Vercel function.
+- Set every required environment variable in Vercel, then redeploy.
+- Candidate CVs upload browser-to-Cloudinary after the dashboard opens; the Vercel function only persists the application and creates a signed upload job.
+- Scheduled operational jobs are exposed through protected endpoints and can be invoked by Vercel Cron or another scheduler using `JOB_SECRET`.
+
 Mainstreet MFB Quiz and Recruitment App is a Flask web application for running candidate aptitude tests and managing an end-to-end recruitment pipeline. It supports public candidate applications, automated eligibility screening, timed assessments, interview slot booking, document uploads, Gmail email notifications, and admin controls for hiring teams.
 
 The app is designed around two connected products:
