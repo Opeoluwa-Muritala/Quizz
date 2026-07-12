@@ -1641,7 +1641,7 @@ def book_slot(slot_id):
                 FROM generated_slots gs
                 JOIN interviewers i ON gs.interviewer_id = i.id
                 LEFT JOIN availability_rules ar ON gs.availability_rule_id = ar.id
-                JOIN interview_schedules s ON s.id=gs.schedule_id AND s.published=TRUE
+                LEFT JOIN interview_schedules s ON s.id = gs.schedule_id
                 WHERE gs.id = %s
                 FOR UPDATE OF gs;
             """, (slot_id,))
@@ -1661,7 +1661,10 @@ def book_slot(slot_id):
             if (slot_row[1] - now_utc).total_seconds() < lead_hours * 3600:
                 return jsonify({"error": "This slot is within the booking lead-time window."}), 409
 
-            if row[1] != slot_row[12] or row[2] != slot_row[13]:
+            # Manually created slots have no schedule and are therefore open
+            # to eligible candidates. Scheduled slots retain role/round rules.
+            if (slot_row[12] is not None and
+                    (row[1] != slot_row[12] or row[2] != slot_row[13])):
                 return jsonify({"error": "This slot does not match your role and interview round."}), 403
             if slot_row[14]:
                 cur.execute("""SELECT COUNT(*) FROM generated_slots WHERE schedule_id=(SELECT schedule_id FROM generated_slots WHERE id=%s)
