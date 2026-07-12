@@ -15,7 +15,7 @@ import json
 from flask import Blueprint, request, jsonify, session, Response, redirect
 
 from db import DBConnection
-from services.notifications import send_notification, resend_notification
+from services.notifications import send_notification_async, resend_notification
 
 logger = logging.getLogger(__name__)
 from jobs.slot_generator import generate_slots
@@ -304,7 +304,7 @@ def set_candidate_stage(cand_id):
     if notify and new_stage in STAGE_EMAIL_EVENT:
         event = STAGE_EMAIL_EVENT[new_stage]
         try:
-            send_notification(cand_id, new_stage, event)
+            send_notification_async(cand_id, new_stage, event)
         except Exception as e:
             print(f"Error sending notification to {cand_id}: {e}")
 
@@ -357,7 +357,7 @@ def bulk_candidate_updates():
                 if stage in STAGE_EMAIL_EVENT: notifications.append((candidate_id, stage, STAGE_EMAIL_EVENT[stage]))
         conn.commit()
     for candidate_id, stage, event in notifications:
-        try: send_notification(candidate_id, stage, event)
+        try: send_notification_async(candidate_id, stage, event)
         except Exception: logger.exception("Bulk notification failed for candidate_id=%s", candidate_id)
     return jsonify({"status": "success", "results": results,
                     "updated": sum(r["status"] == "updated" for r in results)})
@@ -1245,10 +1245,10 @@ def update_slot(slot_id):
     if is_booked and time_changing and confirm_reschedule and candidate_id:
         try:
             from zoneinfo import ZoneInfo
+            from services.notifications import send_notification_async
             wat_tz = ZoneInfo("Africa/Lagos")
             wat_time = new_start.astimezone(wat_tz).strftime("%A %d %B %Y at %H:%M WAT")
-            from services.notifications import send_notification
-            send_notification(candidate_id, "interview", "interview_rescheduled", {
+            send_notification_async(candidate_id, "interview", "interview_rescheduled", {
                 "interview_time": wat_time,
                 "meeting_link": meeting_link or ""
             })

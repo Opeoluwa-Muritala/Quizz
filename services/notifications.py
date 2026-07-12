@@ -6,9 +6,11 @@ Sends via Gmail SMTP using an App Password.
 """
 import os
 import smtplib
+import threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
+import requests
 from db import DBConnection
 
 load_dotenv()
@@ -17,6 +19,8 @@ GMAIL_USER     = os.environ.get("GMAIL_USER", "").strip()
 GMAIL_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "").strip()
 FROM_EMAIL     = f"Mainstreet MFB HR <{GMAIL_USER}>"
 APP_BASE_URL   = os.environ.get("APP_BASE_URL", "https://quizz-xi-two.vercel.app")
+# Optional HTTP email service used when Gmail SMTP is blocked or unavailable.
+EMAIL_BASE_URL = os.environ.get("EMAIL_BASE_URL", "").strip().rstrip("/")
 
 
 # ── Email template builder ────────────────────────────────────────────────────
@@ -193,7 +197,7 @@ def send_notification(candidate_id: int, stage: str, event_type: str,
     name, email, ref_token = row
     subject, html = _build_email(name, event_type, extra_data, ref_token)
 
-    status = "sent"
+    status = "failed"
     error_message = None
 
     if GMAIL_USER and GMAIL_PASSWORD:
@@ -207,12 +211,33 @@ def send_notification(candidate_id: int, stage: str, event_type: str,
             with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as smtp:
                 smtp.login(GMAIL_USER, GMAIL_PASSWORD)
                 smtp.sendmail(GMAIL_USER, email, msg.as_string())
+            status = "sent"
         except Exception as exc:
             status = "failed"
             error_message = str(exc)[:500]
-    else:
+    if status != "sent" and EMAIL_BASE_URL:
+        try:
+            # Matches the EmailJS FastAPI service contract: POST / with this payload.
+            response = requests.post(
+                EMAIL_BASE_URL,
+                json={
+                    "to": email,
+                    "subject": subject,
+                    "text": "Please view this message in an HTML-capable email client.",
+                    "html": html,
+                },
+                timeout=(3.05, 12),
+            )
+            response.raise_for_status()
+            status = "sent"
+            error_message = None
+        except requests.RequestException as exc:
+            status = "failed"
+            fallback_error = f"Email API fallback failed: {exc}"
+            error_message = f"{error_message}; {fallback_error}" if error_message else fallback_error
+    elif status != "sent" and not EMAIL_BASE_URL and not (GMAIL_USER and GMAIL_PASSWORD):
         status = "skipped"
-        error_message = "GMAIL_USER or GMAIL_APP_PASSWORD is not configured."
+        error_message = "GMAIL_USER/GMAIL_APP_PASSWORD and EMAIL_BASE_URL are not configured."
         print(f"[EMAIL] {event_type} → {email} | {subject}")
 
     with DBConnection() as conn:
@@ -227,6 +252,19 @@ def send_notification(candidate_id: int, stage: str, event_type: str,
         conn.commit()
 
     return status == "sent", log_id
+
+
+def send_notification_async(candidate_id: int, stage: str, event_type: str,
+                            extra_data: dict = None) -> None:
+    """Queue a best-effort notification without delaying the HTTP request."""
+    def _send():
+        try:
+            send_notification(candidate_id, stage, event_type, extra_data)
+        except Exception:
+            # A delivery failure must never break an application or stage update.
+            print(f"[EMAIL ERROR] Background notification failed for candidate {candidate_id}")
+
+    threading.Thread(target=_send, name="email-notification", daemon=True).start()
 
 
 def resend_notification(log_id: int) -> tuple[bool, int | None]:
