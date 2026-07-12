@@ -86,15 +86,24 @@
         </div>
         {% endif %}
       </div>
+      <div class="form-group">
+        <label for="houseAddress">House address <span class="req">*</span></label>
+        <input class="form-control" id="houseAddress" type="text" autocomplete="street-address" placeholder="Enter your residential address" data-required="true">
+        <div class="field-error" id="houseAddressError">House address is required.</div>
+      </div>
       <div class="form-row">
-        {% if not fields_config or fields_config.get('dob', {}).get('enabled', True) %}
-        {% set dob_req = not fields_config or fields_config.get('dob', {}).get('required', True) %}
         <div class="form-group">
-          <label for="dob">Date of birth {% if dob_req %}<span class="req">*</span>{% endif %}</label>
-          <input class="form-control" id="dob" type="date" data-required="{% if dob_req %}true{% else %}false{% endif %}">
+          <label for="dob">Date of birth <span class="req">*</span></label>
+          <input class="form-control" id="dob" type="date" data-required="true">
           <div class="field-error" id="dobError">Date of birth is required.</div>
         </div>
-        {% endif %}
+        <div class="form-group">
+          <label for="ageBracket">Do you fall within the age bracket of 22–32 before year end? <span class="req">*</span></label>
+          <select class="form-control" id="ageBracket" data-required="true">
+            <option value="">Select</option><option value="yes">Yes</option><option value="no">No</option>
+          </select>
+          <div class="field-error" id="ageBracketError">Please select an answer.</div>
+        </div>
         <div class="form-group">
           <label for="nyscStatus">NYSC status <span class="req">*</span></label>
           <select class="form-control" id="nyscStatus" data-required="true">
@@ -119,12 +128,12 @@
           <label for="role">Role applied for {% if dept_req %}<span class="req">*</span>{% endif %}</label>
           <select class="form-control" id="role" data-required="{% if dept_req %}true{% else %}false{% endif %}">
             <option value="">Select</option>
-            <option>Loan Officer</option>
-            <option>Operations</option>
-            <option>IT&amp;S</option>
-            <option>Audit</option>
+            <option>Loan Officer (SME)</option>
+            <option>Operation</option>
+            <option>Information Technology and Systems (IT&amp;S)</option>
             <option>Credit Risk</option>
-            <option>HR</option>
+            <option>Audit</option>
+            <option>Human Resource</option>
             <option>Recovery</option>
           </select>
           <div class="field-error" id="roleError">Role applied for is required.</div>
@@ -136,15 +145,15 @@
           <label for="location">Location preference {% if loc_req %}<span class="req">*</span>{% endif %}</label>
           <select class="form-control" id="location" data-required="{% if loc_req %}true{% else %}false{% endif %}">
             <option value="">Select</option>
-            <option>Ikeja</option>
-            <option>Victoria Island</option>
-            <option>Lekki</option>
-            <option>Surulere</option>
+            <option>Mushin</option>
             <option>Yaba</option>
-            <option>Apapa</option>
+            <option>Victoria Island</option>
             <option>Ikorodu</option>
-            <option>Oshodi</option>
-            <option>Festac</option>
+            <option>Ikotun</option>
+            <option>Epe</option>
+            <option>Ajah</option>
+            <option>Alaba</option>
+            <option>Martins Street (Lagos Island)</option>
           </select>
           <div class="field-error" id="locationError">Location preference is required.</div>
         </div>
@@ -157,7 +166,7 @@
       <h3>CV</h3>
       <div class="form-group">
         <label for="cvFile">Upload CV or resume <span class="req">*</span></label>
-        <p style="font-size:13px;color:var(--mfb-gray-600);margin:0 0 10px">PDF, JPG, or PNG, max 10 MB.</p>
+        <p style="font-size:13px;color:var(--mfb-gray-600);margin:0 0 10px">PDF, JPG, or PNG. Images up to 5 MB are compressed; final upload limit is 3 MB.</p>
         <div class="cv-drop" id="cvDrop">
           <input type="file" id="cvFile" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onchange="handleCvSelect(this)">
           <div class="icon"><i class="ti ti-file-upload"></i></div>
@@ -211,7 +220,7 @@ document.querySelectorAll('[data-required="true"]').forEach(el => {
 });
 
 function validateForm() {
-  const fieldsOk = ['fullName', 'email', 'phone', 'dob', 'nyscStatus'].every(validateField);
+  const fieldsOk = ['fullName', 'email', 'phone', 'houseAddress', 'dob', 'ageBracket', 'nyscStatus', 'role', 'location'].every(validateField);
   const cvOk = Boolean(cvFileData);
   setFieldError('cv', !cvOk);
   return fieldsOk && cvOk;
@@ -295,7 +304,9 @@ async function submitApplication() {
   formData.append('full_name', document.getElementById('fullName').value.trim());
   formData.append('email', document.getElementById('email').value.trim().toLowerCase());
   formData.append('phone_number', document.getElementById('phone').value.trim());
+  formData.append('house_address', document.getElementById('houseAddress').value.trim());
   formData.append('dob', document.getElementById('dob').value);
+  formData.append('age_bracket', document.getElementById('ageBracket').value);
   formData.append('nysc_status', document.getElementById('nyscStatus').value);
   formData.append('role', document.getElementById('role').value);
   formData.append('location', document.getElementById('location').value);

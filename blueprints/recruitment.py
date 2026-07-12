@@ -827,6 +827,8 @@ def api_apply():
     full_name    = data.get("full_name", "").strip()
     email        = data.get("email", "").strip().lower()
     phone_number = data.get("phone_number", "").strip()
+    house_address = data.get("house_address", "").strip()
+    age_bracket = data.get("age_bracket", "").strip().lower()
     dob_str      = data.get("dob", "").strip()
     nysc_status  = data.get("nysc_status", "").strip()
     role         = data.get("role", "").strip()
@@ -839,8 +841,8 @@ def api_apply():
         "email": {"enabled": True, "required": True},
         "phone_number": {"enabled": True, "required": True},
         "dob": {"enabled": True, "required": True},
-        "location": {"enabled": True, "required": False},
-        "department": {"enabled": True, "required": False},
+        "location": {"enabled": True, "required": True},
+        "department": {"enabled": True, "required": True},
     }
 
     with DBConnection() as conn:
@@ -863,6 +865,10 @@ def api_apply():
     # Core required fields validation
     if not full_name or not email:
         return jsonify({"error": "Full name and email are required."}), 400
+    if not house_address:
+        return jsonify({"error": "House address is required."}), 400
+    if age_bracket not in {"yes", "no"}:
+        return jsonify({"error": "Please confirm the age-bracket question."}), 400
 
     # Dynamic validations
     if fields_config["phone_number"]["enabled"]:
@@ -880,14 +886,16 @@ def api_apply():
                 dob = datetime.date.fromisoformat(dob_str)
             except ValueError:
                 return jsonify({"error": "Invalid date of birth format. Use YYYY-MM-DD."}), 400
+            today = datetime.date.today()
+            age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+            if age < 18:
+                return jsonify({"error": "Applicants must be at least 18 years old."}), 400
     else:
         dob_str = None
 
-    if not nysc_status:
-        return jsonify({"error": "NYSC status is required."}), 400
     valid_nysc = ["exempted", "completed", "serving", "not_started"]
     if nysc_status not in valid_nysc:
-        return jsonify({"error": f"NYSC status must be one of: {', '.join(valid_nysc)}"}), 400
+        return jsonify({"error": "Please select your NYSC status."}), 400
 
     if fields_config["department"]["enabled"]:
         if fields_config["department"]["required"] and not role:
@@ -930,11 +938,14 @@ def api_apply():
                 candidate_id = existing[0]
                 cur.execute("""
                     UPDATE candidates
-                    SET full_name = %s, phone_number = %s, dob = %s,
+                    SET full_name = %s, phone_number = %s,
+                        pre_test_responses = COALESCE(pre_test_responses, '{}'::jsonb) || %s::jsonb,
+                        dob = %s,
                         nysc_status = %s, role = %s, location = %s,
                         stage = 'applied', stage_updated_at = NOW()
                     WHERE id = %s;
-                """, (full_name, phone_number, dob, nysc_status, role, location, candidate_id))
+                """, (full_name, phone_number, json.dumps({"house_address": house_address, "age_bracket_confirmed": age_bracket == "yes"}), dob,
+                      nysc_status, role, location, candidate_id))
             else:
                 import secrets
                 ref_token = secrets.token_hex(6)
@@ -946,11 +957,13 @@ def api_apply():
 
                 cur.execute("""
                     INSERT INTO candidates
-                        (full_name, email, phone_number, dob, nysc_status,
-                         role, location, stage, stage_updated_at, ref_token, cohort_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'applied', NOW(), %s, %s)
+                        (full_name, email, phone_number, pre_test_responses,
+                         dob, nysc_status, role, location, stage, stage_updated_at, ref_token, cohort_id)
+                    VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, 'applied', NOW(), %s, %s)
                     RETURNING id;
-                """, (full_name, email, phone_number, dob, nysc_status, role, location, ref_token, cohort_id))
+                """, (full_name, email, phone_number,
+                      json.dumps({"house_address": house_address, "age_bracket_confirmed": age_bracket == "yes"}),
+                      dob, nysc_status, role, location, ref_token, cohort_id))
                 candidate_id = cur.fetchone()[0]
         conn.commit()
 
