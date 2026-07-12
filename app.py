@@ -1484,9 +1484,24 @@ def admin_results():
     per_page = 25
     offset = (page - 1) * per_page
     
+    assessment_score_sql = """
+        COALESCE((
+            SELECT AVG(score) FROM (
+                SELECT er.score_percent::NUMERIC AS score
+                FROM exam_results er
+                WHERE er.candidate_id = C.id AND er.pass_fail IN ('PASS', 'FAIL')
+                UNION ALL
+                SELECT s.score::NUMERIC AS score
+                FROM scores s
+                WHERE s.candidate_id = C.id AND s.pass_fail IN ('PASS', 'FAIL')
+            ) completed_attempts
+        ), -1)
+    """
     allowed_cols = {
         'name': 'C.full_name',
         'email': 'C.email',
+        'score': 'assessment_score',
+        'submitted_at': 'C.created_at',
         'created_at': 'C.created_at'
     }
     col_sql = allowed_cols.get(sort_column, 'C.created_at')
@@ -1535,7 +1550,8 @@ def admin_results():
             
             # Fetch candidates paginated
             query = f"""
-                SELECT C.id, C.full_name, C.email, C.phone_number, C.role, C.location, C.created_at, C.stage
+                SELECT C.id, C.full_name, C.email, C.phone_number, C.role, C.location, C.created_at, C.stage,
+                       {assessment_score_sql} AS assessment_score
                 FROM candidates C
                 ORDER BY {col_sql} {sort_order}
                 LIMIT %s OFFSET %s;
@@ -1565,7 +1581,7 @@ def admin_results():
             results = []
             
             for r in cand_rows:
-                cand_id, name, email, phone, role, location, created_at, stage = r
+                cand_id, name, email, phone, role, location, created_at, stage, assessment_score = r
                 legacy_rows = legacy_by_cand.get(cand_id, [])
                 pipeline_rows = pipeline_by_cand.get(cand_id, [])
                 
