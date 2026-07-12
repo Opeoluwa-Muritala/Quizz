@@ -483,6 +483,108 @@ function csrfMeta() {
   return document.querySelector('meta[name="csrf-token"]')?.content || '';
 }
 
+function pendingUploadStore() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('mainstreet-recruitment', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('pending-cv');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function compressPendingImage(file) {
+  if (!file.type.startsWith('image/') || !window.createImageBitmap) return file;
+  const image = await createImageBitmap(file);
+  const targetBytes = 3 * 1024 * 1024;
+  if (file.size <= targetBytes) return file;
+
+  let smallest = file;
+  for (const [scaleFactor, quality] of [[1, .82], [.85, .74], [.7, .68], [.55, .6]]) {
+    const scale = Math.min(scaleFactor, 2200 / Math.max(image.width, image.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (blob && blob.size < smallest.size) {
+      smallest = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+    }
+    if (smallest.size <= targetBytes) return smallest;
+  }
+  return smallest;
+}
+
+async function resumePendingCvUploads() {
+  let db;
+  try {
+    db = await pendingUploadStore();
+    const entries = await new Promise((resolve, reject) => {
+      const request = db.transaction('pending-cv', 'readonly').objectStore('pending-cv').getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+
+    for (const entry of entries) {
+      const { file, config } = entry;
+      const uploadFile = await compressPendingImage(file);
+      if (uploadFile.size > 3 * 1024 * 1024) {
+        throw new Error('CV remains above the 3 MB upload limit after compression');
+      }
+      const form = new FormData();
+      form.append('file', uploadFile);
+      form.append('api_key', config.api_key);
+      form.append('timestamp', String(config.timestamp));
+      form.append('signature', config.signature);
+      form.append('folder', config.folder);
+      form.append('public_id', config.public_id);
+      form.append('type', config.type);
+
+      const cloudinaryResponse = await fetch(
+        `https://api.cloudinary.com/v1_1/${config.cloud_name}/auto/upload`,
+        { method: 'POST', body: form }
+      );
+      if (!cloudinaryResponse.ok) throw new Error('Cloudinary upload failed');
+      const result = await cloudinaryResponse.json();
+
+      const complete = await fetch(`/api/uploads/${config.job_id}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfMeta() },
+        body: JSON.stringify({ secure_url: result.secure_url, public_id: result.public_id }),
+      });
+      if (!complete.ok) throw new Error('Upload completion could not be saved');
+
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction('pending-cv', 'readwrite');
+        transaction.objectStore('pending-cv').delete(config.job_id);
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+      });
+    }
+  } catch (error) {
+    console.warn('CV upload remains queued and will retry when the dashboard is reopened.', error);
+  } finally {
+    db?.close();
+  }
+}
+
+resumePendingCvUploads();
+
+async function finishApplicationScreening() {
+  try {
+    const response = await fetch('/api/application/screen', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfMeta() },
+    });
+    const result = await response.json();
+    if (response.ok && result.stage && result.stage !== 'applied') location.reload();
+  } catch (error) {
+    console.warn('Application screening will retry when the dashboard is reopened.', error);
+  }
+}
+{% if stage == 'applied' %}
+finishApplicationScreening();
+{% endif %}
+
 function formatWAT(utcIso) {
   if (!utcIso) return '—';
   const d = new Date(utcIso);
