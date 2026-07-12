@@ -3,6 +3,7 @@ Candidate-facing recruitment pipeline routes.
 All stage-sensitive routes use the @require_stage decorator.
 """
 import json
+import os
 import random
 import datetime
 import threading
@@ -71,6 +72,38 @@ def get_or_create_cloudinary_folder(candidate_id: int) -> str:
                 conn.commit()
                 return new_folder
     return f"candidates/{candidate_id}"
+
+
+def _create_direct_cv_upload(candidate_id: int) -> dict:
+    """Create a browser-to-Cloudinary CV upload job for serverless deployments."""
+    folder = get_or_create_cloudinary_folder(candidate_id)
+    job_id = secrets.token_urlsafe(24)
+    timestamp = int(time.time())
+    params = {
+        "timestamp": timestamp,
+        "folder": folder,
+        "public_id": "cv",
+        "type": "authenticated",
+    }
+    api_secret = os.environ.get("CLOUDINARY_API_SECRET", "")
+    signature = cloudinary.utils.api_sign_request(params, api_secret)
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO upload_jobs
+                    (id, candidate_id, target_field, status, created_at, updated_at)
+                VALUES (%s, %s, 'cv_url', 'pending', NOW(), NOW());
+            """, (job_id, candidate_id))
+        conn.commit()
+
+    return {
+        "job_id": job_id,
+        "cloud_name": os.environ.get("CLOUDINARY_CLOUD_NAME", ""),
+        "api_key": os.environ.get("CLOUDINARY_API_KEY", ""),
+        **params,
+        "signature": signature,
+    }
 
 @recruitment.before_request
 def handle_ref_token():
@@ -798,6 +831,7 @@ def api_apply():
     nysc_status  = data.get("nysc_status", "").strip()
     role         = data.get("role", "").strip()
     location     = data.get("location", "").strip()
+    direct_cv_upload = data.get("direct_cv_upload", "").lower() == "true"
 
     # Fetch settings from DB to enforce dynamic validation
     DEFAULT_FIELDS = {
@@ -873,8 +907,11 @@ def api_apply():
     if cv_file:
         cv_file_bytes = cv_file.read()
         cv_mimetype   = cv_file.mimetype
-        cv_file_bytes, cv_mimetype, err = prepare_upload_file(
-            cv_file_bytes, cv_mimetype, ALLOWED_CV_MIMETYPES, cv_file.filename)
+        # Do only a fast signature check here. Compression and the 3 MB final
+        # size check run in the background upload worker.
+        err = validate_file(
+            cv_file_bytes, cv_mimetype, ALLOWED_CV_MIMETYPES, cv_file.filename,
+            enforce_size=False)
         if err:
             return jsonify({"error": err}), 400
 
@@ -920,9 +957,13 @@ def api_apply():
     session["candidate_id"] = candidate_id
     session["candidate_email"] = email
 
-    # Fire CV upload synchronously if file was provided
+    # On Vercel, the browser uploads the CV directly to Cloudinary after the
+    # dashboard loads. Keep multipart handling as a fallback for non-JS clients.
     upload_job_id = None
-    if cv_file_bytes:
+    direct_upload = _create_direct_cv_upload(candidate_id) if direct_cv_upload else None
+    if direct_upload:
+        upload_job_id = direct_upload["job_id"]
+    elif cv_file_bytes:
         folder = get_or_create_cloudinary_folder(candidate_id)
         upload_job_id = enqueue_upload(
             cv_file_bytes, folder, "cv",
@@ -931,23 +972,11 @@ def api_apply():
             target_field="cv_url",
         )
 
-    # Run eligibility screening synchronously for serverless environment
-    new_stage = apply_screening(candidate_id)
-    event_map = {
-        "screening_passed":  "screening_passed",
-        "screening_flagged": "screening_flagged",
-        "screening_failed":  "screening_failed",
-    }
-    try:
-        send_notification_async(candidate_id, new_stage, "application_submitted")
-        send_notification_async(candidate_id, new_stage, event_map.get(new_stage, "application_submitted"))
-    except Exception as e:
-        print(f"Error sending notifications during apply: {e}")
-
     return jsonify({
         "status": "success",
         "candidate_id": candidate_id,
         "upload_job_id": upload_job_id,
+        "direct_upload": direct_upload,
         "message": "Application received. Eligibility screening in progress.",
     })
 
@@ -970,6 +999,61 @@ def upload_status(job_id):
             if not cur.fetchone():
                 return jsonify({"error": "Job not found."}), 404
     return jsonify(result)
+
+
+@recruitment.route("/api/application/screen", methods=["POST"])
+def screen_application_after_dashboard_load():
+    """Run screening after the dashboard response, not on the apply critical path."""
+    candidate_id = session.get("candidate_id")
+    if not candidate_id:
+        return jsonify({"error": "Not authenticated."}), 401
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT stage FROM candidates WHERE id = %s;", (candidate_id,))
+            row = cur.fetchone()
+    if not row:
+        return jsonify({"error": "Application not found."}), 404
+    if row[0] != "applied":
+        return jsonify({"stage": row[0], "already_screened": True})
+
+    new_stage = apply_screening(candidate_id)
+    event_map = {
+        "screening_passed": "screening_passed",
+        "screening_flagged": "screening_flagged",
+        "screening_failed": "screening_failed",
+    }
+    send_notification_async(candidate_id, new_stage, "application_submitted")
+    send_notification_async(candidate_id, new_stage, event_map[new_stage])
+    return jsonify({"stage": new_stage})
+
+
+@recruitment.route("/api/uploads/<job_id>/complete", methods=["POST"])
+def complete_direct_cv_upload(job_id):
+    """Record the result of a signed browser-to-Cloudinary CV upload."""
+    candidate_id = session.get("candidate_id")
+    if not candidate_id:
+        return jsonify({"error": "Not authenticated."}), 401
+
+    data = request.json or {}
+    secure_url = (data.get("secure_url") or "").strip()
+    public_id = (data.get("public_id") or "").strip()
+    if not secure_url.startswith("https://") or not public_id:
+        return jsonify({"error": "Invalid upload result."}), 400
+
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE upload_jobs
+                SET status = 'done', url = %s, public_id = %s, error = NULL, updated_at = NOW()
+                WHERE id = %s AND candidate_id = %s AND target_field = 'cv_url'
+                RETURNING id;
+            """, (secure_url, public_id, job_id, candidate_id))
+            if not cur.fetchone():
+                return jsonify({"error": "Upload job not found."}), 404
+            cur.execute("UPDATE candidates SET cv_url = %s WHERE id = %s;", (secure_url, candidate_id))
+        conn.commit()
+    return jsonify({"status": "success"})
 
 
 @recruitment.route("/api/candidate/cv/preview")

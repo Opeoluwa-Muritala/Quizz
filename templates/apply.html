@@ -220,6 +220,16 @@ function validateForm() {
 function handleCvSelect(input) {
   const file = input.files[0];
   if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    showError('CV files must be 5 MB or smaller before compression.');
+    input.value = '';
+    return;
+  }
+  if (file.type === 'application/pdf' && file.size > 3 * 1024 * 1024) {
+    showError('PDF CVs must be 3 MB or smaller.');
+    input.value = '';
+    return;
+  }
   cvFileData = file;
   document.getElementById('cvName').textContent = file.name;
   document.getElementById('cvName').style.display = 'block';
@@ -250,6 +260,26 @@ drop.addEventListener('drop', e => {
   }
 });
 
+function uploadStore() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('mainstreet-recruitment', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('pending-cv');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function savePendingCvUpload(file, config) {
+  const db = await uploadStore();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction('pending-cv', 'readwrite');
+    transaction.objectStore('pending-cv').put({ file, config }, config.job_id);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+  db.close();
+}
+
 async function submitApplication() {
   clearError();
   if (!validateForm()) {
@@ -269,7 +299,9 @@ async function submitApplication() {
   formData.append('nysc_status', document.getElementById('nyscStatus').value);
   formData.append('role', document.getElementById('role').value);
   formData.append('location', document.getElementById('location').value);
-  formData.append('cv_file', cvFileData);
+  // The CV is stored locally and uploaded directly to Cloudinary after the
+  // dashboard loads, avoiding a large file transfer through the Vercel function.
+  formData.append('direct_cv_upload', cvFileData ? 'true' : 'false');
 
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
@@ -292,6 +324,14 @@ async function submitApplication() {
       return;
     }
 
+    if (data.direct_upload && cvFileData) {
+      try {
+        await savePendingCvUpload(cvFileData, data.direct_upload);
+      } catch (storageError) {
+        showError('Your application was saved, but this browser could not queue the CV upload. Please contact support.');
+        return;
+      }
+    }
     window.location.href = '/dashboard';
   } catch (e) {
     showError('Network error. Please check your connection and try again.');
