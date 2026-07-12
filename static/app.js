@@ -977,6 +977,7 @@ function initAdminOperations() {
 
     // Tabs Manager
     const tabs = document.querySelectorAll(".tab-btn");
+    const adminTabContent = document.querySelector(".admin-tab-content");
     tabs.forEach(tab => {
         tab.addEventListener("click", () => {
             tabs.forEach(t => t.classList.remove("active"));
@@ -985,6 +986,7 @@ function initAdminOperations() {
             document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
             const panelId = `tab-${tab.dataset.tab}`;
             document.getElementById(panelId).classList.add("active");
+            adminTabContent?.classList.toggle("candidates-scroll-active", tab.dataset.tab === "candidates");
 
             // Reset fullscreen/collapsed calendar modes when switching tabs
             const dashboardContainer = document.querySelector('.admin-dashboard-container');
