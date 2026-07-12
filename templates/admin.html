@@ -337,6 +337,27 @@ input:checked + .switch-slider:before {
     color: var(--mfb-gray-600) !important;
     margin: 0 0 16px !important;
 }
+
+/* Candidates & Results: compact operational view */
+#tab-candidates .candidates-results-layout { gap: 16px; }
+#tab-candidates .summary-stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+#tab-candidates .stat-mini-card { padding: 13px 15px; box-shadow: none; }
+#tab-candidates .stat-mini-label { font-size: 11px; letter-spacing: .02em; }
+#tab-candidates .stat-mini-value { font-size: 21px; margin-top: 2px; }
+#tab-candidates .results-toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+#tab-candidates .results-toolbar h2 { margin:0; font-size:1.05rem; }
+#tab-candidates .results-toolbar p { margin:3px 0 0; color:var(--mfb-gray-600); font-size:.82rem; }
+#tab-candidates .results-toolbar-actions { display:flex; gap:8px; flex-wrap:wrap; }
+#tab-candidates .results-toolbar .btn { padding:7px 10px; font-size:.78rem; }
+#tab-candidates .data-table { font-size:12px; }
+#tab-candidates .data-table th, #tab-candidates .data-table td { padding:10px 12px; }
+#tab-candidates .candidate-cell-name { font-weight:700; color:var(--mfb-ink); }
+#tab-candidates .candidate-cell-meta { margin-top:2px; font-size:11px; color:var(--mfb-gray-600); }
+#tab-candidates .score-stack { display:flex; gap:4px; flex-wrap:wrap; }
+@media(max-width:720px) {
+    #tab-candidates .summary-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #tab-candidates .results-toolbar { align-items:flex-start; flex-direction:column; }
+}
 </style>
 {% endblock %}
 
@@ -693,7 +714,7 @@ input:checked + .switch-slider:before {
             <div class="candidates-results-layout">
 
                 <!-- Summary Statistics -->
-                <div class="summary-stats-grid">
+                <div class="summary-stats-grid" aria-label="Results summary">
                     <div class="card stat-mini-card">
                         <span class="stat-mini-label">Total Candidates</span>
                         <span id="results-stat-total" class="stat-mini-value font-mono">0</span>
@@ -710,18 +731,16 @@ input:checked + .switch-slider:before {
                         <span class="stat-mini-label">Average Score</span>
                         <span id="results-stat-avg" class="stat-mini-value font-mono">0.00%</span>
                     </div>
-                    <div class="card stat-mini-card">
-                        <span class="stat-mini-label">Average Time</span>
-                        <span id="results-stat-time" class="stat-mini-value font-mono">0s</span>
-                    </div>
                 </div>
 
-                <!-- Action Row -->
-                <div class="actions-header-row" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px;">
-                    <h3>Candidate Result Log</h3>
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <button type="button" id="btn-clear-results" class="btn btn-ghost" style="border-color: var(--color-danger); color: var(--color-danger); padding: 8px 16px;">Clear Results & Reset Portal</button>
-                        <a href="/api/admin/export-csv" id="btn-export-csv" class="btn btn-ghost download-btn">Download CSV</a>
+                <div class="results-toolbar">
+                    <div>
+                        <h2>Candidate results</h2>
+                        <p>Assessment attempts and verification records.</p>
+                    </div>
+                    <div class="results-toolbar-actions">
+                        <a href="/api/admin/export-csv" id="btn-export-csv" class="btn btn-ghost">Export CSV</a>
+                        <button type="button" id="btn-clear-results" class="btn btn-ghost" style="border-color: var(--color-danger); color: var(--color-danger);">Reset results</button>
                     </div>
                 </div>
 
@@ -730,16 +749,10 @@ input:checked + .switch-slider:before {
                     <table class="data-table" id="results-table">
                         <thead>
                             <tr>
-                                <th class="sortable" data-sort="name">Candidate Name <span class="sort-icon"></span></th>
-                                <th class="sortable" data-sort="email">Email <span class="sort-icon"></span></th>
-                                <th>Phone Number</th>
-                                <th>Role</th>
-                                <th>Location</th>
-                                <th class="sortable" data-sort="score">Score (%) <span class="sort-icon"></span></th>
-                                <th>Pass/Fail</th>
-                                <th class="sortable" data-sort="time">Time Taken <span class="sort-icon"></span></th>
-                                <th class="sortable" data-sort="switches">Tab Switches <span class="sort-icon"></span></th>
-                                <th class="sortable active" data-sort="submitted_at">Submitted At <span class="sort-icon desc"></span></th>
+                                <th class="sortable" data-sort="name">Candidate <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort="score">Assessment <span class="sort-icon"></span></th>
+                                <th>Stage</th>
+                                <th class="sortable active" data-sort="submitted_at">Submitted <span class="sort-icon desc"></span></th>
                                 <th>Verification</th>
                             </tr>
                         </thead>
