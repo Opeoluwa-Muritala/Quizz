@@ -3,13 +3,15 @@
 {% block title %}Recruitment Admin - Mainstreet Recruitment Portal{% endblock %}
 {% block extra_head %}
 <style>
-  .rec-wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 80px; }
-  .rec-tabs { display: flex; gap: 4px; margin-bottom: 24px; flex-wrap: wrap; }
-  .rec-tab { padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: 0.88rem;
+  .rec-wrap { max-width: none; width: 100%; margin: 0; padding: 24px 32px 80px; box-sizing: border-box;
+              display:grid; grid-template-columns:210px minmax(0,1fr); gap:24px; align-items:start; }
+  .rec-wrap > div:first-child { grid-column:1 / -1; }
+  .rec-tabs { display: flex; flex-direction:column; gap:4px; margin:0; }
+  .rec-tab { padding:10px 14px; border-radius:8px; cursor:pointer; font-size:0.88rem; text-align:left;
              font-weight: 600; border: 1.5px solid #e5e5ef; background: #fff;
              color: #555; transition: all .15s; }
   .rec-tab.active { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
-  .rec-panel { display: none; }
+  .rec-panel { display: none; grid-column:2; grid-row:2; min-width:0; }
   .rec-panel.active { display: block; }
   table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
   th { background: #f5f5f9; padding: 10px 12px; text-align: left; color: #555;
@@ -66,7 +68,7 @@
   .inline-edit { display: flex; gap: 6px; align-items: center; }
   .inline-edit input { flex: 1; border: 1px solid #d0d0df; border-radius: 6px;
                         padding: 5px 10px; font-size: 0.88rem; font-family: inherit; }
-  .rec-wrap { max-width:1280px; }
+  .rec-wrap { max-width:none; }
   .rec-tab.active { background:var(--mfb-purple); border-color:var(--mfb-purple); }
   .rec-tab:hover { border-color:var(--mfb-purple); color:var(--mfb-purple); }
   th { background:#FBFAFC; color:var(--mfb-gray-600); }
@@ -80,7 +82,7 @@
   .pill-pass { background:var(--mfb-success-tint); color:var(--mfb-success); }
   .pill-fail { background:var(--mfb-error-tint); color:var(--mfb-error); }
   .pill-pending, .pill-active { background:var(--mfb-warning-tint); color:var(--mfb-warning); }
-  @media(max-width:640px){ .form-row { grid-template-columns: 1fr; } }
+  @media(max-width:760px){ .rec-wrap { display:block; padding:20px 16px 64px; } .rec-tabs { flex-direction:row; flex-wrap:wrap; margin-bottom:16px; } .rec-tab { text-align:center; } .form-row { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 

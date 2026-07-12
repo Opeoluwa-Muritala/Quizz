@@ -23,6 +23,42 @@
 .rec-subpanel { display: none; }
 .rec-subpanel.active { display: block; }
 
+/* Recruitment pipeline: use its existing sub-navigation as a sidebar rail. */
+#tab-recruitment.active {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+#tab-recruitment.active .rec-sub-nav {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--mfb-gray-300);
+  border-radius: 8px;
+  background: var(--mfb-white);
+}
+#tab-recruitment.active .rec-subtab {
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  text-align: left;
+  border: 0;
+  border-radius: 6px;
+}
+#tab-recruitment.active .rec-subtab.active { background: var(--mfb-purple-tint); }
+#tab-recruitment.active .rec-subpanel.active { grid-column: 2; grid-row: 1; min-width: 0; }
+
+@media (max-width: 860px) {
+  #tab-recruitment.active { display: block; }
+  #tab-recruitment.active .rec-sub-nav { flex-direction: row; overflow-x: auto; margin-bottom: 16px; border: 0; padding: 0; background: transparent; }
+  #tab-recruitment.active .rec-subtab { width: auto; white-space: nowrap; }
+}
+
 /* ── Stage pills ─────────────────────────────────────── */
 .rec-pill {
   display: inline-block;
