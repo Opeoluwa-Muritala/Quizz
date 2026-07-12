@@ -481,7 +481,7 @@
     if (data?.status === 'success') {
       msg.textContent = '✓ Stage updated.'; msg.style.color = '#276749';
       loadRecCandidates(recCandPage);
-      setTimeout(() => openRecCandModal(candId), 400);
+      closeRecCandModal();
     } else {
       msg.textContent = data?.error || 'Error updating stage.'; msg.style.color = '#c53030';
     }
@@ -508,10 +508,8 @@
       const result = await resp.json();
       msg.style.color = '#2f855a';
       msg.textContent = result.message || 'Assigned successfully!';
-      setTimeout(() => {
-        openRecCandModal(candId);
-        loadRecCandidates(recCandPage);
-      }, 1000);
+      closeRecCandModal();
+      loadRecCandidates(recCandPage);
     } else {
       const err = await resp.json();
       msg.style.color = '#c53030';
@@ -728,10 +726,11 @@
   };
 
   window.openManualSlotModal = function (date = '', startMinutes = 540, endMinutes = 570) {
-    const toLocal = (day, minutes) => {
+    const selectedDay = date || getLocalDateString(window.calendarState.currentDate);
+    const toTime = (minutes) => {
       const hours = String(Math.floor(minutes / 60)).padStart(2, '0');
       const mins = String(Math.round(minutes % 60)).padStart(2, '0');
-      return `${day || getLocalDateString(window.calendarState.currentDate)}T${hours}:${mins}`;
+      return `${hours}:${mins}`;
     };
     let modal = document.getElementById('manualSlotModal');
     if (!modal) {
@@ -750,18 +749,22 @@
         <p style="color:#666;font-size:.9rem">Choose one primary interviewer, or select several people for a panel interview.</p>
         <div class="form-group"><label>Title (optional)</label><input class="rec-ctrl" id="manualSlotTitle" placeholder="Interview"></div>
         <div class="rec-row">
-          <div class="form-group"><label>Start</label><input class="rec-ctrl" id="manualSlotStart" type="datetime-local" value="${toLocal(date, startMinutes)}"></div>
-          <div class="form-group"><label>End</label><input class="rec-ctrl" id="manualSlotEnd" type="datetime-local" value="${toLocal(date, Math.max(endMinutes, startMinutes + 15))}"></div>
+          <div class="form-group"><label>Start Day</label><input class="rec-ctrl" id="manualSlotStartDay" type="date" value="${selectedDay}"></div>
+          <div class="form-group"><label>End Day</label><input class="rec-ctrl" id="manualSlotEndDay" type="date" value="${selectedDay}"></div>
+        </div>
+        <div class="rec-row">
+          <div class="form-group"><label>Daily Start Time</label><input class="rec-ctrl" id="manualSlotStartTime" type="time" value="${toTime(startMinutes)}"></div>
+          <div class="form-group"><label>Daily End Time</label><input class="rec-ctrl" id="manualSlotEndTime" type="time" value="${toTime(Math.max(endMinutes, startMinutes + 15))}"></div>
         </div>
         
         <div class="form-group" style="margin-top:8px">
           <label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer">
-            <input type="checkbox" id="manualSlotSplit" onchange="toggleManualSlotSplitFields()">
-            Split range into multiple slots automatically
+            <input type="checkbox" id="manualSlotSplit" checked onchange="toggleManualSlotSplitFields()">
+            Create slots across this date range
           </label>
         </div>
         
-        <div id="manualSlotSplitFields" class="rec-row" style="display:none;margin-top:10px;gap:16px">
+        <div id="manualSlotSplitFields" class="rec-row" style="margin-top:10px;gap:16px">
           <div class="form-group" style="flex:1">
             <label>Meeting Length (minutes)</label>
             <input class="rec-ctrl" id="manualSlotMeetingLength" type="number" min="1" max="300" value="30">
@@ -772,12 +775,7 @@
           </div>
         </div>
         
-        <div class="form-group" id="manualSlotRangeEndWrap" style="display:none;margin-top:10px;">
-          <label>Repeat daily until date (optional date range end)</label>
-          <input class="rec-ctrl" id="manualSlotRangeEnd" type="date" style="width:100%">
-        </div>
-
-        <div id="manualSlotWeekdaysWrap" style="display:none;margin-top:10px;">
+        <div id="manualSlotWeekdaysWrap" style="margin-top:10px;">
           <label style="display:block;margin-bottom:6px;font-weight:600;font-size:0.85rem;">Active Weekdays</label>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <label style="display:flex;align-items:center;gap:4px;background:#f5f5f9;padding:4px 10px;border-radius:6px;font-size:0.85rem;cursor:pointer;font-weight:600;"><input type="checkbox" class="manual-day-chk" value="1" checked> M</label>
@@ -804,7 +802,6 @@
   window.toggleManualSlotSplitFields = function () {
     const checked = document.getElementById('manualSlotSplit').checked;
     document.getElementById('manualSlotSplitFields').style.display = checked ? 'flex' : 'none';
-    document.getElementById('manualSlotRangeEndWrap').style.display = checked ? 'block' : 'none';
     document.getElementById('manualSlotWeekdaysWrap').style.display = checked ? 'block' : 'none';
   };
 
@@ -818,16 +815,28 @@
     if (!interviewerIds.length) { message.textContent = 'Select at least one interviewer.'; return; }
     
     const activeDays = Array.from(document.querySelectorAll('.manual-day-chk:checked')).map(c => Number(c.value));
+    const startDay = document.getElementById('manualSlotStartDay').value;
+    const endDay = document.getElementById('manualSlotEndDay').value;
+    const startTime = document.getElementById('manualSlotStartTime').value;
+    const endTime = document.getElementById('manualSlotEndTime').value;
+    if (!startDay || !endDay || !startTime || !endTime) {
+      message.textContent = 'Choose a start day, end day, and daily time range.';
+      return;
+    }
+    if (endDay < startDay) {
+      message.textContent = 'End day must be on or after the start day.';
+      return;
+    }
     
     const payload = {
       title: document.getElementById('manualSlotTitle').value,
-      start_time: document.getElementById('manualSlotStart').value,
-      end_time: document.getElementById('manualSlotEnd').value,
+      start_time: `${startDay}T${startTime}`,
+      end_time: `${startDay}T${endTime}`,
       interviewer_ids: interviewerIds,
       split_automatically: document.getElementById('manualSlotSplit').checked,
       meeting_length: Number(document.getElementById('manualSlotMeetingLength').value),
       gap_length: Number(document.getElementById('manualSlotGapLength').value),
-      range_end_date: document.getElementById('manualSlotRangeEnd').value || null,
+      range_end_date: endDay,
       active_days: activeDays
     };
 
