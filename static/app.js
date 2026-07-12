@@ -995,10 +995,12 @@ function initAdminOperations() {
                     dashboardContainer.classList.remove('fullscreen-slots');
                     dashboardContainer.classList.remove('sidebar-collapsed');
                 } else {
+                    dashboardContainer.classList.add('sidebar-collapsed');
                     const activeSub = document.querySelector('.rec-subtab.active');
                     if (activeSub && activeSub.dataset.rec === 'slots') {
                         dashboardContainer.classList.add('fullscreen-slots');
-                        dashboardContainer.classList.add('sidebar-collapsed');
+                    } else {
+                        dashboardContainer.classList.remove('fullscreen-slots');
                     }
                 }
             }

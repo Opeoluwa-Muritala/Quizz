@@ -175,11 +175,10 @@
     if (dashboardContainer) {
       if (name === 'slots') {
         dashboardContainer.classList.add('fullscreen-slots');
-        dashboardContainer.classList.add('sidebar-collapsed');
       } else {
         dashboardContainer.classList.remove('fullscreen-slots');
-        dashboardContainer.classList.remove('sidebar-collapsed');
       }
+      dashboardContainer.classList.add('sidebar-collapsed');
     }
 
     if (name === 'candidates')  loadRecCandidates(1);
