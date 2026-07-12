@@ -283,23 +283,12 @@
             <h4 style="margin:0 0 12px;font-size:0.85rem;color:var(--mfb-gray-600);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #eee;padding-bottom:4px;">4. Duration & Spacing</h4>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
               <div class="form-group">
-                <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Slot Duration</label>
-                <select class="form-control" id="sch-duration" onchange="updateLivePreview()" style="width:100%;">
-                  <option value="15">15 minutes</option>
-                  <option value="30" selected>30 minutes</option>
-                  <option value="45">45 minutes</option>
-                  <option value="60">60 minutes</option>
-                </select>
+                <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Slot Duration (mins)</label>
+                <input class="form-control" type="number" id="sch-duration" min="1" max="300" value="30" oninput="updateLivePreview()" style="width:100%;">
               </div>
               <div class="form-group">
-                <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Buffer Space</label>
-                <select class="form-control" id="sch-buffer" onchange="updateLivePreview()" style="width:100%;">
-                  <option value="0">None</option>
-                  <option value="5">5 minutes</option>
-                  <option value="10" selected>10 minutes</option>
-                  <option value="15">15 minutes</option>
-                  <option value="30">30 minutes</option>
-                </select>
+                <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Buffer Space (mins)</label>
+                <input class="form-control" type="number" id="sch-buffer" min="0" max="180" value="10" oninput="updateLivePreview()" style="width:100%;">
               </div>
               <div class="form-group">
                 <label style="font-weight:600;font-size:0.85rem;margin-bottom:4px;display:block;">Min Notice</label>
@@ -468,6 +457,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='admin_recruitment.js', v='20260712-1') }}"></script>
 <script>
 const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
