@@ -2008,12 +2008,23 @@ def assign_or_reset_quiz(cand_id):
                 crow = cur.fetchone()
                 effective_cohort = crow[0] if crow else None
 
+            if q_cohort_id != effective_cohort:
+                return jsonify({"error": "This quiz is not assigned to the candidate's cohort."}), 400
+
+            # Persist the fallback cohort used for this assignment. Without
+            # this, the candidate dashboard cannot discover its cohort quizzes.
+            if cohort_id != effective_cohort:
+                cur.execute("UPDATE candidates SET cohort_id = %s WHERE id = %s;",
+                            (effective_cohort, cand_id))
+
             # Reset logic: delete previous exam_results and scores attempts
             cur.execute("DELETE FROM exam_results WHERE candidate_id = %s AND quiz_id = %s;", (cand_id, quiz_id))
             cur.execute("DELETE FROM scores WHERE candidate_id = %s AND quiz_id = %s;", (cand_id, quiz_id))
 
-            # Update candidate stage to screening_passed so they can view and take it on their dashboard
-            if stage not in ("screening_passed", "screening_flagged", "assessment_in_progress"):
+            # Assignment (and reassignment) returns the candidate to the
+            # dashboard-ready state. They enter assessment_in_progress only
+            # after selecting Start Test themselves.
+            if stage != "screening_passed":
                 cur.execute("""
                     UPDATE candidates
                     SET stage = 'screening_passed', stage_updated_at = NOW()
