@@ -248,27 +248,6 @@ def get_stage_time_gating_status(stage, candidate_email, candidate_id):
     if t_closes and now > t_closes:
         is_closed = True
 
-    if is_locked or is_closed:
-        # Bypass time gating if:
-        # 1. Candidate is a test/preview candidate (email match)
-        # 2. Stage transition was manually overridden by an admin
-        bypass = False
-        if candidate_email and ("test" in candidate_email.lower() or "preview" in candidate_email.lower()):
-            bypass = True
-        else:
-            with DBConnection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        SELECT changed_by FROM candidate_stage_history
-                        WHERE candidate_id = %s AND to_stage = %s
-                        ORDER BY changed_at DESC LIMIT 1;
-                    """, (candidate_id, stage))
-                    history_row = cur.fetchone()
-                    if history_row and history_row[0] == 'admin':
-                        bypass = True
-        if bypass:
-            return False, False, None, stage_config_name
-
     return is_locked, is_closed, opens_at, stage_config_name
 
 
@@ -1595,10 +1574,16 @@ def get_slots():
                 FROM generated_slots gs
                 JOIN interviewers i ON gs.interviewer_id = i.id
                 LEFT JOIN availability_rules ar ON gs.availability_rule_id = ar.id
-                JOIN interview_schedules s ON s.id=gs.schedule_id AND s.published=TRUE
-                JOIN candidates c ON c.id=%s AND c.role=s.role AND c.interview_round=s.interview_round
+                LEFT JOIN interview_schedules s ON s.id = gs.schedule_id
+                JOIN candidates c ON c.id = %s
                 WHERE gs.is_blocked = FALSE
                   AND gs.is_booked = FALSE
+                  AND (
+                    gs.schedule_id IS NULL
+                    OR (s.published = TRUE
+                        AND c.role = s.role
+                        AND c.interview_round = s.interview_round)
+                  )
                   AND EXTRACT(YEAR  FROM gs.start_time AT TIME ZONE 'Africa/Lagos') = %s
                   AND EXTRACT(MONTH FROM gs.start_time AT TIME ZONE 'Africa/Lagos') = %s
                 ORDER BY gs.start_time;
