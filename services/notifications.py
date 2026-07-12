@@ -181,6 +181,45 @@ def _build_email(name: str, event_type: str, data: dict, ref_token: str = None) 
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def _deliver_email(recipient: str, subject: str, html: str) -> tuple[str, str | None]:
+    """Send with Gmail first, then the HTTP email service as a production fallback."""
+    smtp_error = None
+    if GMAIL_USER and GMAIL_PASSWORD:
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = FROM_EMAIL
+            msg["To"] = recipient
+            msg.attach(MIMEText(html, "html"))
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as smtp:
+                smtp.login(GMAIL_USER, GMAIL_PASSWORD)
+                smtp.sendmail(GMAIL_USER, recipient, msg.as_string())
+            return "sent", None
+        except Exception as exc:
+            smtp_error = str(exc)[:500]
+
+    if EMAIL_BASE_URL:
+        try:
+            response = requests.post(
+                EMAIL_BASE_URL,
+                json={
+                    "to": recipient,
+                    "subject": subject,
+                    "text": "Please view this message in an HTML-capable email client.",
+                    "html": html,
+                },
+                timeout=(3.05, 12),
+            )
+            response.raise_for_status()
+            return "sent", None
+        except requests.RequestException as exc:
+            api_error = f"Email API fallback failed: {exc}"
+            return "failed", f"{smtp_error}; {api_error}" if smtp_error else api_error
+
+    if smtp_error:
+        return "failed", smtp_error
+    return "skipped", "GMAIL_USER/GMAIL_APP_PASSWORD and EMAIL_BASE_URL are not configured."
+
 def send_notification(candidate_id: int, stage: str, event_type: str,
                       extra_data: dict = None) -> tuple[bool, int | None]:
     """Send an email for a stage transition and log the attempt."""
@@ -197,48 +236,7 @@ def send_notification(candidate_id: int, stage: str, event_type: str,
     name, email, ref_token = row
     subject, html = _build_email(name, event_type, extra_data, ref_token)
 
-    status = "failed"
-    error_message = None
-
-    if GMAIL_USER and GMAIL_PASSWORD:
-        try:
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = subject
-            msg["From"]    = FROM_EMAIL
-            msg["To"]      = email
-            msg.attach(MIMEText(html, "html"))
-
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as smtp:
-                smtp.login(GMAIL_USER, GMAIL_PASSWORD)
-                smtp.sendmail(GMAIL_USER, email, msg.as_string())
-            status = "sent"
-        except Exception as exc:
-            status = "failed"
-            error_message = str(exc)[:500]
-    if status != "sent" and EMAIL_BASE_URL:
-        try:
-            # Matches the EmailJS FastAPI service contract: POST / with this payload.
-            response = requests.post(
-                EMAIL_BASE_URL,
-                json={
-                    "to": email,
-                    "subject": subject,
-                    "text": "Please view this message in an HTML-capable email client.",
-                    "html": html,
-                },
-                timeout=(3.05, 12),
-            )
-            response.raise_for_status()
-            status = "sent"
-            error_message = None
-        except requests.RequestException as exc:
-            status = "failed"
-            fallback_error = f"Email API fallback failed: {exc}"
-            error_message = f"{error_message}; {fallback_error}" if error_message else fallback_error
-    elif status != "sent" and not EMAIL_BASE_URL and not (GMAIL_USER and GMAIL_PASSWORD):
-        status = "skipped"
-        error_message = "GMAIL_USER/GMAIL_APP_PASSWORD and EMAIL_BASE_URL are not configured."
-        print(f"[EMAIL] {event_type} → {email} | {subject}")
+    status, error_message = _deliver_email(email, subject, html)
 
     with DBConnection() as conn:
         with conn.cursor() as cur:
@@ -315,27 +313,8 @@ def send_otp_email(email: str, otp: str) -> bool:
     </body></html>
     """
     subject = "Your Verification Code - Mainstreet Recruitment Portal"
-    status = "sent"
-
-    if GMAIL_USER and GMAIL_PASSWORD:
-        try:
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = subject
-            msg["From"]    = FROM_EMAIL
-            msg["To"]      = email
-            msg.attach(MIMEText(html, "html"))
-
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as smtp:
-                smtp.login(GMAIL_USER, GMAIL_PASSWORD)
-                smtp.sendmail(GMAIL_USER, email, msg.as_string())
-        except Exception as exc:
-            status = "failed"
-            print(f"[EMAIL ERROR] Failed to send OTP to {email}: {exc}")
-    else:
-        status = "skipped"
-        print(f"\n==================================================")
-        print(f"[OTP EMAIL] To: {email}")
-        print(f"[OTP EMAIL] Code: {otp}")
-        print(f"==================================================\n")
+    status, error_message = _deliver_email(email, subject, html)
+    if status != "sent":
+        print(f"[EMAIL ERROR] Failed to send OTP to {email}: {error_message}")
 
     return status == "sent"
