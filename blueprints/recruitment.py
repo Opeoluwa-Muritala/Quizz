@@ -306,7 +306,11 @@ def require_stage(*allowed_stages):
                 return _stage_redirect(current_stage)
 
             # Stage time-gating validation
-            if request.endpoint != 'recruitment.dashboard':
+            # Starting a quiz validates the assessment and quiz windows in the
+            # route itself. Do not apply the candidate's current application
+            # window here, since applications may be closed while assessments
+            # remain available to existing candidates.
+            if request.endpoint not in ('recruitment.dashboard', 'recruitment.start_quiz'):
                 is_locked, is_closed, opens_at, stage_config_name = get_stage_time_gating_status(
                     current_stage, candidate_email, candidate_id
                 )
@@ -466,7 +470,7 @@ def verify_otp():
 
 
 @recruitment.route("/start-quiz/<int:quiz_id>", methods=["GET"])
-@require_stage("screening_passed", "screening_flagged", "assessment_in_progress")
+@require_stage("applied", "screening_passed", "screening_flagged", "assessment_in_progress")
 def start_quiz(quiz_id):
     candidate_id = g.candidate_id
         
@@ -474,7 +478,8 @@ def start_quiz(quiz_id):
         with conn.cursor() as cur:
             # Check if quiz exists and is active
             cur.execute("""
-                SELECT c.cohort_id, c.stage, q.active, q.opens_at, q.closes_at
+                SELECT c.cohort_id, c.stage, c.email, q.active, q.opens_at, q.closes_at,
+                       q.cohort_id
                 FROM candidates c
                 JOIN quizzes q ON q.id = %s
                 WHERE c.id = %s;
@@ -483,9 +488,28 @@ def start_quiz(quiz_id):
             if not row:
                 return "Quiz or Candidate not found", 404
                 
-            cohort_id, stage, quiz_active, opens_at, closes_at = row
+            cohort_id, stage, email, quiz_active, opens_at, closes_at, quiz_cohort_id = row
             if not quiz_active:
                 return "This quiz is not active", 400
+
+            effective_cohort = cohort_id
+            if not effective_cohort:
+                cur.execute("SELECT id FROM cohorts WHERE name = 'Cohort 1';")
+                default_cohort = cur.fetchone()
+                effective_cohort = default_cohort[0] if default_cohort else None
+            if not effective_cohort or quiz_cohort_id != effective_cohort:
+                return "This assessment is not assigned to your cohort", 403
+
+            # An open assessment is available to existing applicants even
+            # after the application window closes.
+            is_locked, is_closed, opens_at_stage, stage_config_name = get_stage_time_gating_status(
+                "screening_passed", email, candidate_id
+            )
+            if is_locked or is_closed:
+                if is_locked:
+                    opens_str = opens_at_stage.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %I:%M %p WAT")
+                    return render_template("stage_locked.html", stage_label=stage_config_name.capitalize(), opens_at=opens_str, closed=False)
+                return render_template("stage_locked.html", stage_label=stage_config_name.capitalize(), closed=True)
                 
             # Check availability windows
             now = datetime.datetime.now(datetime.timezone.utc)
@@ -509,8 +533,9 @@ def start_quiz(quiz_id):
             # Set active_quiz_id in session
             session['active_quiz_id'] = quiz_id
             
-            # If stage is screening_passed, update stage to assessment_in_progress
-            if stage in ("screening_passed", "screening_flagged"):
+            # Starting the quiz is the moment the candidate enters the
+            # assessment stage; admins do not need to set it manually.
+            if stage in ("applied", "screening_passed", "screening_flagged"):
                 cur.execute("UPDATE candidates SET stage = 'assessment_in_progress', stage_updated_at = NOW() WHERE id = %s;", (candidate_id,))
                 cur.execute("""
                     INSERT INTO candidate_stage_history (candidate_id, from_stage, to_stage, changed_by, reason)
@@ -681,10 +706,15 @@ def dashboard():
                     "closes_at": closes_str
                 }
 
-            # Fetch candidate's cohort tests
+            # Fetch candidate's cohort tests. Cohort 1 remains the default for
+            # legacy records that have not yet been assigned a cohort id.
             cur.execute("SELECT cohort_id FROM candidates WHERE id = %s;", (candidate_id,))
             cohort_row = cur.fetchone()
             cohort_id = cohort_row[0] if cohort_row else None
+            if not cohort_id:
+                cur.execute("SELECT id FROM cohorts WHERE name = 'Cohort 1';")
+                default_cohort = cur.fetchone()
+                cohort_id = default_cohort[0] if default_cohort else None
             
             cohort_tests = []
             if cohort_id:
@@ -707,6 +737,15 @@ def dashboard():
                     WHERE candidate_id = %s AND pass_fail IS NOT NULL;
                 """, (candidate_id,))
                 pipeline_dict = {row[0]: row[1:] for row in cur.fetchall()}
+
+                cur.execute("""
+                    SELECT DISTINCT quiz_id
+                    FROM scores
+                    WHERE candidate_id = %s
+                      AND quiz_id IS NOT NULL
+                      AND pass_fail IS NULL;
+                """, (candidate_id,))
+                in_progress_quiz_ids = {row[0] for row in cur.fetchall()}
                 
                 for qr in quizzes_rows:
                     qid, title, duration, pm, opens, closes, num = qr
@@ -716,7 +755,7 @@ def dashboard():
                         if score_row:
                             result_row = (float(score_row[0]) if score_row[0] is not None else 0.0, score_row[1], score_row[2])
                     
-                    in_progress = (session.get('active_quiz_id') == qid)
+                    in_progress = qid in in_progress_quiz_ids
                     
                     now_utc = datetime.datetime.now(datetime.timezone.utc)
                     is_available = True
