@@ -17,7 +17,9 @@ def init_recruitment_db():
                     ADD COLUMN IF NOT EXISTS stage_updated_at TIMESTAMPTZ DEFAULT NOW(),
                     ADD COLUMN IF NOT EXISTS eligibility_flag BOOLEAN DEFAULT FALSE,
                     ADD COLUMN IF NOT EXISTS eligibility_flag_reason TEXT,
-                    ADD COLUMN IF NOT EXISTS ref_token TEXT;
+                    ADD COLUMN IF NOT EXISTS ref_token TEXT,
+                    ADD COLUMN IF NOT EXISTS house_address TEXT,
+                    ADD COLUMN IF NOT EXISTS age_bracket_confirmed BOOLEAN;
             """)
             cur.execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS interview_round TEXT;")
             cur.execute("SELECT id FROM candidates WHERE ref_token IS NULL;")
