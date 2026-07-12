@@ -17,7 +17,7 @@ from flask import (Blueprint, request, jsonify, render_template,
                    session, redirect, url_for, g, Response)
 
 from db import DBConnection
-from services.notifications import send_notification, send_otp_email
+from services.notifications import send_notification_async, send_otp_email
 import secrets
 from werkzeug.security import generate_password_hash, check_password_hash
 from services.upload import (validate_file, prepare_upload_file, enqueue_upload, get_job_status,
@@ -939,8 +939,8 @@ def api_apply():
         "screening_failed":  "screening_failed",
     }
     try:
-        send_notification(candidate_id, new_stage, "application_submitted")
-        send_notification(candidate_id, new_stage, event_map.get(new_stage, "application_submitted"))
+        send_notification_async(candidate_id, new_stage, "application_submitted")
+        send_notification_async(candidate_id, new_stage, event_map.get(new_stage, "application_submitted"))
     except Exception as e:
         print(f"Error sending notifications during apply: {e}")
 
@@ -1396,7 +1396,7 @@ def assessment_submit():
 
     event = "assessment_passed" if pf == "PASS" else "assessment_failed"
     try:
-        send_notification(candidate_id, final_stage, event)
+        send_notification_async(candidate_id, final_stage, event)
     except Exception as e:
         print(f"Error sending assessment notification: {e}")
 
@@ -1561,7 +1561,7 @@ def book_slot(slot_id):
 
     interview_time = slot_row[1].astimezone(LOCAL_TZ).strftime("%A %d %B %Y at %H:%M WAT")
     try:
-        send_notification(candidate_id, "interview_scheduled", "interview_booked",
+        send_notification_async(candidate_id, "interview_scheduled", "interview_booked",
                           {"interview_time": interview_time, "meeting_link": meeting_link})
     except Exception as e:
         print(f"Error sending booking notification: {e}")
