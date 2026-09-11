@@ -2,7 +2,7 @@
 
 {% block title %}Recruitment Admin - {{ brand.portal_title }}{% endblock %}
 {% block extra_head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/admin_recruitment.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/admin_recruitment.css', v='aptus-v9') }}">
 {% endblock %}
 
 {% block content %}
@@ -74,15 +74,14 @@
   <div class="rec-panel" id="panel-slots">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
-        <h3 style="margin:0;font-size:1.1rem;font-family:var(--font-heading)">Interview Slots Calendar</h3>
-        <button class="btn btn-primary" onclick="triggerGenerate()">Generate slots (4 weeks ahead)</button>
+        <h2 style="margin:0;font-size:20px;font-family:var(--font-heading);color:var(--color-primary)">Interview calendar</h2>
       </div>
       <div id="slotsTableWrap">Loading calendar...</div>
     </div>
     <!-- ── Schedules List & Builder (Calendly / Google Calendar Style) ── -->
     <div class="card" id="schedules-list-card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-        <h3 style="margin:0;font-size:1.1rem;font-family:var(--font-heading)">Interview Schedules</h3>
+        <h2 style="margin:0;font-size:20px;font-family:var(--font-heading);color:var(--color-primary)">Interview schedules</h2>
         <button class="btn btn-primary" onclick="showScheduleBuilder()">Create schedule</button>
       </div>
       <div id="schedules-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(320px,1fr));gap:20px;">
@@ -91,9 +90,9 @@
     </div>
 
     <div class="card hidden" id="schedule-builder-card" style="padding: 24px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;border-bottom:1px solid var(--mfb-gray-300);padding-bottom:14px;">
-        <h3 style="margin:0;font-size:1.2rem;font-family:var(--font-heading)" id="builder-title-label">New Interview Schedule</h3>
-        <button class="btn btn-ghost" onclick="hideScheduleBuilder()" style="padding:6px 12px;border:1px solid var(--mfb-gray-300);background:none;">Cancel</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;border-bottom:1px solid #D8D8D4;padding-bottom:14px;">
+        <h2 style="margin:0;font-size:20px;font-family:var(--font-heading);color:var(--color-primary)" id="builder-title-label">New interview schedule</h2>
+        <button class="btn btn-secondary" onclick="hideScheduleBuilder()">Cancel</button>
       </div>
 
       <!-- Two column layout -->
@@ -264,9 +263,9 @@
           </div>
 
           <!-- 3. Publish action -->
-          <div style="border-top:1px solid var(--mfb-gray-300);padding-top:20px;display:flex;gap:12px;margin-top:12px;">
-            <button class="btn btn-primary" id="sch-publish-btn" onclick="publishSchedule()" style="padding:12px 28px;">Publish schedule</button>
-            <button class="btn btn-ghost" onclick="hideScheduleBuilder()" style="padding:12px 24px;border:1px solid var(--mfb-gray-300);background:none;">Cancel</button>
+          <div style="border-top:1px solid #D8D8D4;padding-top:20px;display:flex;gap:12px;margin-top:12px;">
+            <button class="btn btn-primary" id="sch-publish-btn" onclick="publishSchedule()">Publish schedule</button>
+            <button class="btn btn-secondary" onclick="hideScheduleBuilder()">Cancel</button>
           </div>
           <div id="sch-update-booked-note" class="hidden" style="font-size:0.82rem;color:#855d14;background:#fefcbf;border:1px solid #faf089;border-radius:6px;padding:10px 12px;margin-top:8px;"></div>
         </div>
@@ -290,24 +289,18 @@
   <!-- Stage Config tab -->
   <div class="rec-panel" id="panel-config">
     <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:16px;">
         <div>
-          <h3 style="margin:0 0 3px">Pipeline Configuration</h3>
-          <div class="stage-legend" style="display:flex;gap:16px;margin:6px 0 0;font-family:var(--font-body);font-size:0.82rem;color:var(--mfb-gray-600)">
-            <div style="display:flex;align-items:center;gap:6px">
-              <span style="color:var(--mfb-success)">●</span> <span>Open now</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px">
-              <span style="color:var(--mfb-gray-600)">○</span> <span>Not yet open</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px">
-              <span style="color:var(--mfb-error)">✕</span> <span>Closed</span>
-            </div>
+          <h2 style="margin:0 0 8px;font-family:var(--font-heading);font-size:20px;color:var(--color-primary);">Pipeline stages</h2>
+          <div class="stage-legend">
+            <span class="status-chip open"><i class="ti ti-circle-check"></i> Open now</span>
+            <span class="status-chip not-open"><i class="ti ti-clock"></i> Upcoming</span>
+            <span class="status-chip closed"><i class="ti ti-circle-x"></i> Closed</span>
           </div>
         </div>
-        <span style="font-family:var(--font-mono);font-size:0.65rem;color:#B0B0B8;letter-spacing:0.08em;background:#F3F4F6;padding:4px 10px;border-radius:4px">LIVE · NO RESTART</span>
+        <span class="stage-live-badge"><i class="ti ti-activity" style="font-size:16px;"></i> Live updates</span>
       </div>
-      <div id="stageConfigGrid"><p style="color:#9CA3AF;font-size:0.85rem;font-family:var(--font-mono)">loading…</p></div>
+      <div id="stageConfigGrid"><p style="color:#61646D;font-size:14px;">Loading pipeline stages…</p></div>
     </div>
   </div>
 
@@ -336,7 +329,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/admin_recruitment.js', v='20260911-1') }}"></script>
+<script src="{{ url_for('static', filename='js/admin_recruitment.js', v='20260911-2') }}"></script>
 <script>
 const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
 const initialRecruitmentCandidates = {{ initial_candidates|tojson }};
@@ -753,19 +746,12 @@ function esc(s) {
 }
 
 async function loadSlots() {
-  // Ensure container has collapsed classes when active
-  const dashboardContainer = document.querySelector('.admin-dashboard-container') || document.querySelector('.rec-wrap');
-  if (dashboardContainer) {
-    dashboardContainer.classList.add('fullscreen-slots');
-    dashboardContainer.classList.add('sidebar-collapsed');
-  }
-
   // 1. Fetch active interviewers if empty
   if (!window.calendarState.interviewers.length) {
     const data = await recApiGet('/api/admin/recruitment/interviewers');
     if (data) {
       window.calendarState.interviewers = data;
-      const colors = ['#89268B', '#1E7A45', '#B8790A', '#2B6CB0', '#319795', '#D53F8C', '#4A5568'];
+      const colors = ['#0FA3A3', '#241E4E', '#F2A93B', '#2E9E6B', '#3E54AC', '#6554C0', '#4A5568'];
       window.calendarState.interviewers.forEach((it, idx) => {
         it.color = colors[idx % colors.length];
         window.calendarState.selectedInterviewers.add(it.id);
@@ -849,20 +835,20 @@ function renderCalendarHTML() {
     else openCount++;
   });
 
-  // Summary strip ( rls ratio )
+  // Summary strip
   let summaryHtml = '';
   if (state.rules.length) {
     summaryHtml = state.rules.map(r => {
       return `<span class="summary-chip">${esc(r.interviewer_name)}: ${r.slot_duration}m slots · ${r.buffer}m breaks · ${formatTime(r.start_time)}–${formatTime(r.end_time)}</span>`;
     }).join(' ');
   } else {
-    summaryHtml = 'No active availability configurations.';
+    summaryHtml = '<span style="color:#61646D;font-style:italic">No active availability configurations.</span>';
   }
 
   // Interviewer Filter Chips
   const filterHtml = state.interviewers.map(it => {
     const isActive = state.selectedInterviewers.has(it.id);
-    return `<button class="filter-chip ${isActive ? 'active' : ''}" style="color: ${it.color}" onclick="toggleInterviewerFilter(${it.id})">
+    return `<button type="button" class="filter-chip ${isActive ? 'active' : ''}" style="color: ${it.color}" onclick="toggleInterviewerFilter(${it.id})">
       <span class="filter-chip-dot"></span>
       <span>${esc(it.name)}</span>
     </button>`;
@@ -873,48 +859,49 @@ function renderCalendarHTML() {
       <!-- Top navigation and actions bar -->
       <div class="cal-topbar">
         <div class="cal-topbar-left">
-          <button class="cal-menu-toggle" type="button" onclick="toggleSidebarMenu()" title="Toggle Sidebar">☰ Menu</button>
-          <button class="cal-menu-toggle" type="button" onclick="toggleLeftMiniCal()" title="Toggle Mini Calendar"><i class="ti-calendar"></i> Mini-Cal</button>
-          <span class="cal-wordmark">MMFB Calendar</span>
+          <button class="btn btn-sm btn-secondary" type="button" onclick="toggleLeftMiniCal()" title="Toggle mini calendar">
+            <i class="ti ti-calendar"></i> Mini-cal
+          </button>
         </div>
 
-        <div class="cal-topbar-center" style="display:flex;align-items:center;gap:14px">
+        <div class="cal-topbar-center">
           <div class="cal-view-switcher">
-            <button class="cal-view-btn ${state.view === 'day' ? 'active' : ''}" onclick="switchCalView('day')">Day</button>
-            <button class="cal-view-btn ${state.view === 'week' ? 'active' : ''}" onclick="switchCalView('week')">Week</button>
-            <button class="cal-view-btn ${state.view === 'month' ? 'active' : ''}" onclick="switchCalView('month')">Month</button>
+            <button type="button" class="cal-view-btn ${state.view === 'day' ? 'active' : ''}" onclick="switchCalView('day')">Day</button>
+            <button type="button" class="cal-view-btn ${state.view === 'week' ? 'active' : ''}" onclick="switchCalView('week')">Week</button>
+            <button type="button" class="cal-view-btn ${state.view === 'month' ? 'active' : ''}" onclick="switchCalView('month')">Month</button>
           </div>
           <div class="cal-nav">
-            <button class="cal-nav-btn" onclick="navigateCalDate(-1)">‹</button>
-            <button class="cal-nav-btn" style="width:auto;padding:0 12px;font-size:0.8rem;font-weight:600" onclick="navigateCalToday()">Today</button>
-            <button class="cal-nav-btn" onclick="navigateCalDate(1)">›</button>
+            <button type="button" class="cal-nav-btn" onclick="navigateCalDate(-1)" aria-label="Previous date"><i class="ti ti-chevron-left"></i></button>
+            <button type="button" class="cal-nav-btn today-btn" onclick="navigateCalToday()">Today</button>
+            <button type="button" class="cal-nav-btn" onclick="navigateCalDate(1)" aria-label="Next date"><i class="ti ti-chevron-right"></i></button>
           </div>
           <span class="cal-date-label">${dateLabel}</span>
         </div>
 
         <div class="cal-topbar-right">
-          <input class="rec-ctrl" type="date" id="jumpDate" style="width:140px;height:34px;padding:4px 10px" onchange="jumpToCalDate(this.value)">
-          <button class="btn btn-primary" style="background:#276749;padding:6px 14px;font-size:0.82rem" onclick="triggerGenerate()">↻ Generate Slots</button>
-          <button class="btn btn-ghost" style="padding:6px 14px;font-size:0.82rem;border:1px solid var(--mfb-gray-300)" onclick="printSchedule()">Print View</button>
+          <input class="form-control form-control-sm" type="date" id="jumpDate" style="width:140px;height:32px;padding:4px 8px;font-size:13px;" onchange="jumpToCalDate(this.value)">
+          <button type="button" class="btn btn-sm btn-primary" onclick="triggerGenerate()"><i class="ti ti-calendar-plus"></i> Generate slots</button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="printSchedule()"><i class="ti ti-printer"></i> Print view</button>
         </div>
       </div>
 
       <!-- Summary bar ratio -->
       <div class="cal-summary-strip">
-        <strong>Active Split Configurations WAT:</strong> ${summaryHtml}
+        <span class="cal-summary-title">Active split configurations (WAT):</span>
+        <div class="cal-summary-chips">${summaryHtml}</div>
       </div>
 
       <!-- Interviewer filters strip -->
       <div class="cal-filter-chips">
-        <strong style="font-size:0.8rem;color:var(--mfb-gray-600);margin-right:8px">Panelists:</strong>
-        ${filterHtml}
+        <span class="cal-filter-title">Panelists:</span>
+        <div class="cal-filter-list">${filterHtml}</div>
       </div>
 
       <!-- Live counts strip -->
       <div class="cal-stats-strip">
-        <div class="stat-item open">● ${openCount} Open Available</div>
-        <div class="stat-item booked">● ${bookedCount} Booked</div>
-        <div class="stat-item blocked">● ${blockedCount} Blocked</div>
+        <div class="stat-item open"><i class="ti ti-circle-check"></i> <strong>${openCount}</strong> open available</div>
+        <div class="stat-item booked"><i class="ti ti-calendar-event"></i> <strong>${bookedCount}</strong> booked</div>
+        <div class="stat-item blocked"><i class="ti ti-ban"></i> <strong>${blockedCount}</strong> blocked</div>
       </div>
 
       <!-- Calendar Area -->
@@ -926,7 +913,7 @@ function renderCalendarHTML() {
 
         <!-- Main Grid -->
         <div class="cal-grid-wrap" id="mainGridWrap">
-          <span class="wat-label-corner">All times WAT (Africa/Lagos)</span>
+          <span class="wat-label-corner">WAT (Africa/Lagos)</span>
           ${state.view === 'month' ? renderMonthViewHTML() : renderGridHTML()}
         </div>
       </div>
@@ -1004,8 +991,8 @@ function renderMiniMonthHTML() {
     <div class="mini-month-header">
       <span>${monthLabel}</span>
       <div style="display:flex;gap:4px">
-        <button class="cal-nav-btn" style="width:20px;height:20px;font-size:0.6rem" onclick="navigateMiniMonth(-1)">‹</button>
-        <button class="cal-nav-btn" style="width:20px;height:20px;font-size:0.6rem" onclick="navigateMiniMonth(1)">›</button>
+        <button type="button" class="mini-nav-btn" onclick="navigateMiniMonth(-1)" aria-label="Previous month"><i class="ti ti-chevron-left"></i></button>
+        <button type="button" class="mini-nav-btn" onclick="navigateMiniMonth(1)" aria-label="Next month"><i class="ti ti-chevron-right"></i></button>
       </div>
     </div>
     <div class="mini-month-grid">
@@ -1068,7 +1055,7 @@ function renderMonthViewHTML() {
     gridCells += `
       <div class="month-cell" onclick="jumpToMonthCell('${dayDateStr}')">
         <span class="month-cell-num">${d}</span>
-        <div style="font-size:0.7rem;color:var(--mfb-gray-600);font-weight:600">
+        <div style="font-size:0.7rem;color:#61646D;font-weight:600">
           ${openCount > 0 ? `<div>${openCount} open</div>` : ''}
           ${bookedCount > 0 ? `<div>${bookedCount} booked</div>` : ''}
         </div>
@@ -1203,7 +1190,7 @@ function renderGridHTML() {
                   onblur="onSlotRename(event, ${slot.id})" 
                   onclick="event.stopPropagation()"
                   onkeydown="onSlotRenameKey(event, ${slot.id})">${titleStr}</span>
-            ${overlap ? '<i class="ti-alert-triangle" style="color:var(--mfb-error);font-size:0.9rem" title="Conflict: Overlapping Interviewer Slot"></i>' : ''}
+            ${overlap ? '<i class="ti ti-alert-triangle" style="color:var(--color-error);font-size:14px" title="Conflict: Overlapping slot"></i>' : ''}
             <span class="avatar-chip" style="background: ${interviewerColor}">${initials}</span>
           </div>
           
@@ -1214,7 +1201,7 @@ function renderGridHTML() {
         </div>
 
         <!-- Breaks Buffer thin strip (only renders if buffer > 0) -->
-        <div class="cal-break" style="top: ${top + height}px; height: 10px;" title="Break Buffer" onclick="event.stopPropagation()"></div>
+        <div class="cal-break" style="top: ${top + height}px; height: 10px;" title="Break buffer" onclick="event.stopPropagation()"></div>
       `;
     });
 
@@ -1487,22 +1474,22 @@ window.onSlotClick = function (event, slotId) {
   popover.className = 'cal-popover';
 
   const meetingLinkHtml = slot.meeting_link 
-    ? `<a href="${slot.meeting_link}" target="_blank" class="cal-popover-link" style="margin-right:12px">Join Meeting</a>`
-    : '<em>No meeting link</em>';
+    ? `<a href="${slot.meeting_link}" target="_blank" class="cal-popover-link" style="margin-right:12px"><i class="ti ti-video"></i> Join meeting</a>`
+    : '<span style="font-size:12px;color:#61646D;font-style:italic">No meeting link</span>';
 
   popover.innerHTML = `
     <div class="cal-popover-header">
-      <span>Booked Interview</span>
-      <button class="cal-popover-close" onclick="closeCalPopover(event)">✕</button>
+      <span>Booked interview</span>
+      <button class="cal-popover-close" onclick="closeCalPopover(event)" aria-label="Close">✕</button>
     </div>
-    <div class="cal-popover-row">Candidate: <strong>${esc(slot.candidate_name)}</strong></div>
-    <div class="cal-popover-row">Role: <strong>${esc(slot.candidate_role || 'General')}</strong></div>
-    <div class="cal-popover-row">Email: <strong>${esc(slot.candidate_email)}</strong></div>
-    <div class="cal-popover-row">Panel: <strong>${esc(slot.interviewers || slot.interviewer)}</strong></div>
-    <div class="cal-popover-row">Provider: <strong>${esc(slot.meeting_provider || 'Google Meet')}</strong></div>
-    <div style="margin-top:12px; display:flex; align-items:center;">
+    <div class="cal-popover-row"><span>Candidate:</span> <strong>${esc(slot.candidate_name)}</strong></div>
+    <div class="cal-popover-row"><span>Role:</span> <strong>${esc(slot.candidate_role || 'General')}</strong></div>
+    <div class="cal-popover-row"><span>Email:</span> <strong>${esc(slot.candidate_email)}</strong></div>
+    <div class="cal-popover-row"><span>Panel:</span> <strong>${esc(slot.interviewers || slot.interviewer)}</strong></div>
+    <div class="cal-popover-row"><span>Provider:</span> <strong>${esc(slot.meeting_provider || 'Google Meet')}</strong></div>
+    <div style="margin-top:12px; display:flex; align-items:center; justify-content:space-between;">
       ${meetingLinkHtml}
-      <a href="/admin" onclick="viewCandidateDetails(${slot.candidate_id})" class="cal-popover-link">View Detail</a>
+      <a href="javascript:void(0)" onclick="viewCandidateDetails(${slot.candidate_id})" class="cal-popover-link">View candidate</a>
     </div>
   `;
 
@@ -1785,12 +1772,12 @@ async function loadStageConfig() {
       
       html += `
       <div class="phase-group">
-        <div class="phase-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1.5px solid var(--mfb-gray-300); padding-bottom: 6px; margin-top: 16px;">
-          <div style="display:flex; align-items:center; gap:8px;">
+        <div class="phase-header">
+          <div class="phase-header-left">
             <span class="phase-dot ${phase.dotClass}"></span>
             <span>${phase.name}</span>
           </div>
-          <button id="expired-toggle-btn" class="expired-toggle-btn" type="button" onclick="toggleExpiredStages()">
+          <button id="expired-toggle-btn" class="btn btn-sm btn-secondary" type="button" onclick="toggleExpiredStages()">
             ${window.showExpiredStages ? 'Hide expired stages' : 'Show expired stages'}
           </button>
         </div>
@@ -1800,8 +1787,10 @@ async function loadStageConfig() {
       html += `
       <div class="phase-group">
         <div class="phase-header">
-          <span class="phase-dot ${phase.dotClass}"></span>
-          <span>${phase.name}</span>
+          <div class="phase-header-left">
+            <span class="phase-dot ${phase.dotClass}"></span>
+            <span>${phase.name}</span>
+          </div>
         </div>
       `;
     }
@@ -1842,64 +1831,65 @@ async function loadStageConfig() {
         <div class="stg-header" onclick="toggleStageConfig('${cfg.stage_name}')">
           <div class="stg-header-left">
             <span class="phase-dot ${phase.dotClass}"></span>
-            <span class="stg-name" style="text-transform: capitalize;">${escapeHtml(label)}</span>
-            <span class="cycle-badge">cycle ${cfg.cycle_id}</span>
+            <span class="stg-name">${escapeHtml(label)}</span>
+            <span class="cycle-badge">Cycle ${cfg.cycle_id}</span>
           </div>
           <div class="stg-header-right">
-            ${isCurrent ? '<span class="badge-current">Current</span>' : ''}
-            ${isNext ? '<span class="badge-next">Next</span>' : ''}
+            ${isCurrent ? '<span class="stage-tag tag-current"><i class="ti ti-circle-check"></i> Current</span>' : ''}
+            ${isNext ? '<span class="stage-tag tag-next"><i class="ti ti-arrow-right"></i> Next</span>' : ''}
             <span class="status-chip ${cfg.computedStatus}">
-              ${cfg.computedStatus === 'open' ? '●' : cfg.computedStatus === 'closed' ? '✕' : '○'} ${cfg.statusLabel}
+              <i class="ti ${cfg.computedStatus === 'open' ? 'ti-circle-check' : cfg.computedStatus === 'closed' ? 'ti-circle-x' : 'ti-clock'}"></i>
+              <span>${cfg.statusLabel}</span>
             </span>
-            <span class="stg-chevron ${isExpanded ? 'expanded' : ''}" id="chev-${cfg.stage_name}"><i class="ti-angle-right"></i></span>
+            <span class="stg-chevron ${isExpanded ? 'expanded' : ''}" id="chev-${cfg.stage_name}"><i class="ti ti-chevron-down"></i></span>
           </div>
         </div>
-        <div class="stg-body ${isExpanded ? 'expanded' : ''}" id="sbody-${cfg.stage_name}" style="max-height: ${isExpanded ? '650px' : '0px'}">
+        <div class="stg-body ${isExpanded ? 'expanded' : ''}" id="sbody-${cfg.stage_name}" style="max-height: ${isExpanded ? '750px' : '0px'}">
           <div class="stg-body-inner">
             <div class="stg-fields">
               <div class="stg-field">
-                <label>Opens At</label>
-                <input id="oa-${cfg.stage_name}" type="datetime-local" value="${oa}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
+                <label for="oa-${cfg.stage_name}">Opens at</label>
+                <input id="oa-${cfg.stage_name}" class="form-control" type="datetime-local" value="${oa}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
               </div>
               <div class="stg-field">
-                <label>Closes At</label>
-                <input id="ca-${cfg.stage_name}" type="datetime-local" value="${ca}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
+                <label for="ca-${cfg.stage_name}">Closes at</label>
+                <input id="ca-${cfg.stage_name}" class="form-control" type="datetime-local" value="${ca}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
               </div>
               ${!datesOnly && cfg.pass_mark !== null ? `
               <div class="stg-field">
-                <label>Pass Mark %</label>
-                <input id="pm-${cfg.stage_name}" type="number" step="0.5" min="0" max="100" value="${cfg.pass_mark}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
+                <label for="pm-${cfg.stage_name}">Pass mark (%)</label>
+                <input id="pm-${cfg.stage_name}" class="form-control" type="number" step="0.5" min="0" max="100" value="${cfg.pass_mark}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
               </div>` : ''}
               ${!datesOnly && cfg.duration_minutes !== null ? `
               <div class="stg-field">
-                <label>Duration (min)</label>
-                <input id="dm-${cfg.stage_name}" type="number" min="1" value="${cfg.duration_minutes}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
+                <label for="dm-${cfg.stage_name}">Duration (minutes)</label>
+                <input id="dm-${cfg.stage_name}" class="form-control" type="number" min="1" value="${cfg.duration_minutes}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
               </div>` : ''}
               ${!datesOnly && cfg.relative_deadline_hours !== null ? `
               <div class="stg-field">
-                <label>Deadline (${daysMode ? 'days' : 'hrs'})</label>
-                <input id="rd-${cfg.stage_name}" type="number" min="0" value="${rdVal}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
+                <label for="rd-${cfg.stage_name}">Deadline (${daysMode ? 'days' : 'hours'})</label>
+                <input id="rd-${cfg.stage_name}" class="form-control" type="number" min="0" value="${rdVal}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
               </div>` : ''}
               ${cfg.stage_name === 'screening' ? `
               <div class="stg-field">
-                <label>Min Age</label>
-                <input id="minage-${cfg.stage_name}" type="number" min="16" max="60" value="${cfg.min_age || 18}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
+                <label for="minage-${cfg.stage_name}">Minimum age</label>
+                <input id="minage-${cfg.stage_name}" class="form-control" type="number" min="16" max="60" value="${cfg.min_age || 18}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
               </div>
               <div class="stg-field">
-                <label>Max Age</label>
-                <input id="maxage-${cfg.stage_name}" type="number" min="16" max="60" value="${cfg.max_age || 35}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
+                <label for="maxage-${cfg.stage_name}">Maximum age</label>
+                <input id="maxage-${cfg.stage_name}" class="form-control" type="number" min="16" max="60" value="${cfg.max_age || 35}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
               </div>` : ''}
             </div>
-            <div class="stg-save-row" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-top:16px;">
-              <div style="display:flex; gap:8px;">
-                <button class="btn btn-sm" style="background:#e5f3ea; color:#1e7a45; font-size:0.75rem; border:1px solid #9ae6b4; padding:6px 12px; font-weight:600; border-radius:6px; cursor:pointer;" type="button" onclick="instantOpen('${escapeHtml(cfg.stage_name)}')">⚡ Instant Open</button>
-                <button class="btn btn-sm" style="background:#fbe9e8; color:#b3261e; font-size:0.75rem; border:1px solid #f5c2c0; padding:6px 12px; font-weight:600; border-radius:6px; cursor:pointer;" type="button" onclick="instantClose('${escapeHtml(cfg.stage_name)}')">⚡ Instant Close</button>
-                ${nextStageName ? `<button class="btn btn-sm" style="background:var(--mfb-purple-tint); color:var(--mfb-purple); font-size:0.75rem; border:1px solid var(--mfb-purple); padding:6px 12px; font-weight:600; border-radius:6px; cursor:pointer;" type="button" onclick="advanceToNext('${escapeHtml(cfg.stage_name)}', '${escapeHtml(nextStageName)}')">Next Stage →</button>` : ''}
+            <div class="stg-save-row">
+              <div class="stg-actions-left">
+                <button class="btn btn-sm btn-secondary" type="button" onclick="instantOpen('${escapeHtml(cfg.stage_name)}')">Open stage</button>
+                <button class="btn btn-sm btn-secondary" type="button" onclick="instantClose('${escapeHtml(cfg.stage_name)}')">Close stage</button>
+                ${nextStageName ? `<button class="btn btn-sm btn-secondary" type="button" onclick="advanceToNext('${escapeHtml(cfg.stage_name)}', '${escapeHtml(nextStageName)}')">Advance stage</button>` : ''}
               </div>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <span class="stg-unsaved-msg" id="unsaved-${cfg.stage_name}" style="display:none; color:var(--mfb-warning); font-size:0.8rem;">Unsaved changes</span>
-                <span class="stg-save-msg ok" id="cfgMsg-${cfg.stage_name}">✓ Saved!</span>
-                <button class="stg-save-btn" type="button" onclick="saveConfig('${escapeHtml(cfg.stage_name)}')">Save Changes</button>
+              <div class="stg-actions-right">
+                <span class="stg-unsaved-msg" id="unsaved-${cfg.stage_name}" style="display:none;"><i class="ti ti-alert-circle"></i> Unsaved changes</span>
+                <span class="stg-save-msg ok" id="cfgMsg-${cfg.stage_name}"><i class="ti ti-check"></i> Changes saved</span>
+                <button class="btn btn-sm btn-primary" type="button" onclick="saveConfig('${escapeHtml(cfg.stage_name)}')">Save changes</button>
               </div>
             </div>
           </div>

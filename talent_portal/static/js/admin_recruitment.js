@@ -648,13 +648,6 @@
   }
 
   window.loadRecSlots = async function () {
-    // Ensure container has collapsed classes when active
-    const dashboardContainer = document.querySelector('.admin-dashboard-container');
-    if (dashboardContainer) {
-      dashboardContainer.classList.add('fullscreen-slots');
-      dashboardContainer.classList.add('sidebar-collapsed');
-    }
-
     // Fetch stable calendar metadata together. Cached/in-flight requests are
     // deduplicated by getAdminCached.
     const [interviewerData, rulesData] = await Promise.all([
@@ -899,49 +892,50 @@
         <!-- Top navigation and actions bar -->
         <div class="cal-topbar">
           <div class="cal-topbar-left">
-            <button class="cal-menu-toggle" type="button" onclick="toggleSidebarMenu()" title="Toggle Sidebar">☰ Menu</button>
-            <button class="cal-menu-toggle" type="button" onclick="toggleLeftMiniCal()" title="Toggle Mini Calendar"><i class="ti-calendar"></i> Mini-Cal</button>
-            <span class="cal-wordmark">MMFB Calendar</span>
+            <button class="btn btn-sm btn-secondary" type="button" onclick="toggleLeftMiniCal()" title="Toggle mini calendar">
+              <i class="ti ti-calendar"></i> Mini-cal
+            </button>
           </div>
 
-          <div class="cal-topbar-center" style="display:flex;align-items:center;gap:14px">
+          <div class="cal-topbar-center">
             <div class="cal-view-switcher">
-              <button class="cal-view-btn ${state.view === 'day' ? 'active' : ''}" onclick="switchCalView('day')">Day</button>
-              <button class="cal-view-btn ${state.view === 'week' ? 'active' : ''}" onclick="switchCalView('week')">Week</button>
-              <button class="cal-view-btn ${state.view === 'month' ? 'active' : ''}" onclick="switchCalView('month')">Month</button>
+              <button type="button" class="cal-view-btn ${state.view === 'day' ? 'active' : ''}" onclick="switchCalView('day')">Day</button>
+              <button type="button" class="cal-view-btn ${state.view === 'week' ? 'active' : ''}" onclick="switchCalView('week')">Week</button>
+              <button type="button" class="cal-view-btn ${state.view === 'month' ? 'active' : ''}" onclick="switchCalView('month')">Month</button>
             </div>
             <div class="cal-nav">
-              <button class="cal-nav-btn" onclick="navigateCalDate(-1)">‹</button>
-              <button class="cal-nav-btn" style="width:auto;padding:0 12px;font-size:0.8rem;font-weight:600" onclick="navigateCalToday()">Today</button>
-              <button class="cal-nav-btn" onclick="navigateCalDate(1)">›</button>
+              <button type="button" class="cal-nav-btn" onclick="navigateCalDate(-1)" aria-label="Previous date"><i class="ti ti-chevron-left"></i></button>
+              <button type="button" class="cal-nav-btn today-btn" onclick="navigateCalToday()">Today</button>
+              <button type="button" class="cal-nav-btn" onclick="navigateCalDate(1)" aria-label="Next date"><i class="ti ti-chevron-right"></i></button>
             </div>
             <span class="cal-date-label">${dateLabel}</span>
           </div>
 
           <div class="cal-topbar-right">
-            <input class="rec-ctrl" type="date" id="jumpDate" style="width:140px;height:34px;padding:4px 10px" onchange="jumpToCalDate(this.value)">
-            <button class="btn btn-primary" style="padding:6px 14px;font-size:0.82rem" onclick="openManualSlotModal()">+ New slot</button>
-            <button class="btn btn-primary" style="background:#276749;padding:6px 14px;font-size:0.82rem" onclick="triggerRecGenerate()">↻ Generate Slots</button>
-            <button class="btn btn-ghost" style="padding:6px 14px;font-size:0.82rem;border:1px solid var(--mfb-gray-300)" onclick="printSchedule()">Print View</button>
+            <input class="form-control form-control-sm" type="date" id="jumpDate" style="width:140px;height:32px;padding:4px 8px;font-size:13px;" onchange="jumpToCalDate(this.value)">
+            <button type="button" class="btn btn-sm btn-secondary" onclick="openManualSlotModal()">+ New slot</button>
+            <button type="button" class="btn btn-sm btn-primary" onclick="triggerRecGenerate()"><i class="ti ti-calendar-plus"></i> Generate slots</button>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="printSchedule()"><i class="ti ti-printer"></i> Print view</button>
           </div>
         </div>
 
         <!-- Summary bar ratio -->
         <div class="cal-summary-strip">
-          <strong>Active Split Configurations WAT:</strong> ${summaryHtml}
+          <span class="cal-summary-title">Active split configurations (WAT):</span>
+          <div class="cal-summary-chips">${summaryHtml}</div>
         </div>
 
         <!-- Interviewer filters strip -->
         <div class="cal-filter-chips">
-          <strong style="font-size:0.8rem;color:var(--mfb-gray-600);margin-right:8px">Panelists:</strong>
-          ${filterHtml}
+          <span class="cal-filter-title">Panelists:</span>
+          <div class="cal-filter-list">${filterHtml}</div>
         </div>
 
         <!-- Live counts strip -->
         <div class="cal-stats-strip">
-          <div class="stat-item open">● ${openCount} Open Available</div>
-          <div class="stat-item booked">● ${bookedCount} Booked</div>
-          <div class="stat-item blocked">● ${blockedCount} Blocked</div>
+          <div class="stat-item open"><i class="ti ti-circle-check"></i> <strong>${openCount}</strong> open available</div>
+          <div class="stat-item booked"><i class="ti ti-calendar-event"></i> <strong>${bookedCount}</strong> booked</div>
+          <div class="stat-item blocked"><i class="ti ti-ban"></i> <strong>${blockedCount}</strong> blocked</div>
         </div>
 
         <!-- Calendar Area -->
@@ -953,7 +947,7 @@
 
           <!-- Main Grid -->
           <div class="cal-grid-wrap" id="mainGridWrap">
-            <span class="wat-label-corner">All times WAT (Africa/Lagos)</span>
+            <span class="wat-label-corner">WAT (Africa/Lagos)</span>
             ${state.view === 'month' ? renderMonthViewHTML() : renderGridHTML()}
           </div>
         </div>
@@ -1946,64 +1940,65 @@
           <div class="stg-header" onclick="toggleStageConfig('${cfg.stage_name}')">
             <div class="stg-header-left">
               <span class="phase-dot ${phase.dotClass}"></span>
-              <span class="stg-name" style="text-transform: capitalize;">${esc(label)}</span>
-              <span class="cycle-badge">cycle ${cfg.cycle_id}</span>
+              <span class="stg-name">${esc(label)}</span>
+              <span class="cycle-badge">Cycle ${cfg.cycle_id}</span>
             </div>
             <div class="stg-header-right">
-              ${isCurrent ? '<span class="badge-current">Current</span>' : ''}
-              ${isNext ? '<span class="badge-next">Next</span>' : ''}
+              ${isCurrent ? '<span class="stage-tag tag-current"><i class="ti ti-circle-check"></i> Current</span>' : ''}
+              ${isNext ? '<span class="stage-tag tag-next"><i class="ti ti-arrow-right"></i> Next</span>' : ''}
               <span class="status-chip ${cfg.computedStatus}">
-                ${cfg.computedStatus === 'open' ? '●' : cfg.computedStatus === 'closed' ? '✕' : '○'} ${cfg.statusLabel}
+                <i class="ti ${cfg.computedStatus === 'open' ? 'ti-circle-check' : cfg.computedStatus === 'closed' ? 'ti-circle-x' : 'ti-clock'}"></i>
+                <span>${cfg.statusLabel}</span>
               </span>
-              <span class="stg-chevron ${isExpanded ? 'expanded' : ''}" id="chev-${cfg.stage_name}"><i class="ti-angle-right"></i></span>
+              <span class="stg-chevron ${isExpanded ? 'expanded' : ''}" id="chev-${cfg.stage_name}"><i class="ti ti-chevron-down"></i></span>
             </div>
           </div>
-          <div class="stg-body ${isExpanded ? 'expanded' : ''}" id="sbody-${cfg.stage_name}" style="max-height: ${isExpanded ? '650px' : '0px'}">
+          <div class="stg-body ${isExpanded ? 'expanded' : ''}" id="sbody-${cfg.stage_name}" style="max-height: ${isExpanded ? '750px' : '0px'}">
             <div class="stg-body-inner">
               <div class="stg-fields">
                 <div class="stg-field">
-                  <label>Opens At</label>
-                  <input id="oa-${cfg.stage_name}" type="datetime-local" value="${oa}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
+                  <label for="oa-${cfg.stage_name}">Opens at</label>
+                  <input id="oa-${cfg.stage_name}" class="form-control" type="datetime-local" value="${oa}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
                 </div>
                 <div class="stg-field">
-                  <label>Closes At</label>
-                  <input id="ca-${cfg.stage_name}" type="datetime-local" value="${ca}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
+                  <label for="ca-${cfg.stage_name}">Closes at</label>
+                  <input id="ca-${cfg.stage_name}" class="form-control" type="datetime-local" value="${ca}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
                 </div>
                 ${!datesOnly && cfg.pass_mark !== null ? `
                 <div class="stg-field">
-                  <label>Pass Mark %</label>
-                  <input id="pm-${cfg.stage_name}" type="number" step="0.5" min="0" max="100" value="${cfg.pass_mark}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
+                  <label for="pm-${cfg.stage_name}">Pass mark (%)</label>
+                  <input id="pm-${cfg.stage_name}" class="form-control" type="number" step="0.5" min="0" max="100" value="${cfg.pass_mark}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
                 </div>` : ''}
                 ${!datesOnly && cfg.duration_minutes !== null ? `
                 <div class="stg-field">
-                  <label>Duration (min)</label>
-                  <input id="dm-${cfg.stage_name}" type="number" min="1" value="${cfg.duration_minutes}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
+                  <label for="dm-${cfg.stage_name}">Duration (minutes)</label>
+                  <input id="dm-${cfg.stage_name}" class="form-control" type="number" min="1" value="${cfg.duration_minutes}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
                 </div>` : ''}
                 ${!datesOnly && cfg.relative_deadline_hours !== null ? `
                 <div class="stg-field">
-                  <label>Deadline (${daysMode ? 'days' : 'hrs'})</label>
-                  <input id="rd-${cfg.stage_name}" type="number" min="0" value="${rdVal}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
+                  <label for="rd-${cfg.stage_name}">Deadline (${daysMode ? 'days' : 'hours'})</label>
+                  <input id="rd-${cfg.stage_name}" class="form-control" type="number" min="0" value="${rdVal}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
                 </div>` : ''}
                 ${cfg.stage_name === 'screening' ? `
                 <div class="stg-field">
-                  <label>Min Age</label>
-                  <input id="minage-${cfg.stage_name}" type="number" min="16" max="60" value="${cfg.min_age || 18}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
+                  <label for="minage-${cfg.stage_name}">Minimum age</label>
+                  <input id="minage-${cfg.stage_name}" class="form-control" type="number" min="16" max="60" value="${cfg.min_age || 18}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
                 </div>
                 <div class="stg-field">
-                  <label>Max Age</label>
-                  <input id="maxage-${cfg.stage_name}" type="number" min="16" max="60" value="${cfg.max_age || 35}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
+                  <label for="maxage-${cfg.stage_name}">Maximum age</label>
+                  <input id="maxage-${cfg.stage_name}" class="form-control" type="number" min="16" max="60" value="${cfg.max_age || 35}" oninput="checkUnsavedConfig('${cfg.stage_name}')">
                 </div>` : ''}
               </div>
-              <div class="stg-save-row" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-top:16px;">
-                <div style="display:flex; gap:8px;">
-                  <button class="btn btn-sm" style="background:#e5f3ea; color:#1e7a45; font-size:0.75rem; border:1px solid #9ae6b4; padding:6px 12px; font-weight:600; border-radius:6px; cursor:pointer;" type="button" onclick="instantOpen('${esc(cfg.stage_name)}')">⚡ Instant Open</button>
-                  <button class="btn btn-sm" style="background:#fbe9e8; color:#b3261e; font-size:0.75rem; border:1px solid #f5c2c0; padding:6px 12px; font-weight:600; border-radius:6px; cursor:pointer;" type="button" onclick="instantClose('${esc(cfg.stage_name)}')">⚡ Instant Close</button>
-                  ${nextStageName ? `<button class="btn btn-sm" style="background:var(--mfb-purple-tint); color:var(--mfb-purple); font-size:0.75rem; border:1px solid var(--mfb-purple); padding:6px 12px; font-weight:600; border-radius:6px; cursor:pointer;" type="button" onclick="advanceToNext('${esc(cfg.stage_name)}', '${esc(nextStageName)}')">Next Stage →</button>` : ''}
+              <div class="stg-save-row">
+                <div class="stg-actions-left">
+                  <button class="btn btn-sm btn-secondary" type="button" onclick="instantOpen('${esc(cfg.stage_name)}')">Open stage</button>
+                  <button class="btn btn-sm btn-secondary" type="button" onclick="instantClose('${esc(cfg.stage_name)}')">Close stage</button>
+                  ${nextStageName ? `<button class="btn btn-sm btn-secondary" type="button" onclick="advanceToNext('${esc(cfg.stage_name)}', '${esc(nextStageName)}')">Advance stage</button>` : ''}
                 </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                  <span class="stg-unsaved-msg" id="unsaved-${cfg.stage_name}" style="display:none; color:var(--mfb-warning); font-size:0.8rem;">Unsaved changes</span>
-                  <span class="stg-save-msg ok" id="cfgMsg-${cfg.stage_name}">✓ Saved!</span>
-                  <button class="stg-save-btn" type="button" onclick="saveRecConfig('${esc(cfg.stage_name)}')">Save Changes</button>
+                <div class="stg-actions-right">
+                  <span class="stg-unsaved-msg" id="unsaved-${cfg.stage_name}" style="display:none;"><i class="ti ti-alert-circle"></i> Unsaved changes</span>
+                  <span class="stg-save-msg ok" id="cfgMsg-${cfg.stage_name}"><i class="ti ti-check"></i> Changes saved</span>
+                  <button class="btn btn-sm btn-primary" type="button" onclick="saveRecConfig('${esc(cfg.stage_name)}')">Save changes</button>
                 </div>
               </div>
             </div>
