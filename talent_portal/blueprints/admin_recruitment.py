@@ -942,8 +942,8 @@ def list_slots():
         return jsonify({"error": "Date range cannot exceed 62 days"}), 400
 
     lagos_tz = ZoneInfo('Africa/Lagos')
-    start_dt = lagos_tz.localize(datetime.datetime.combine(start_d, datetime.time.min))
-    end_dt = lagos_tz.localize(datetime.datetime.combine(end_d, datetime.time.max))
+    start_dt = datetime.datetime.combine(start_d, datetime.time.min, tzinfo=lagos_tz)
+    end_dt = datetime.datetime.combine(end_d, datetime.time.max, tzinfo=lagos_tz)
 
     interviewer_ids = request.args.getlist("interviewer_id")
     if interviewer_ids:
@@ -1481,8 +1481,8 @@ def slots_summary():
         return jsonify({"error": "Date range cannot exceed 62 days"}), 400
 
     lagos_tz = ZoneInfo('Africa/Lagos')
-    start_dt = lagos_tz.localize(datetime.datetime.combine(start_d, datetime.time.min))
-    end_dt = lagos_tz.localize(datetime.datetime.combine(end_d, datetime.time.max))
+    start_dt = datetime.datetime.combine(start_d, datetime.time.min, tzinfo=lagos_tz)
+    end_dt = datetime.datetime.combine(end_d, datetime.time.max, tzinfo=lagos_tz)
 
     interviewer_ids = request.args.getlist("interviewer_id")
     if interviewer_ids:
@@ -1562,8 +1562,8 @@ def export_slots():
         return jsonify({"error": "Date range cannot exceed 62 days"}), 400
 
     lagos_tz = ZoneInfo('Africa/Lagos')
-    start_dt = lagos_tz.localize(datetime.datetime.combine(start_d, datetime.time.min))
-    end_dt = lagos_tz.localize(datetime.datetime.combine(end_d, datetime.time.max))
+    start_dt = datetime.datetime.combine(start_d, datetime.time.min, tzinfo=lagos_tz)
+    end_dt = datetime.datetime.combine(end_d, datetime.time.max, tzinfo=lagos_tz)
 
     interviewer_ids = request.args.getlist("interviewer_id")
     if interviewer_ids:
