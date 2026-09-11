@@ -423,7 +423,7 @@ async function loadCandidates(page) {
   if (flagged) url += `&flagged=${flagged}`;
 
   const data = await apiGet(url);
-  if (!data) { wrap.innerHTML = '<p class="data-error">Candidate data did not respond within 10 seconds. Check the database connection, then <button class="btn btn-sm btn-secondary" type="button" onclick="loadCandidates(1)">Retry</button>.</p>'; return; }
+  if (!data) { wrap.innerHTML = '<p class="data-error">Candidate data did not respond within 30 seconds. Check the database connection, then <button class="btn btn-sm btn-secondary" type="button" onclick="loadCandidates(1)">Retry</button>.</p>'; return; }
 
   if (!data.candidates.length) { wrap.innerHTML = '<p style="color:#888">No candidates found.</p>'; return; }
 
@@ -1997,7 +1997,7 @@ async function resend(logId) {
 // ── API helpers ───────────────────────────────────────────────────────────────
 async function apiGet(url) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  const timeout = setTimeout(() => controller.abort(), 30000);
   try {
     const r = await fetch(url, { credentials: 'same-origin', signal: controller.signal });
     clearTimeout(timeout);
