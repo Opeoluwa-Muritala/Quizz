@@ -13,8 +13,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='aptus-v6') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/portal.css', v='aptus-v6') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='aptus-v9') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/portal.css', v='aptus-v9') }}">
     {% block extra_head %}{% endblock %}
     <style>
         :root {
@@ -44,6 +44,9 @@
     {% if admin_page %}
     <!-- Section 3: Admin Top Bar (Fixed 64px, Sticky, Background --color-primary) -->
     <header class="admin-topbar">
+        <button class="admin-topbar__menu-toggle" type="button" onclick="toggleAdminSidebar()" aria-label="Toggle navigation menu">
+            <i class="ti ti-menu-2"></i>
+        </button>
         <a class="admin-topbar__brand" href="/admin" aria-label="{{ brand.name }} admin home">
             <img src="{{ url_for('static', filename=brand.logo) }}" alt="" width="28" height="28">
             <strong>{{ brand.name }}</strong>
@@ -72,6 +75,7 @@
 
     <!-- Section 4: Admin Sidebar (260px expanded / 72px collapsed) & Main Workspace -->
     <div class="admin-layout" id="adminLayout">
+        <div class="admin-sidebar__backdrop" onclick="toggleAdminSidebar()" aria-hidden="true"></div>
         <aside class="admin-sidebar" aria-label="Admin navigation">
             <nav class="admin-sidebar__nav">
                 <a class="admin-sidebar__row {% if request.path == '/admin' %}active{% endif %}" href="/admin">
@@ -146,16 +150,23 @@
         function toggleAdminSidebar() {
             var layout = document.getElementById('adminLayout');
             if (!layout) return;
-            layout.classList.toggle('sidebar-collapsed');
-            try {
-                localStorage.setItem('admin_sidebar_collapsed', layout.classList.contains('sidebar-collapsed'));
-            } catch (e) {}
+            if (window.innerWidth <= 768) {
+                layout.classList.toggle('sidebar-mobile-open');
+            } else {
+                layout.classList.toggle('sidebar-collapsed');
+                try {
+                    localStorage.setItem('admin_sidebar_collapsed', layout.classList.contains('sidebar-collapsed'));
+                } catch (e) {}
+            }
         }
         (function() {
             try {
-                if (localStorage.getItem('admin_sidebar_collapsed') === 'true') {
-                    var layout = document.getElementById('adminLayout');
-                    if (layout) layout.classList.add('sidebar-collapsed');
+                var layout = document.getElementById('adminLayout');
+                if (!layout) return;
+                if (window.innerWidth <= 1024 && window.innerWidth > 768) {
+                    layout.classList.add('sidebar-collapsed');
+                } else if (localStorage.getItem('admin_sidebar_collapsed') === 'true') {
+                    layout.classList.add('sidebar-collapsed');
                 }
             } catch (e) {}
         })();
