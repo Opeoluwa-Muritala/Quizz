@@ -299,3 +299,12 @@
   }
 }
 
+@media (max-width: 480px) {
+  .doc-item {
+    padding: 16px;
+  }
+  .doc-item-header {
+    flex-wrap: wrap;
+  }
+}
+
