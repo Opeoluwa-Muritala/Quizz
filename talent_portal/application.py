@@ -1619,11 +1619,17 @@ def admin_results():
     col_sql = allowed_cols.get(sort_column, 'C.created_at')
     if sort_order not in ['ASC', 'DESC']:
         sort_order = 'DESC'
+
+    candidate_scope = "TRUE"
+    candidate_scope_params = ()
+    if load_brand().key == "aptus":
+        candidate_scope = "(C.email ILIKE %s OR C.job_id IN (SELECT id FROM job_postings WHERE legacy_role_key ILIKE %s))"
+        candidate_scope_params = ("%@aptus.example", "aptus-%")
         
     with DBConnection() as conn:
         with conn.cursor() as cur:
             # Get total number of candidates
-            cur.execute("SELECT COUNT(*) FROM candidates;")
+            cur.execute(f"SELECT COUNT(*) FROM candidates C WHERE {candidate_scope};", candidate_scope_params)
             total_cand = cur.fetchone()[0]
 
             # Summary metrics must use the full candidate set, not merely the
@@ -1665,10 +1671,11 @@ def admin_results():
                 SELECT C.id, C.full_name, C.email, C.phone_number, C.role, C.location, C.created_at, C.stage,
                        {assessment_score_sql} AS assessment_score
                 FROM candidates C
+                WHERE {candidate_scope}
                 ORDER BY {col_sql} {sort_order}
                 LIMIT %s OFFSET %s;
             """
-            cur.execute(query, (per_page, offset))
+            cur.execute(query, candidate_scope_params + (per_page, offset))
             cand_rows = cur.fetchall()
             
             cand_ids = [r[0] for r in cand_rows]
