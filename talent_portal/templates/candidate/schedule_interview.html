@@ -1,0 +1,288 @@
+{% extends "shared/base.html" %}
+
+{% block title %}Schedule Interview - {{ brand.portal_title }}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/schedule_interview.css') }}">
+
+{% endblock %}
+
+{% block content %}
+<div class="sched-wrap candidate-page mfb-page">
+  <div class="mfb-stage-rail" aria-label="Application stage">
+    <div class="mfb-stage-step done"><div class="mfb-stage-dot"></div><span>Applied</span></div>
+    <div class="mfb-stage-step done"><div class="mfb-stage-dot"></div><span>Screening</span></div>
+    <div class="mfb-stage-step done"><div class="mfb-stage-dot"></div><span>Assessment</span></div>
+    <div class="mfb-stage-step current"><div class="mfb-stage-dot"></div><span>Interview</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Documents</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Decision</span></div>
+  </div>
+  <a href="/dashboard" style="font-size:14px;color:var(--color-primary);text-decoration:none;font-weight:600;display:inline-block;margin-bottom:8px;">Back to dashboard</a>
+  <h1 style="margin-top:8px">Schedule your interview</h1>
+  <p class="sub">Select an available date, then choose a time slot. All times shown in West Africa Time (WAT).</p>
+
+  <div id="mainLayout" class="sched-layout">
+    <!-- Calendar -->
+    <div class="cal-card">
+      <div class="cal-nav">
+        <button type="button" onclick="prevMonth()" aria-label="Previous month"><i class="ti ti-chevron-left" style="font-size:16px;"></i></button>
+        <h3 id="monthLabel">—</h3>
+        <button type="button" onclick="nextMonth()" aria-label="Next month"><i class="ti ti-chevron-right" style="font-size:16px;"></i></button>
+      </div>
+      <div class="cal-grid" id="calGrid">
+        <div class="cal-loading">Loading calendar…</div>
+      </div>
+    </div>
+
+    <!-- Slot list -->
+    <div class="slots-card">
+      <h3 id="slotsHeader">Select a date to view slots</h3>
+      <div id="slotList"><div class="empty-slots">Choose a date on the calendar.</div></div>
+      <div class="confirm-area" id="confirmArea" style="display:none">
+        <button class="confirm-btn" id="confirmBtn" disabled onclick="confirmBooking()">
+          Confirm booking
+        </button>
+        <div class="error-msg" id="bookError"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success state -->
+  <div class="success-card" id="successCard">
+    <div style="font-size:32px;line-height:1;margin-bottom:12px;">
+      <i class="ti ti-circle-check" style="font-size:32px;color:var(--color-success);"></i>
+    </div>
+    <h2>Interview confirmed</h2>
+    <p id="successMsg" style="color:#61646D;margin:0 0 24px;font-size:14px;line-height:20px;"></p>
+    <a href="/dashboard" class="action-btn" style="background:var(--color-success);border-color:var(--color-success);">
+      View dashboard
+    </a>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+let currentYear  = new Date().getFullYear();
+let currentMonth = new Date().getMonth() + 1; // 1-indexed
+let slotsCache   = {};
+let selectedDate = null;
+let selectedSlot = null;
+
+const MONTHS = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
+const DAYS   = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+async function loadMonth(year, month) {
+  const key = `${year}-${month}`;
+  if (!slotsCache[key]) {
+    const resp = await fetch(`/api/slots?year=${year}&month=${month}`);
+    slotsCache[key] = await resp.json();
+  }
+  return slotsCache[key];
+}
+
+function slotsForDate(slots, dateStr) {
+  return slots.filter(s => s.start_time.startsWith(dateStr));
+}
+
+function toLocalDateStr(utcIso) {
+  const d = new Date(utcIso);
+  // Convert to WAT (UTC+1) date
+  const wat = new Date(d.getTime() + 60 * 60 * 1000);
+  const y = wat.getUTCFullYear();
+  const m = String(wat.getUTCMonth() + 1).padStart(2,'0');
+  const day = String(wat.getUTCDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatWAT(utcIso) {
+  if (!utcIso) return '—';
+  const d = new Date(utcIso);
+  if (isNaN(d.getTime())) return '—';
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Africa/Lagos',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+  const parts = formatter.formatToParts(d);
+  const m = {};
+  parts.forEach(p => m[p.type] = p.value);
+  return `${m.year}-${m.month}-${m.day} ${m.hour}:${m.minute} ${m.dayPeriod.toLowerCase()}`;
+}
+
+function formatTime(utcIso) {
+  const d = new Date(utcIso);
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Africa/Lagos',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+  return formatter.format(d).toLowerCase();
+}
+
+async function renderCalendar() {
+  document.getElementById('monthLabel').textContent =
+    `${MONTHS[currentMonth-1]} ${currentYear}`;
+
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '<div class="cal-loading">Loading…</div>';
+
+  let slots = [];
+  try { slots = await loadMonth(currentYear, currentMonth); }
+  catch(e) { grid.innerHTML = '<div class="cal-loading">Failed to load slots.</div>'; return; }
+
+  // Build set of bookable dates
+  const bookableDates = new Set();
+  slots.forEach(s => { if (s.bookable) bookableDates.add(toLocalDateStr(s.start_time)); });
+
+  // Build calendar grid
+  const firstDay = new Date(currentYear, currentMonth - 1, 1);
+  const lastDay  = new Date(currentYear, currentMonth, 0);
+  // Monday-first: (0=Mon … 6=Sun)
+  let startPad = (firstDay.getDay() + 6) % 7;
+
+  let html = DAYS.map(d => `<div class="cal-day-hdr">${d}</div>`).join('');
+
+  // Empty cells before first day
+  for (let i = 0; i < startPad; i++) html += '<div class="cal-day"></div>';
+
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    const dateStr = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    let cls = 'cal-day';
+    let click = '';
+    if (bookableDates.has(dateStr)) { cls += ' has-slots'; click = `onclick="selectDate('${dateStr}')"` }
+    if (dateStr === todayStr) cls += ' today';
+    if (dateStr === selectedDate) cls += ' selected';
+    html += `<div class="${cls}" ${click}>${d}</div>`;
+  }
+
+  grid.innerHTML = html;
+}
+
+async function selectDate(dateStr) {
+  selectedDate = dateStr;
+  selectedSlot = null;
+  document.getElementById('confirmBtn').disabled = true;
+
+  // Re-render calendar to show selection
+  await renderCalendar();
+
+  const [y, m] = dateStr.split('-').map(Number);
+  const slots = (await loadMonth(y, m)).filter(s => toLocalDateStr(s.start_time) === dateStr);
+
+  const header = document.getElementById('slotsHeader');
+  const list   = document.getElementById('slotList');
+  const confirmArea = document.getElementById('confirmArea');
+
+  const d = new Date(dateStr + 'T00:00:00');
+  header.textContent = d.toLocaleDateString('en-NG', {weekday:'long',day:'numeric',month:'long'});
+
+  if (!slots.length) {
+    list.innerHTML = '<div class="empty-slots">No slots available on this date.</div>';
+    confirmArea.style.display = 'none';
+    return;
+  }
+
+  list.innerHTML = slots.map(s => `
+    <button class="slot-btn ${!s.bookable ? 'booked' : ''}"
+            ${!s.bookable ? 'disabled' : ''}
+            id="slot-${s.id}"
+            onclick="selectSlot(${s.id})">
+      <span class="slot-time">${formatTime(s.start_time)} – ${formatTime(s.end_time)}</span>
+      <span class="slot-interviewer">${s.interviewer || ''}</span>
+      ${!s.bookable ? '<span style="float:right;font-size:0.75rem;opacity:.6">Taken</span>' : ''}
+    </button>
+  `).join('');
+
+  confirmArea.style.display = 'block';
+}
+
+function selectSlot(slotId) {
+  selectedSlot = slotId;
+  document.querySelectorAll('.slot-btn').forEach(btn => btn.classList.remove('selected'));
+  const btn = document.getElementById(`slot-${slotId}`);
+  if (btn) btn.classList.add('selected');
+  document.getElementById('confirmBtn').disabled = false;
+  document.getElementById('bookError').style.display = 'none';
+}
+
+async function confirmBooking() {
+  if (!selectedSlot) return;
+
+  const btn = document.getElementById('confirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Booking…';
+
+  try {
+    const resp = await fetch(`/api/slots/${selectedSlot}/book`, {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      document.getElementById('bookError').textContent = data.error || 'Booking failed.';
+      document.getElementById('bookError').style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Confirm Booking';
+
+      // Refresh slots if the slot was taken (race condition)
+      if (resp.status === 409) {
+        delete slotsCache[`${currentYear}-${currentMonth}`];
+        if (selectedDate) selectDate(selectedDate);
+      }
+      return;
+    }
+
+    // Do not leave the claimed slot in this browser's cached calendar.
+    delete slotsCache[`${currentYear}-${currentMonth}`];
+    selectedSlot = null;
+
+    // Show success
+    document.getElementById('mainLayout').style.display = 'none';
+    const sc = document.getElementById('successCard');
+    sc.style.display = 'block';
+    const startLocal = formatWAT(data.start_time);
+    document.getElementById('successMsg').textContent =
+      `Your interview is scheduled for ${startLocal} WAT.` +
+      (data.meeting_link ? ' A calendar invite has been sent to your email.' : '');
+  } catch(e) {
+    document.getElementById('bookError').textContent = 'Network error. Please try again.';
+    document.getElementById('bookError').style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Confirm Booking';
+  }
+}
+
+function prevMonth() {
+  currentMonth--;
+  if (currentMonth < 1) { currentMonth = 12; currentYear--; }
+  renderCalendar();
+}
+function nextMonth() {
+  currentMonth++;
+  if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+  renderCalendar();
+}
+
+// A slot may be claimed by another candidate while this page is open.
+// Refresh when the candidate returns to the page so stale choices disappear.
+window.addEventListener('focus', () => {
+  delete slotsCache[`${currentYear}-${currentMonth}`];
+  renderCalendar();
+});
+
+renderCalendar();
+</script>
+{% endblock %}

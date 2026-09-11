@@ -1,0 +1,418 @@
+/* Aptus Candidate Dashboard Styles */
+
+.dash-wrap {
+  max-width: 800px;
+  margin: 32px auto;
+  padding: 0 16px 80px;
+}
+
+.dash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 32px;
+}
+
+.dash-header h1 {
+  font-family: var(--font-heading);
+  font-size: 32px;
+  line-height: 40px;
+  color: var(--color-primary);
+  margin: 0;
+  font-weight: 600;
+}
+
+.dash-signout-btn {
+  background: transparent;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm, 6px);
+  padding: 0 16px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms ease-out, color 150ms ease-out;
+}
+
+.dash-signout-btn:hover {
+  background: rgba(36, 30, 78, 0.06);
+}
+
+/* Pipeline Progress Rail */
+.pipeline {
+  display: flex;
+  gap: 0;
+  margin-bottom: 32px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.pip-step {
+  flex: 1;
+  min-width: 80px;
+  text-align: center;
+  position: relative;
+}
+
+.pip-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: #D8D8D4;
+  z-index: 0;
+}
+
+.pip-step.done:not(:last-child)::after {
+  background: var(--color-accent);
+}
+
+.pip-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  margin: 0 auto 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  position: relative;
+  z-index: 1;
+  background: var(--color-bg);
+  color: #61646D;
+  border: 2px solid #D8D8D4;
+}
+
+.pip-step.done .pip-dot {
+  background: var(--color-accent);
+  color: #ffffff;
+  border-color: var(--color-accent);
+}
+
+.pip-step.current .pip-dot {
+  background: #ffffff;
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(36, 30, 78, 0.12);
+}
+
+.pip-label {
+  font-size: 12px;
+  color: #61646D;
+}
+
+.pip-step.current .pip-label {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.pip-step.done .pip-label {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* Stage Cards */
+.stage-card {
+  background: #ffffff;
+  border: 1px solid #D8D8D4;
+  border-radius: var(--radius-md, 12px);
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-card, 0 1px 2px rgba(30,30,36,0.08));
+}
+
+.stage-card h2 {
+  font-size: 20px;
+  line-height: 24px;
+  font-weight: 600;
+  margin: 0 0 12px;
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-heading);
+}
+
+.stage-card p {
+  color: var(--color-text);
+  font-size: 14px;
+  margin: 0 0 16px;
+  line-height: 20px;
+}
+
+/* Stage status chips - pairing text + icon */
+.stage-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: normal;
+}
+
+.badge-pending {
+  background: #FFF8EB;
+  color: #80520C;
+  border: 1px solid #F2A93B;
+}
+
+.badge-progress {
+  background: #EEF8F8;
+  color: #0c7575;
+  border: 1px solid var(--color-accent);
+}
+
+.badge-pass {
+  background: #EAF5EF;
+  color: var(--color-success);
+  border: 1px solid var(--color-success);
+}
+
+.badge-fail {
+  background: #FBEEEE;
+  color: var(--color-error);
+  border: 1px solid var(--color-error);
+}
+
+.badge-action {
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+/* Buttons */
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--color-accent);
+  color: #ffffff;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm, 6px);
+  height: 40px;
+  padding: 0 24px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 150ms ease-out, border-color 150ms ease-out;
+}
+
+.action-btn:hover {
+  background: #0c8282;
+  border-color: #0c8282;
+}
+
+.action-btn.outline {
+  background: transparent;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+}
+
+.action-btn.outline:hover {
+  background: rgba(36, 30, 78, 0.06);
+}
+
+/* Info Grid */
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.info-item label {
+  display: block;
+  font-size: 12px;
+  color: #61646D;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.info-item span {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Timeline */
+.timeline {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.timeline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  margin-top: 6px;
+}
+
+.timeline-label {
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.timeline-meta {
+  color: #61646D;
+  font-size: 12px;
+  line-height: 16px;
+  margin-top: 2px;
+}
+
+/* Document Checklist */
+.doc-checklist {
+  margin-top: 16px;
+  border-top: 1px solid #D8D8D4;
+}
+
+.doc-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #EAEAEC;
+  font-size: 14px;
+}
+
+.doc-row:last-child {
+  border-bottom: none;
+}
+
+.doc-tick {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.tick-done {
+  background: #EAF5EF;
+  color: var(--color-success);
+}
+
+.tick-wait {
+  background: #FFF8EB;
+  color: #80520C;
+}
+
+.tick-none {
+  background: var(--color-bg);
+  color: #A0A09C;
+}
+
+/* Interview Card */
+.interview-card {
+  background: #F4FBF7;
+  border: 1px solid #B8E6CB;
+  border-radius: var(--radius-md, 12px);
+  padding: 24px;
+  margin-top: 16px;
+}
+
+.join-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-success);
+  color: #ffffff;
+  border-radius: var(--radius-sm, 6px);
+  height: 40px;
+  padding: 0 24px;
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+  transition: opacity 150ms ease-out;
+  margin-top: 16px;
+}
+
+.join-btn:hover {
+  opacity: 0.9;
+}
+
+.join-btn:disabled,
+.join-btn.inactive {
+  background: #A0A09C;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+/* Flag Warning */
+.flag-warning {
+  background: #FFF8EB;
+  border: 1px solid #F2A93B;
+  border-radius: var(--radius-sm, 6px);
+  padding: 16px;
+  font-size: 14px;
+  line-height: 20px;
+  color: #80520C;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* Assessment Card Items */
+.assessment-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border: 1px solid #D8D8D4;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--color-bg);
+  gap: 16px;
+}
+
+.assessment-item h3 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.assessment-item p {
+  margin: 0;
+  font-size: 12px;
+  color: #61646D;
+  line-height: 18px;
+}
+
+@media (max-width: 640px) {
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+  .pipeline {
+    gap: 0;
+  }
+  .pip-label {
+    display: none;
+  }
+  .assessment-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

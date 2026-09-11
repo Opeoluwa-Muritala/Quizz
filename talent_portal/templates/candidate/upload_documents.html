@@ -1,0 +1,270 @@
+{% extends "shared/base.html" %}
+
+{% block title %}Verify Documents - {{ brand.portal_title }}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/upload_documents.css') }}">
+
+{% endblock %}
+
+{% block content %}
+<div class="docs-wrap candidate-page mfb-page">
+  <div class="mfb-stage-rail" aria-label="Application stage">
+    <div class="mfb-stage-step done"><div class="mfb-stage-dot"></div><span>Applied</span></div>
+    <div class="mfb-stage-step done"><div class="mfb-stage-dot"></div><span>Screening</span></div>
+    <div class="mfb-stage-step done"><div class="mfb-stage-dot"></div><span>Assessment</span></div>
+    <div class="mfb-stage-step done"><div class="mfb-stage-dot"></div><span>Interview</span></div>
+    <div class="mfb-stage-step current"><div class="mfb-stage-dot"></div><span>Documents</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Decision</span></div>
+  </div>
+  <a href="/dashboard" style="font-size:14px;color:var(--color-primary);text-decoration:none;font-weight:600;display:inline-block;margin-bottom:8px;">Back to dashboard</a>
+  <h1 style="margin-top:8px">Employment documents</h1>
+  <p class="sub">Upload the five required employment documents for your role. Verification happens after submission.</p>
+
+  <div class="instructions">
+    <i class="ti ti-info-circle" style="font-size:18px;flex-shrink:0;margin-top:1px;"></i>
+    <span>Upload each document by clicking on it. Documents are saved immediately — you can upload them one at a time.</span>
+  </div>
+
+  {% set completion = namespace(all_uploaded=true) %}
+  {% for doc_req in required_docs %}
+    {% set doc_type = doc_req.document_type %}
+    {% set doc_label = doc_req.label %}
+    {% set accepted_formats = ['PDF','JPG','PNG'] %}
+    {% set doc_info = submitted.get(doc_type) %}
+    {% set is_done = doc_info and doc_info[1] %}
+    {% if doc_req.required and not is_done %}{% set completion.all_uploaded = false %}{% endif %}
+    {% set is_processing = doc_info and doc_info[3] == 'processing' %}
+    {% set is_verified = doc_info and doc_info[2] %}
+    {% set rejection_note = doc_info[5] if doc_info and doc_info|length > 5 else None %}
+    <div class="doc-item" id="docItem-{{ doc_type }}">
+      <div class="doc-item-header" onclick="toggleDoc('{{ doc_type }}')" style="cursor:pointer">
+        <div class="doc-status-dot {% if is_done %}dot-done{% elif is_processing %}dot-pending{% else %}dot-none{% endif %}"></div>
+        <span class="doc-label">{{ doc_label }}</span>
+        {% if is_verified %}
+          <span class="doc-tag tag-verified"><i class="ti ti-check" style="font-size:12px;"></i> Verified</span>
+        {% elif is_done %}
+          <span class="doc-tag tag-uploaded">Uploaded</span>
+        {% elif is_processing %}
+          <span class="doc-tag tag-processing">Processing…</span>
+        {% endif %}
+        <i class="ti ti-chevron-down" style="font-size:16px;color:#61646D;"></i>
+      </div>
+      <div class="doc-body" id="docBody-{{ doc_type }}">
+        {% if is_done and not is_verified %}
+        <p style="font-size:13px;color:#61646D;margin:0 0 12px">
+          Document uploaded. You can replace it by uploading again.
+        </p>
+        {% endif %}
+        {% if rejection_note %}
+        <p style="font-size:13px;color:var(--color-error);background:#FBEEEE;border:1px solid var(--color-error);border-radius:6px;padding:12px 16px;margin:0 0 12px">
+          {{ rejection_note }}
+        </p>
+        {% endif %}
+        <div class="file-preview{% if is_done %} active{% endif %}" id="preview-{{ doc_type }}">
+          <div class="preview-actions">
+            <button type="button" onclick="event.stopPropagation();togglePreviewSize('{{ doc_type }}')">Expand / Close</button>
+          </div>
+          {% if is_done %}
+          {% if doc_info[1].lower().endswith(('.jpg', '.jpeg', '.png')) %}
+          <img src="/api/candidate/documents/{{ doc_info[6] }}/preview" id="previewMedia-{{ doc_type }}" alt="{{ doc_label }} preview">
+          {% else %}
+          <object data="/api/candidate/documents/{{ doc_info[6] }}/preview" type="application/pdf" id="previewMedia-{{ doc_type }}">
+            <p>We couldn't show this file here. Please try replacing it.</p>
+          </object>
+          {% endif %}
+          {% else %}<div id="previewMedia-{{ doc_type }}"></div>{% endif %}
+        </div>
+        <div class="drop-zone" id="drop-{{ doc_type }}">
+          <input type="file" id="file-{{ doc_type }}"
+                 accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                 onchange="handleFileSelect('{{ doc_type }}', this)">
+          <div style="font-size:24px;color:var(--color-primary);margin-bottom:8px;"><i class="ti ti-paperclip"></i></div>
+          <p>Click or drag &amp; drop a file here</p>
+          <p>Accepted: {{ accepted_formats|join(', ') }}</p>
+          <div class="file-name" id="fname-{{ doc_type }}" style="display:none"></div>
+        </div>
+        <button class="upload-btn" id="uploadBtn-{{ doc_type }}"
+                onclick="uploadFile('{{ doc_type }}')" disabled>
+          Upload
+        </button>
+        <div class="upload-progress" id="prog-{{ doc_type }}">Uploading…</div>
+        <div class="upload-done" id="done-{{ doc_type }}"><i class="ti ti-check" style="font-size:14px;"></i> Uploaded successfully</div>
+        <div class="upload-err" id="err-{{ doc_type }}"></div>
+      </div>
+    </div>
+  {% endfor %}
+
+  <button class="submit-all-btn" id="submitAllBtn" onclick="submitAll()" {% if not completion.all_uploaded %}disabled{% endif %}>
+    Submit documents for verification
+  </button>
+  <p style="font-size:13px;color:#61646D;text-align:center;margin-top:12px">
+    This option becomes active once you have uploaded all the required documents.
+  </p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+const fileSelections = {};
+const uploadJobs = {};
+
+function toggleDoc(docType) {
+  const item = document.getElementById(`docItem-${docType}`);
+  item.classList.toggle('expanded');
+}
+
+function handleFileSelect(docType, input) {
+  const file = input.files[0];
+  if (!file) return;
+  fileSelections[docType] = file;
+  document.getElementById(`fname-${docType}`).textContent = file.name;
+  document.getElementById(`fname-${docType}`).style.display = 'block';
+  document.getElementById(`uploadBtn-${docType}`).disabled = false;
+  document.getElementById(`err-${docType}`).style.display = 'none';
+  showLocalPreview(docType, file);
+}
+
+function showLocalPreview(docType, file) {
+  const wrap = document.getElementById(`preview-${docType}`);
+  const old = document.getElementById(`previewMedia-${docType}`);
+  const url = URL.createObjectURL(file);
+  const media = file.type === 'application/pdf' ? document.createElement('object') : document.createElement('img');
+  media.id = `previewMedia-${docType}`;
+  if (file.type === 'application/pdf') { media.data = url; media.type = 'application/pdf'; }
+  else { media.src = url; media.alt = 'Selected document preview'; }
+  old.replaceWith(media);
+  wrap.classList.add('active');
+}
+
+function togglePreviewSize(docType) {
+  document.getElementById(`preview-${docType}`).classList.toggle('expanded');
+}
+
+// Drag & drop for each zone
+document.querySelectorAll('.drop-zone').forEach(zone => {
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('over');
+    const docType = zone.id.replace('drop-', '');
+    const fileInput = document.getElementById(`file-${docType}`);
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const dt = new DataTransfer(); dt.items.add(file); fileInput.files = dt.files;
+      handleFileSelect(docType, fileInput);
+    }
+  });
+});
+
+async function uploadFile(docType) {
+  const file = fileSelections[docType];
+  if (!file) return;
+
+  const btn  = document.getElementById(`uploadBtn-${docType}`);
+  const prog = document.getElementById(`prog-${docType}`);
+  const done = document.getElementById(`done-${docType}`);
+  const err  = document.getElementById(`err-${docType}`);
+
+  btn.disabled = true;
+  prog.style.display = 'block';
+  done.style.display = 'none';
+  err.style.display = 'none';
+
+  const formData = new FormData();
+  formData.append('doc_type', docType);
+  formData.append('file', file);
+
+  try {
+    const resp = await fetch('/api/documents/upload', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken },
+      body: formData,
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      prog.style.display = 'none';
+      err.textContent = data.error || 'Upload failed.';
+      err.style.display = 'block';
+      btn.disabled = false;
+      return;
+    }
+
+    uploadJobs[docType] = data.upload_job_id;
+    prog.textContent = 'Processing…';
+    pollUploadStatus(docType, data.upload_job_id);
+  } catch(e) {
+    prog.style.display = 'none';
+    err.textContent = 'Network error. Please try again.';
+    err.style.display = 'block';
+    btn.disabled = false;
+  }
+}
+
+function pollUploadStatus(docType, jobId) {
+  const prog = document.getElementById(`prog-${docType}`);
+  const done = document.getElementById(`done-${docType}`);
+  const err  = document.getElementById(`err-${docType}`);
+  const dot  = document.querySelector(`#docItem-${docType} .doc-status-dot`);
+
+  const interval = setInterval(async () => {
+    try {
+      const resp = await fetch(`/api/upload-status/${jobId}`);
+      const data = await resp.json();
+
+      if (data.status === 'done') {
+        clearInterval(interval);
+        prog.style.display = 'none';
+        done.style.display = 'block';
+        if (dot) { dot.className = 'doc-status-dot dot-done'; }
+        const remaining = document.querySelectorAll('.doc-status-dot:not(.dot-done)').length;
+        if (remaining === 0) document.getElementById('submitAllBtn').disabled = false;
+        // Update tag
+        const header = document.querySelector(`#docItem-${docType} .doc-item-header`);
+        const oldTag = header.querySelector('.doc-tag');
+        if (oldTag) oldTag.remove();
+        header.insertBefore(
+          Object.assign(document.createElement('span'), {
+            className: 'doc-tag tag-uploaded', textContent: 'Uploaded'
+          }),
+          header.querySelector('span[style]')
+        );
+      } else if (data.status === 'failed') {
+        clearInterval(interval);
+        prog.style.display = 'none';
+        err.textContent = data.error || "We couldn't upload this file. Please try again.";
+        err.style.display = 'block';
+        document.getElementById(`uploadBtn-${docType}`).disabled = false;
+      }
+    } catch(e) { /* will retry */ }
+  }, 2000);
+}
+
+async function submitAll() {
+  const btn = document.getElementById('submitAllBtn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  try {
+    const resp = await fetch('/api/documents/submit', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (resp.ok) {
+      window.location.href = '/dashboard';
+    } else {
+      const data = await resp.json();
+      alert(data.error || 'Could not submit documents.');
+      btn.disabled = false;
+      btn.textContent = 'Mark All Documents as Submitted';
+    }
+  } catch(e) {
+    alert('Network error. Please try again.');
+    btn.disabled = false;
+    btn.textContent = 'Mark All Documents as Submitted';
+  }
+}
+</script>
+{% endblock %}

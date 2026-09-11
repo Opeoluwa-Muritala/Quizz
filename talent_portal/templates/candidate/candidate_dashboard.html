@@ -1,0 +1,551 @@
+{% extends "shared/base.html" %}
+
+{% block title %}Dashboard - {{ brand.portal_title }}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/candidate_dashboard.css') }}">
+
+{% endblock %}
+
+{% block content %}
+{% set cand_name = candidate[0] if candidate else 'Candidate' %}
+{% set cand_email = candidate[1] if candidate else '' %}
+
+<div class="dash-wrap">
+  <div class="dash-header">
+    <div>
+      <h1>Welcome, {{ cand_name.split()[0] }}</h1>
+      <p style="margin:4px 0 0;font-size:14px;color:#61646D;">{{ cand_email }}{% if candidate and candidate|length > 10 and candidate[10] %} &bull; {{ candidate[10] }}{% endif %}</p>
+    </div>
+    <button onclick="fetch('/recruitment/logout',{method:'POST',headers:{'X-CSRF-Token':csrfMeta()}}).then(()=>location.href='/login')"
+            class="dash-signout-btn">
+      Sign out
+    </button>
+  </div>
+
+  <!-- Pipeline progress -->
+  {% set pipeline_stages = [
+    ('applied', 'Apply'),
+    ('screening_passed', 'Screening'),
+    ('assessment_passed', 'Assessment'),
+    ('interview_scheduled', 'Interview'),
+    ('documents_submitted', 'Documents'),
+    ('offered', 'Decision'),
+  ] %}
+
+  {% set stage_order = {
+    'applied': 0, 'screening_failed': 1, 'screening_flagged': 1, 'screening_passed': 1,
+    'assessment_in_progress': 2, 'assessment_failed': 2, 'assessment_passed': 2,
+    'interview_slot_pending': 3, 'interview_scheduled': 3, 'interview_completed': 3,
+    'documents_pending': 4, 'documents_submitted': 4,
+    'offered': 5, 'rejected': 5,
+  } %}
+  {% set current_order = stage_order.get(stage, 0) %}
+
+  <div class="pipeline">
+    {% for s_key, s_label in pipeline_stages %}
+      {% set s_idx = loop.index0 %}
+      {% if s_idx < current_order %}
+        <div class="pip-step done">
+      {% elif s_idx == current_order %}
+        <div class="pip-step current">
+      {% else %}
+        <div class="pip-step">
+      {% endif %}
+          <div class="pip-dot">
+            {% if s_idx < current_order %}
+              <i class="ti ti-check" style="font-size:14px;"></i>
+            {% else %}
+              {{ loop.index }}
+            {% endif %}
+          </div>
+          <div class="pip-label">{{ s_label }}</div>
+        </div>
+    {% endfor %}
+  </div>
+
+  <!-- Eligibility flag warning -->
+  {% if candidate and candidate[6] %}
+    <div class="flag-warning">
+      <i class="ti ti-alert-triangle" style="font-size:16px;flex-shrink:0;"></i>
+      <span>Your application has a flag for manual review: {{ candidate[7] or 'Eligibility check' }}. Our HR team will review and contact you within 2–3 business days.</span>
+    </div>
+  {% endif %}
+
+  <!-- Stage-specific card -->
+  {% if stage in ('applied',) %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-pending"><i class="ti ti-clock" style="font-size:14px;"></i> Under review</span></h2>
+    <p>Your application has been received and is under eligibility review. This typically completes within a few minutes. Please refresh this page or check back shortly.</p>
+    {% if stage_windows and stage_windows.get('screening') %}
+      {% set sw = stage_windows.get('screening') %}
+      {% if sw.opens_at or sw.closes_at %}
+      <p style="margin-top:12px;font-size:13px;color:#61646D;">
+        Screening window:
+        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
+        {% if sw.opens_at and sw.closes_at %}, {% endif %}
+        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
+      </p>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {% elif stage == 'screening_failed' %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-fail"><i class="ti ti-x" style="font-size:14px;"></i> Not shortlisted</span></h2>
+    <p>We were unable to proceed with your application after the eligibility screening. Thank you for your interest in the {{ brand.program_name }}.</p>
+  </div>
+
+  {% elif stage in ('screening_passed', 'screening_flagged') %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-pass"><i class="ti ti-check" style="font-size:14px;"></i> Screening passed</span></h2>
+    <p>Your application has cleared the initial screening. Please scroll down to complete the online assessments assigned to your cohort.</p>
+  </div>
+
+  {% elif stage == 'assessment_in_progress' %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-progress"><i class="ti ti-player-play" style="font-size:14px;"></i> Assessment in progress</span></h2>
+    <p>You have an ongoing assessment session. Scroll down to resume or start your tests.</p>
+  </div>
+
+  {% elif stage == 'assessment_failed' %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-fail"><i class="ti ti-x" style="font-size:14px;"></i> Assessment not passed</span></h2>
+    <p>Thank you for taking the assessment. Unfortunately, your score did not meet the pass mark. We appreciate the effort and wish you well.</p>
+    {% if latest_score %}
+    <div class="info-grid" style="margin-top:12px">
+      <div class="info-item"><label>Score</label><span>{{ latest_score[1] }}</span></div>
+      <div class="info-item"><label>Result</label><span>{{ latest_score[2] }}</span></div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% elif stage in ('interview_slot_pending', 'assessment_passed') %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-action"><i class="ti ti-calendar" style="font-size:14px;"></i> Schedule interview</span></h2>
+    <p>Congratulations on passing the assessment! Please select an interview slot at your earliest convenience.</p>
+    {% if latest_score %}
+    <div class="info-grid" style="margin-bottom:16px">
+      <div class="info-item"><label>Assessment score</label><span>{{ latest_score[1] }}</span></div>
+      <div class="info-item"><label>Result</label><span style="color:var(--color-success)">{{ latest_score[2] }}</span></div>
+    </div>
+    {% endif %}
+    <a href="/schedule" class="action-btn">Choose interview slot</a>
+    {% if stage_windows and stage_windows.get('interview') %}
+      {% set sw = stage_windows.get('interview') %}
+      {% if sw.opens_at or sw.closes_at %}
+      <p style="margin-top:12px;font-size:13px;color:#61646D;">
+        Interview scheduling window:
+        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
+        {% if sw.opens_at and sw.closes_at %}, {% endif %}
+        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
+      </p>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {% elif stage == 'interview_scheduled' %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-progress"><i class="ti ti-video" style="font-size:14px;"></i> Interview scheduled</span></h2>
+    {% if slot_info %}
+    <div class="interview-card">
+      <div class="info-grid">
+        <div class="info-item">
+          <label>Date and time</label>
+          <span id="interviewTime" data-utc="{{ slot_info[0].isoformat() }}">Loading…</span>
+        </div>
+        <div class="info-item">
+          <label>Interviewer</label>
+          <span>{{ slot_info[4] or 'TBC' }}</span>
+        </div>
+        <div class="info-item">
+          <label>Platform</label>
+          <span>{{ 'Google Meet' if slot_info[3] == 'google_meet' else 'Zoom' }}</span>
+        </div>
+        <div class="info-item">
+          <label>Meeting link</label>
+          <span>{% if slot_info[2] %}<a href="{{ slot_info[2] }}" target="_blank" rel="noopener noreferrer" style="color:var(--color-accent);font-weight:600;">Open link</a>{% else %}Will be available closer to time{% endif %}</span>
+        </div>
+      </div>
+      {% if slot_info[2] %}
+      <a href="/interview" class="join-btn" id="joinBtn">Join interview</a>
+      {% endif %}
+    </div>
+    {% else %}
+    <p>Your interview is confirmed. Details will appear here shortly.</p>
+    {% endif %}
+    <p style="margin-top:16px;font-size:14px;color:#61646D;">
+      Please also upload your supporting documents below.
+    </p>
+    <a href="/documents" class="action-btn outline" style="margin-top:8px;margin-bottom:8px">Upload documents</a>
+    {% if stage_windows and stage_windows.get('interview') %}
+      {% set sw = stage_windows.get('interview') %}
+      {% if sw.opens_at or sw.closes_at %}
+      <p style="font-size:13px;color:#61646D;margin-top:8px;">
+        Interview window:
+        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
+        {% if sw.opens_at and sw.closes_at %}, {% endif %}
+        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
+      </p>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {% elif stage in ('documents_pending', 'documents_submitted') %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-action"><i class="ti ti-file-text" style="font-size:14px;"></i> Documents required</span></h2>
+    <p>Please upload all required supporting documents before your interview.</p>
+    <div class="doc-checklist">
+      {% set doc_map = {} %}
+      {% for d in docs %}{% set _ = doc_map.update({d[0]: d}) %}{% endfor %}
+      {% for doc_req in required_docs %}
+      {% set doc_type = doc_req.document_type if doc_req is mapping else doc_req %}
+      {% set doc_label = doc_req.label if doc_req is mapping else doc_type.replace('_',' ') %}
+      <div class="doc-row">
+        {% if doc_map.get(doc_type) and doc_map[doc_type][1] %}
+          <div class="doc-tick tick-done"><i class="ti ti-check" style="font-size:12px;"></i></div>
+          <span style="flex:1;text-transform:capitalize">{{ doc_label }}</span>
+          {% if doc_map[doc_type][2] %}<span style="font-size:12px;color:var(--color-success);font-weight:600;">Verified</span>{% else %}<span style="font-size:12px;color:#61646D;">Uploaded</span>{% endif %}
+        {% elif doc_map.get(doc_type) and doc_map[doc_type][3] == 'processing' %}
+          <div class="doc-tick tick-wait"><i class="ti ti-clock" style="font-size:12px;"></i></div>
+          <span style="flex:1;text-transform:capitalize">{{ doc_label }}</span>
+          <span style="font-size:12px;color:#80520C;font-weight:600;">Processing…</span>
+        {% else %}
+          <div class="doc-tick tick-none"><i class="ti ti-circle" style="font-size:12px;"></i></div>
+          <span style="flex:1;text-transform:capitalize">{{ doc_label }}</span>
+          <span style="font-size:12px;color:#A0A09C;">Not uploaded</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <a href="/documents" class="action-btn" style="margin-top:16px;margin-bottom:8px">
+      {{ 'Update documents' if stage == 'documents_submitted' else 'Upload documents' }}
+    </a>
+    {% if stage_windows and stage_windows.get('documents') %}
+      {% set sw = stage_windows.get('documents') %}
+      {% if sw.opens_at or sw.closes_at %}
+      <p style="font-size:13px;color:#61646D;margin-top:8px;">
+        Document upload window:
+        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
+        {% if sw.opens_at and sw.closes_at %}, {% endif %}
+        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
+      </p>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {% elif stage == 'interview_completed' %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-progress"><i class="ti ti-check" style="font-size:14px;"></i> Interview completed</span></h2>
+    <p>Your interview has been completed. We are reviewing all candidates and will communicate the final decision shortly. Thank you for your patience.</p>
+    {% if stage_windows and (stage_windows.get('final_decision') or stage_windows.get('decision')) %}
+      {% set sw = stage_windows.get('final_decision') or stage_windows.get('decision') %}
+      {% if sw.opens_at or sw.closes_at %}
+      <p style="margin-top:12px;font-size:13px;color:#61646D;">
+        Decision stage window:
+        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
+        {% if sw.opens_at and sw.closes_at %}, {% endif %}
+        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
+      </p>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {% elif stage == 'offered' %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-pass"><i class="ti ti-award" style="font-size:14px;"></i> Offer extended</span></h2>
+    <p>Congratulations! You have been selected for the {{ brand.program_name }}. Please watch your email for your formal offer letter and next steps from our HR team.</p>
+    {% if stage_windows and (stage_windows.get('final_decision') or stage_windows.get('decision')) %}
+      {% set sw = stage_windows.get('final_decision') or stage_windows.get('decision') %}
+      {% if sw.opens_at or sw.closes_at %}
+      <p style="margin-top:12px;font-size:13px;color:#61646D;">
+        Decision stage window:
+        {% if sw.opens_at %}opens <strong>{{ sw.opens_at }}</strong>{% endif %}
+        {% if sw.opens_at and sw.closes_at %}, {% endif %}
+        {% if sw.closes_at %}closes <strong>{{ sw.closes_at }}</strong>{% endif %}
+      </p>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {% elif stage == 'rejected' %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-fail"><i class="ti ti-x" style="font-size:14px;"></i> Application closed</span></h2>
+    <p>Thank you for going through our recruitment process. At this time, we are unable to proceed with your application. We wish you the very best.</p>
+  </div>
+
+  {% elif 'expired' in stage %}
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-fail"><i class="ti ti-alert-triangle" style="font-size:14px;"></i> Stage expired</span></h2>
+    <p>The deadline for your current stage has passed. Please contact HR if you believe this is an error: <a href="mailto:{{ brand.support_email }}">{{ brand.support_email }}</a></p>
+  </div>
+
+  {% else %}
+  <div class="stage-card">
+    <h2>Application in progress</h2>
+    <p>Your application is being processed. Current stage: <strong>{{ stage.replace('_', ' ')|title }}</strong></p>
+  </div>
+  {% endif %}
+
+  <div class="stage-card">
+    <h2><span class="stage-badge badge-pass"><i class="ti ti-checkbox" style="font-size:14px;"></i> Online assessments</span></h2>
+    <p>Online assessments assigned to your cohort. Ensure you're in a quiet environment with a stable internet connection. You must pass all tests to proceed.</p>
+    
+    <div style="display:flex; flex-direction:column; gap:16px; margin-top:20px;">
+      {% if cohort_tests %}
+        {% for test in cohort_tests %}
+          <div class="assessment-item">
+            <div style="flex:1;">
+              <h3>{{ test.title }}</h3>
+              <p>
+                Duration: <strong>{{ test.duration_minutes }} min</strong>, Pass Mark: <strong>{{ test.pass_mark }}%</strong>
+                {% if test.opens_at_formatted or test.closes_at_formatted %}
+                  <br>Window: 
+                  {% if test.opens_at_formatted %}opens <strong>{{ test.opens_at_formatted }}</strong>{% endif %}
+                  {% if test.closes_at_formatted %}, closes <strong>{{ test.closes_at_formatted }}</strong>{% endif %}
+                {% endif %}
+              </p>
+            </div>
+            <div>
+              {% if test.status == 'completed' %}
+                <span class="stage-badge {% if test.pass_fail == 'PASS' %}badge-pass{% else %}badge-fail{% endif %}" style="padding:6px 12px; font-size:12px;">
+                  {{ test.pass_fail }} ({{ test.score_percent }}%)
+                </span>
+              {% elif test.status == 'in_progress' %}
+                <span class="stage-badge badge-progress" style="padding:6px 12px; font-size:12px;">In progress</span>
+              {% else %}
+                {% if test.is_available %}
+                  <a href="{{ url_for('recruitment.start_quiz', quiz_id=test.id) }}" class="action-btn" style="height:36px; padding:0 16px; font-size:13px;">Start test</a>
+                {% else %}
+                  <span class="stage-badge badge-pending" style="padding:6px 12px; font-size:12px;">Unavailable</span>
+                {% endif %}
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p style="font-style:italic; color:#61646D; margin:0;">No assessments have been assigned to your cohort yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="stage-card">
+    <h2>Application timeline</h2>
+    {% if stage_history %}
+      <div class="timeline">
+        {% for item in stage_history %}
+          <div class="timeline-row">
+            <div class="timeline-dot"></div>
+            <div>
+              <div class="timeline-label">{{ (item[1] or 'updated').replace('_', ' ')|title }}</div>
+              <div class="timeline-meta">
+                {{ item[2] }}
+                {% if item[4] %}, {{ item[4] }}{% endif %}
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>No stage history has been recorded yet.</p>
+    {% endif %}
+  </div>
+
+  <!-- Candidate info card -->
+  {% if candidate %}
+  <div class="stage-card" style="margin-top:0">
+    <h2 style="font-size:18px;color:var(--color-primary);font-weight:600;margin-bottom:16px;">Your details</h2>
+    <div class="info-grid">
+      <div class="info-item"><label>Name</label><span>{{ candidate[0] }}</span></div>
+      <div class="info-item"><label>Email</label><span>{{ candidate[1] }}</span></div>
+      <div class="info-item"><label>Phone</label><span>{{ candidate[2] or '—' }}</span></div>
+      <div class="info-item"><label>NYSC status</label><span style="text-transform:capitalize">{{ (candidate[4] or '—').replace('_',' ') }}</span></div>
+      {% if candidate[5] %}
+      <div class="info-item">
+        <label>CV</label>
+        <span><button type="button" class="action-btn outline" onclick="toggleCandidateCv()">View uploaded CV</button></span>
+      </div>
+      {% endif %}
+    </div>
+    {% if candidate[5] %}
+    <div id="candidateCvPreview" style="display:none;margin-top:16px;border:1px solid #D8D8D4;border-radius:12px;overflow:hidden;background:#F7F7F5">
+      <div style="display:flex;justify-content:flex-end;padding:8px;background:#fff;border-bottom:1px solid #D8D8D4;">
+        <button type="button" class="dash-signout-btn" onclick="expandCandidateCv()">Expand / Close</button>
+      </div>
+      {% if candidate[5].lower().endswith(('.jpg', '.jpeg', '.png')) %}
+      <img src="/api/candidate/cv/preview" alt="Uploaded CV preview" style="width:100%;height:60vh;object-fit:contain;display:block">
+      {% else %}
+      <object data="/api/candidate/cv/preview" type="application/pdf" style="width:100%;height:60vh;border:0;display:block">
+        <p>We couldn't show your CV here. Please try again later.</p>
+      </object>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleCandidateCv() {
+  const preview = document.getElementById('candidateCvPreview');
+  preview.style.display = preview.style.display === 'none' ? 'block' : 'none';
+}
+function expandCandidateCv() {
+  const preview = document.getElementById('candidateCvPreview');
+  const expanded = preview.dataset.expanded === 'true';
+  preview.dataset.expanded = String(!expanded);
+  preview.style.cssText = expanded
+    ? 'display:block;margin-top:16px;border:1px solid #D8D8D4;border-radius:12px;overflow:hidden;background:#F7F7F5'
+    : 'display:block;position:fixed;inset:0;z-index:10000;background:#fff;padding:48px 12px 12px';
+}
+function csrfMeta() {
+  return document.querySelector('meta[name="csrf-token"]')?.content || '';
+}
+
+function pendingUploadStore() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open({{ brand.storage_key | tojson }}, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('pending-cv');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function compressPendingImage(file) {
+  if (!file.type.startsWith('image/') || !window.createImageBitmap) return file;
+  const image = await createImageBitmap(file);
+  const targetBytes = 3 * 1024 * 1024;
+  if (file.size <= targetBytes) return file;
+
+  let smallest = file;
+  for (const [scaleFactor, quality] of [[1, .82], [.85, .74], [.7, .68], [.55, .6]]) {
+    const scale = Math.min(scaleFactor, 2200 / Math.max(image.width, image.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (blob && blob.size < smallest.size) {
+      smallest = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+    }
+    if (smallest.size <= targetBytes) return smallest;
+  }
+  return smallest;
+}
+
+async function resumePendingCvUploads() {
+  let db;
+  try {
+    db = await pendingUploadStore();
+    const entries = await new Promise((resolve, reject) => {
+      const request = db.transaction('pending-cv', 'readonly').objectStore('pending-cv').getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+
+    for (const entry of entries) {
+      const { file, config } = entry;
+      const uploadFile = await compressPendingImage(file);
+      if (uploadFile.size > 3 * 1024 * 1024) {
+        throw new Error('CV remains above the 3 MB upload limit after compression');
+      }
+      const form = new FormData();
+      form.append('file', uploadFile);
+      form.append('api_key', config.api_key);
+      form.append('timestamp', String(config.timestamp));
+      form.append('signature', config.signature);
+      form.append('folder', config.folder);
+      form.append('public_id', config.public_id);
+      form.append('type', config.type);
+
+      const cloudinaryResponse = await fetch(
+        `https://api.cloudinary.com/v1_1/${config.cloud_name}/auto/upload`,
+        { method: 'POST', body: form }
+      );
+      if (!cloudinaryResponse.ok) throw new Error('Cloudinary upload failed');
+      const result = await cloudinaryResponse.json();
+
+      const complete = await fetch(`/api/uploads/${config.job_id}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfMeta() },
+        body: JSON.stringify({ secure_url: result.secure_url, public_id: result.public_id }),
+      });
+      if (!complete.ok) throw new Error('Upload completion could not be saved');
+
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction('pending-cv', 'readwrite');
+        transaction.objectStore('pending-cv').delete(config.job_id);
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+      });
+    }
+  } catch (error) {
+    console.warn('CV upload remains queued and will retry when the dashboard is reopened.', error);
+  } finally {
+    db?.close();
+  }
+}
+
+resumePendingCvUploads();
+
+async function finishApplicationScreening() {
+  try {
+    const response = await fetch('/api/application/screen', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfMeta() },
+    });
+    const result = await response.json();
+    if (response.ok && result.stage && result.stage !== 'applied') location.reload();
+  } catch (error) {
+    console.warn('Application screening will retry when the dashboard is reopened.', error);
+  }
+}
+{% if stage == 'applied' %}
+finishApplicationScreening();
+{% endif %}
+
+function formatWAT(utcIso) {
+  if (!utcIso) return '—';
+  const d = new Date(utcIso);
+  if (isNaN(d.getTime())) return '—';
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Africa/Lagos',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+  const parts = formatter.formatToParts(d);
+  const m = {};
+  parts.forEach(p => m[p.type] = p.value);
+  return `${m.year}-${m.month}-${m.day} ${m.hour}:${m.minute} ${m.dayPeriod.toLowerCase()}`;
+}
+
+// Localize interview time
+const timeEl = document.getElementById('interviewTime');
+if (timeEl && timeEl.dataset.utc) {
+  timeEl.textContent = formatWAT(timeEl.dataset.utc);
+}
+
+// Enable join button 15 min before interview
+const joinBtn = document.getElementById('joinBtn');
+if (joinBtn && timeEl && timeEl.dataset.utc) {
+  const interviewStart = new Date(timeEl.dataset.utc);
+  function checkJoin() {
+    const now = new Date();
+    const diffMs = interviewStart - now;
+    if (diffMs > 15 * 60 * 1000) {
+      joinBtn.classList.add('inactive');
+      joinBtn.title = 'Available 15 minutes before interview';
+    } else {
+      joinBtn.classList.remove('inactive');
+    }
+  }
+  checkJoin();
+  setInterval(checkJoin, 30000);
+}
+</script>
+{% endblock %}

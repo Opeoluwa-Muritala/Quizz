@@ -1,0 +1,39 @@
+{% extends "shared/base.html" %}
+{% set editing = job.get('id') %}
+{% block title %}{{ 'Edit' if editing else 'Create' }} job - {{ brand.name }}{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/jobs.css') }}">{% endblock %}
+{% block content %}
+<div class="job-editor page-shell">
+  <a class="back-link button-tertiary" href="{{ url_for('job_postings.admin_jobs') }}">Back to job postings</a>
+  <header class="page-heading compact">
+    <div><h1>{{ 'Edit job' if editing else 'Create a job' }}</h1><p>Keep the posting clear, specific, and easy for candidates to scan.</p></div>
+    {% if editing %}<a href="{{ url_for('job_postings.preview_job', job_id=job.id) }}" class="button-secondary">Preview</a>{% endif %}
+  </header>
+  {% if request.args.get('saved') %}<div class="notice success" role="status">Changes saved.</div>{% endif %}
+  {% if errors.get('form') %}<div class="notice error" role="alert">{{ errors.form }}</div>{% endif %}
+  <form method="post" class="editor-layout">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% if editing %}<input type="hidden" name="version" value="{{ job.version }}">{% endif %}
+    <section class="editor-card">
+      <div class="field-grid">
+        <label class="wide">Job title<span>*</span><input name="title" maxlength="160" required value="{{ job.get('title','') }}">{% if errors.get('title') %}<small class="field-error">{{ errors.title }}</small>{% endif %}</label>
+        <label>Department<span>*</span><input name="department" maxlength="120" required value="{{ job.get('department','') }}">{% if errors.get('department') %}<small class="field-error">{{ errors.department }}</small>{% endif %}</label>
+        <label>Location<span>*</span><input name="location" maxlength="180" required value="{{ job.get('location','') }}">{% if errors.get('location') %}<small class="field-error">{{ errors.location }}</small>{% endif %}</label>
+        <label>Employment type<span>*</span><select name="employment_type" required><option value="">Select</option>{% for item in employment_types %}<option {% if job.get('employment_type') == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select>{% if errors.get('employment_type') %}<small class="field-error">{{ errors.employment_type }}</small>{% endif %}</label>
+        <label>Application deadline <small>(WAT, optional)</small><input type="datetime-local" name="application_deadline" value="{{ job.get('deadline_input', job.get('application_deadline','')) }}">{% if errors.get('application_deadline') %}<small class="field-error">{{ errors.application_deadline }}</small>{% endif %}</label>
+        <label class="wide">Description<span>*</span><textarea name="description" maxlength="12000" rows="8" required>{{ job.get('description','') }}</textarea>{% if errors.get('description') %}<small class="field-error">{{ errors.description }}</small>{% endif %}</label>
+        <label class="wide">Requirements<span>*</span><textarea name="requirements" maxlength="12000" rows="7" required>{{ job.get('requirements','') }}</textarea>{% if errors.get('requirements') %}<small class="field-error">{{ errors.requirements }}</small>{% endif %}</label>
+      </div>
+      <div class="form-actions"><button class="portal-button" type="submit">Save changes</button><a class="button-tertiary" href="{{ url_for('job_postings.admin_jobs') }}">Cancel</a></div>
+    </section>
+  </form>
+  {% if editing %}
+  <aside class="lifecycle-card"><h2>Status: {{ job.display_status|capitalize }}</h2><p>{% if job.status == 'draft' %}Only admins can see this draft.{% elif job.status == 'published' %}Candidates can view and apply to this job.{% else %}Applications are closed; existing candidates continue normally.{% endif %}</p>
+    {% if job.status == 'draft' %}{% set target='published' %}{% set label='Publish job' %}
+    {% elif job.status == 'published' %}{% set target='closed' %}{% set label='Close applications' %}
+    {% else %}{% set target='published' %}{% set label='Reopen job' %}{% endif %}
+    <form method="post" action="{{ url_for('job_postings.change_status', job_id=job.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="version" value="{{ job.version }}"><input type="hidden" name="status" value="{{ target }}"><button class="button-secondary lifecycle-action" type="submit">{{ label }}</button></form>
+  </aside>
+  {% endif %}
+</div>
+{% endblock %}

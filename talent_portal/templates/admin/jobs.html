@@ -1,0 +1,44 @@
+{% extends "shared/base.html" %}
+{% block title %}Jobs - {{ brand.name }}{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/jobs.css') }}">{% endblock %}
+{% block content %}
+<div class="jobs-admin page-shell">
+  <header class="page-heading">
+    <div><h1>Job postings</h1><p>Create openings and control which ones accept applications.</p></div>
+    <a class="portal-button" href="{{ url_for('job_postings.create_job') }}">Create job</a>
+  </header>
+  {% if saved %}<div class="notice success" role="status">Job updated.</div>{% endif %}
+  <section class="job-metrics" aria-label="Job status summary">
+    {% for key, label in [('published','Published'),('draft','Draft'),('closed','Closed')] %}
+    <a href="{{ url_for('job_postings.admin_jobs', status=key) }}" class="metric-card"><strong>{{ counts.get(key, 0) }}</strong><span>{{ label }}</span></a>
+    {% endfor %}
+    <a href="{{ url_for('job_postings.legacy_candidates') }}" class="metric-card legacy"><strong>{{ unmatched }}</strong><span>Unmatched historical applications</span></a>
+  </section>
+  <nav class="filter-row" aria-label="Filter jobs">
+    <a class="{{ 'active' if not status }}" href="{{ url_for('job_postings.admin_jobs') }}">All</a>
+    {% for key in ['published','draft','closed'] %}<a class="{{ 'active' if status == key }}" href="{{ url_for('job_postings.admin_jobs', status=key) }}">{{ key|capitalize }}</a>{% endfor %}
+  </nav>
+  <section class="job-list">
+    {% for job in jobs %}
+    <article class="job-row">
+      <div class="job-main">
+        <span class="status-badge {{ job.display_status|replace(' ','-') }}">{{ job.display_status }}</span>
+        <h2>{{ job.title }}</h2>
+        <p class="job-meta-details"><span>{{ job.department }}</span>, <span>{{ job.location }}</span> (<span>{{ job.employment_type }}</span>)</p>
+      </div>
+      <div class="job-meta"><span>{{ job.candidate_count }} candidate{{ '' if job.candidate_count == 1 else 's' }}</span><span>{{ job.deadline_label }}</span></div>
+      <div class="job-actions">
+        <a class="button-tertiary" href="{{ url_for('job_postings.preview_job', job_id=job.id) }}">Preview</a>
+        <a class="button-secondary" href="{{ url_for('job_postings.edit_job', job_id=job.id) }}">Edit</a>
+      </div>
+    </article>
+    {% else %}
+    <div class="empty-state">
+      <i class="ti ti-briefcase-off" style="font-size:20px;color:var(--color-primary);margin-bottom:8px;display:inline-block;" aria-hidden="true"></i>
+      <h2>No job postings found</h2>
+      <p>Create a job posting to accept candidate applications.</p>
+    </div>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}

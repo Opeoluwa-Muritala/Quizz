@@ -1,0 +1,109 @@
+/* Aptus Candidate Interview Styles */
+
+.interview-wrap {
+  max-width: 720px;
+  margin: 32px auto;
+  padding: 0 16px 80px;
+  text-align: center;
+}
+
+.interview-wrap h1 {
+  font-family: var(--font-heading);
+  font-size: 32px;
+  line-height: 40px;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin: 0 0 8px;
+}
+
+.interview-wrap .sub {
+  color: #61646D;
+  font-size: 14px;
+  line-height: 20px;
+  margin: 0 0 24px;
+}
+
+.interview-card {
+  background: #ffffff;
+  border: 1px solid #D8D8D4;
+  border-radius: var(--radius-md, 12px);
+  padding: 24px;
+  box-shadow: var(--shadow-card, 0 1px 2px rgba(30, 30, 36, 0.08));
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #EAEAEC;
+  font-size: 14px;
+}
+
+.info-row:last-of-type {
+  border-bottom: none;
+}
+
+.info-row label {
+  color: #61646D;
+}
+
+.info-row span {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.join-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 24px;
+  background: var(--color-accent);
+  color: #ffffff;
+  height: 40px;
+  padding: 0 24px;
+  border-radius: var(--radius-sm, 6px);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  transition: background 150ms ease-out;
+}
+
+.join-btn:hover {
+  background: #0c8282;
+}
+
+.join-btn.inactive {
+  background: #D8D8D4;
+  color: #61646D;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.countdown {
+  font-size: 13px;
+  color: #61646D;
+  margin-top: 8px;
+}
+
+.instructions-block {
+  background: #EEF8F8;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm, 6px);
+  padding: 16px;
+  margin-top: 24px;
+  text-align: left;
+  font-size: 14px;
+  color: #0c7575;
+  line-height: 20px;
+}
+
+.instructions-block h3 {
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin: 0 0 8px;
+}
+

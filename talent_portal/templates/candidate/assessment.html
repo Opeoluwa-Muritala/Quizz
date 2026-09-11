@@ -1,0 +1,610 @@
+{% extends "shared/base.html" %}
+
+{% block title %}Online Assessment - {{ brand.portal_title }}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/assessment.css') }}">
+
+{% endblock %}
+
+{% block content %}
+<div class="exam-shell">
+  <div class="exam-stage-strip" aria-hidden="true"></div>
+  <div class="exam-topbar">
+    <img class="logo" src="{{ url_for('static', filename=brand.logo) }}" alt="Logo">
+    <span class="section-tag" id="sectionTag">—</span>
+    <span class="progress-text" id="progressText">Question 1 of …</span>
+    <div class="timer-block">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+      <span class="timer-display" id="timerDisplay">--</span>
+    </div>
+  </div>
+
+  <!-- Verification Step Container -->
+  <div id="verificationContainer" class="candidate-page mfb-page" style="display: none; padding: 20px; overflow-y: auto;">
+    <div class="verify-container">
+      <h1 id="verifyGreeting">Welcome! Let's get verified</h1>
+      <p class="lead">Please complete the identity verification steps below to begin your online assessment.</p>
+      
+      <div class="verify-grid">
+        <!-- Card 1: Selfie verification -->
+        <div class="verify-card" id="selfieCard">
+          <h3>1. Take a Selfie</h3>
+          <video id="webcam" class="video-preview" autoplay playsinline muted></video>
+          <img id="selfiePreview" class="image-preview" alt="Selfie preview">
+          <canvas id="selfieCanvas" style="display:none;"></canvas>
+          
+          <div class="verify-actions">
+            <button class="btn btn-primary btn-sm" id="captureBtn" onclick="captureSelfie()">Capture Image</button>
+            <button class="btn btn-outline btn-sm" id="retakeBtn" style="display:none;" onclick="retakeSelfie()">Retake</button>
+          </div>
+          <div class="file-input-fallback" id="selfieFallback">
+            <span style="font-size:12px;display:block;margin-bottom:4px;color:var(--mfb-gray-600);">Camera blocked? Upload a photo instead:</span>
+            <input type="file" accept="image/*" onchange="handleSelfieFile(this)">
+          </div>
+          <div class="verify-status" id="selfieStatus">Selfie required</div>
+        </div>
+
+        <!-- Card 2: ID verification -->
+        <div class="verify-card" id="idCard">
+          <div class="id-dropzone" onclick="document.getElementById('idInput').click()">
+            <h3>2. Upload ID Card</h3>
+            <i class="ti ti-id-badge" style="font-size:36px;color:var(--mfb-gray-600);margin-bottom:8px;"></i>
+            <p>Click or drag to upload valid ID card image</p>
+            <input type="file" id="idInput" accept="image/*" style="display:none;" onchange="handleIdFile(this)">
+          </div>
+          <img id="idPreview" class="image-preview" alt="ID preview">
+          <div class="verify-actions" id="idActions" style="display:none;">
+            <button class="btn btn-outline btn-sm" onclick="retakeId()">Choose Different ID</button>
+          </div>
+          <div class="verify-status" id="idStatus">ID Card required</div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="startVerifyBtn" style="width:100%;" disabled onclick="submitVerification()">Verify &amp; Start Assessment</button>
+      <div id="uploadStatusText" style="text-align:center;margin-top:12px;font-weight:700;color:var(--mfb-purple);display:none;">Uploading files, please wait...</div>
+    </div>
+  </div>
+
+  <!-- Instruction welcome stage if verification is skipped -->
+  <div id="instructionsContainer" class="candidate-page mfb-page" style="display: none; padding: 20px; overflow-y: auto;">
+    <div class="verify-container" style="max-width:600px;">
+      <h1>Online Assessment Instructions</h1>
+      <p class="lead">Please read the instructions carefully before starting the assessment.</p>
+      <div style="background:#f9f9fb;border:1px solid var(--mfb-gray-300);padding:20px;border-radius:8px;margin-bottom:24px;font-size:14px;line-height:22px;color:var(--mfb-ink);">
+        <ul style="margin:0;padding-left:20px;">
+          <li>This assessment consists of Numerical, Verbal, and Logical reasoning sections.</li>
+          <li>Each question has a **per-question countdown timer**.</li>
+          <li>When the timer expires, the question will **auto-advance** and register a blank answer.</li>
+          <li>You **cannot navigate backward** to modify previous questions.</li>
+          <li>Ensure you are in a quiet room with a stable internet connection.</li>
+          <li>Leaving the page or switching tabs will be tracked.</li>
+        </ul>
+      </div>
+      <button class="btn btn-primary" style="width:100%;" onclick="triggerStartAssessment()">Start Assessment Now</button>
+    </div>
+  </div>
+
+  <div class="exam-body" id="examBody" style="display: none;">
+    <div class="sidebar" id="sidebarGrid">
+      <div style="padding:40px;text-align:center;color:#888;font-size:0.9rem">
+        Loading questions…
+      </div>
+    </div>
+    <div class="question-area" id="questionArea">
+      <div style="text-align:center;padding:60px;color:#888">Starting assessment…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Submit confirmation modal -->
+<div id="submitModal">
+  <div class="modal-box">
+    <h3>Submit Assessment?</h3>
+    <p>Are you sure you want to submit? You cannot change your answers after submission.</p>
+    <div class="modal-btns">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="doSubmit()">Submit</button>
+    </div>
+  </div>
+</div>
+
+<!-- Results overlay -->
+<div id="resultsOverlay">
+  <div class="result-card">
+    <img src="{{ url_for('static', filename=brand.logo) }}" alt="Logo"
+         style="height:28px;display:block;margin:0 auto 20px;">
+    <h2 style="font-family:var(--font-heading);margin:0 0 4px">Assessment Complete</h2>
+    <div class="score-big" id="scoreBig">—</div>
+    <div class="pass-badge" id="passBadge">—</div>
+    <p id="resultMsg" style="color:#555;font-size:0.9rem;margin:0 0 24px"></p>
+    <a href="/dashboard" class="btn btn-primary" style="text-decoration:none;display:inline-block">
+      Go to Dashboard →
+    </a>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+const candidateEmail = "{{ email }}";
+const candidateFullName = "{{ full_name }}";
+const candidatePhone = "{{ phone_number }}";
+const candidateRole = "{{ role }}";
+const candidateLocation = "{{ location }}";
+const initialStage = "{{ stage }}";
+
+let questions = [];
+let answers   = {};   // { question_id: { answer_given, was_timeout, time_spent_secs } }
+let currentIdx = 0;
+let scoreId    = null;
+let secondsPerQuestion = 60; // fetched from API/settings
+let questionTimeLeft = 60;
+let questionTimerInterval = null;
+let qStartTime = null;
+let globalStartTimeStamp = null;
+let tabSwitches = 0;
+
+// Camera state variables
+let localStream = null;
+let selfieBase64 = null;
+let idCardBase64 = null;
+
+async function checkAssessmentState() {
+  // If resume or already verified:
+  if (initialStage === 'assessment_in_progress') {
+    document.getElementById('examBody').style.display = 'grid';
+    startAssessment();
+    return;
+  }
+
+  // First check settings
+  try {
+    const summaryResp = await fetch('/api/exam-summary');
+    const settings = await summaryResp.json();
+    secondsPerQuestion = settings.seconds_per_question || 60;
+
+    if (settings.require_identity_verification) {
+      document.getElementById('verifyGreeting').textContent = `Welcome, ${candidateFullName}!`;
+      document.getElementById('verificationContainer').style.display = 'block';
+      initWebcam();
+    } else {
+      document.getElementById('instructionsContainer').style.display = 'block';
+    }
+  } catch (err) {
+    console.error("Failed to load settings:", err);
+    document.getElementById('instructionsContainer').style.display = 'block';
+  }
+}
+
+// ── Web Camera and ID Files Handlers ──────────────────────────────────────────
+async function initWebcam() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    const video = document.getElementById('webcam');
+    video.srcObject = localStream;
+  } catch (err) {
+    console.warn("Webcam access denied/unavailable:", err);
+    document.getElementById('webcam').style.display = 'none';
+    document.getElementById('captureBtn').style.display = 'none';
+    // Fallback stays visible
+  }
+}
+
+function captureSelfie() {
+  const video = document.getElementById('webcam');
+  const canvas = document.getElementById('selfieCanvas');
+  const ctx = canvas.getContext('2d');
+
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+
+  // Mirror effect
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  selfieBase64 = canvas.toDataURL('image/jpeg');
+
+  document.getElementById('webcam').style.display = 'none';
+  document.getElementById('captureBtn').style.display = 'none';
+  document.getElementById('selfieFallback').style.display = 'none';
+
+  const preview = document.getElementById('selfiePreview');
+  preview.src = selfieBase64;
+  preview.style.display = 'block';
+  document.getElementById('retakeBtn').style.display = 'block';
+
+  document.getElementById('selfieStatus').textContent = '✓ Selfie captured';
+  document.getElementById('selfieStatus').style.color = 'var(--mfb-success)';
+
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+  }
+
+  checkVerifyReady();
+}
+
+function retakeSelfie() {
+  selfieBase64 = null;
+  document.getElementById('selfiePreview').style.display = 'none';
+  document.getElementById('retakeBtn').style.display = 'none';
+  document.getElementById('webcam').style.display = 'block';
+  document.getElementById('captureBtn').style.display = 'block';
+  document.getElementById('selfieFallback').style.display = 'block';
+
+  document.getElementById('selfieStatus').textContent = 'Selfie required';
+  document.getElementById('selfieStatus').style.color = '';
+
+  initWebcam();
+  checkVerifyReady();
+}
+
+function handleSelfieFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    selfieBase64 = e.target.result;
+    document.getElementById('webcam').style.display = 'none';
+    document.getElementById('captureBtn').style.display = 'none';
+    
+    const preview = document.getElementById('selfiePreview');
+    preview.src = selfieBase64;
+    preview.style.display = 'block';
+    document.getElementById('retakeBtn').style.display = 'block';
+    
+    document.getElementById('selfieStatus').textContent = '✓ Selfie uploaded';
+    document.getElementById('selfieStatus').style.color = 'var(--mfb-success)';
+    
+    checkVerifyReady();
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleIdFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    idCardBase64 = e.target.result;
+    document.getElementById('idCard').querySelector('.id-dropzone').style.display = 'none';
+    
+    const preview = document.getElementById('idPreview');
+    preview.src = idCardBase64;
+    preview.style.display = 'block';
+    document.getElementById('idActions').style.display = 'block';
+    
+    document.getElementById('idStatus').textContent = '✓ ID Card uploaded';
+    document.getElementById('idStatus').style.color = 'var(--mfb-success)';
+    
+    checkVerifyReady();
+  };
+  reader.readAsDataURL(file);
+}
+
+function retakeId() {
+  idCardBase64 = null;
+  document.getElementById('idPreview').style.display = 'none';
+  document.getElementById('idActions').style.display = 'none';
+  document.getElementById('idCard').querySelector('.id-dropzone').style.display = 'flex';
+  
+  document.getElementById('idStatus').textContent = 'ID Card required';
+  document.getElementById('idStatus').style.color = '';
+  
+  checkVerifyReady();
+}
+
+function checkVerifyReady() {
+  const ready = selfieBase64 && idCardBase64;
+  document.getElementById('startVerifyBtn').disabled = !ready;
+}
+
+async function submitVerification() {
+  document.getElementById('startVerifyBtn').disabled = true;
+  document.getElementById('uploadStatusText').style.display = 'block';
+
+  try {
+    const payload = {
+      email: candidateEmail,
+      full_name: candidateFullName,
+      phone_number: candidatePhone,
+      role: candidateRole,
+      location: candidateLocation,
+      selfie_b64: selfieBase64,
+      id_card_b64: idCardBase64,
+      pre_test_responses: {}
+    };
+
+    const resp = await fetch('/api/upload-photos', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) {
+      alert("Verification Upload Failed: " + (data.error || "Please try again."));
+      document.getElementById('startVerifyBtn').disabled = false;
+      document.getElementById('uploadStatusText').style.display = 'none';
+      return;
+    }
+
+    // Success: advance to instruction screen or start assessment
+    document.getElementById('verificationContainer').style.display = 'none';
+    document.getElementById('instructionsContainer').style.display = 'block';
+  } catch (err) {
+    alert("Network Error: Could not upload verification images.");
+    document.getElementById('startVerifyBtn').disabled = false;
+    document.getElementById('uploadStatusText').style.display = 'none';
+  }
+}
+
+function triggerStartAssessment() {
+  document.getElementById('instructionsContainer').style.display = 'none';
+  document.getElementById('examBody').style.display = 'grid';
+  startAssessment();
+}
+
+// ── Assessment Start ──────────────────────────────────────────────────────────
+async function startAssessment() {
+  globalStartTimeStamp = Date.now();
+  try {
+    const resp = await fetch('/api/assessment/start', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      document.getElementById('questionArea').innerHTML =
+        `<div style="text-align:center;padding:40px;color:#c53030">${data.error || 'Failed to start assessment.'}</div>`;
+      return;
+    }
+
+    questions = data.questions;
+    scoreId   = data.score_id;
+    secondsPerQuestion = data.seconds_per_question || secondsPerQuestion || 60;
+
+    buildSidebar();
+    showQuestion(0);
+  } catch(e) {
+    document.getElementById('questionArea').innerHTML =
+      '<div style="text-align:center;padding:40px;color:#c53030">Network error. Please reload.</div>';
+  }
+}
+
+function buildSidebar() {
+  const sections = {};
+  questions.forEach((q, i) => {
+    if (!sections[q.section]) sections[q.section] = [];
+    sections[q.section].push({ q, i });
+  });
+
+  let html = '';
+  for (const [sec, qs] of Object.entries(sections)) {
+    html += `<h4>${sec}</h4><div class="q-grid">`;
+    qs.forEach(({ q, i }) => {
+      html += `<div class="q-cell unanswered" id="qcell-${i}">${i+1}</div>`;
+    });
+    html += '</div><div style="height:16px"></div>';
+  }
+  document.getElementById('sidebarGrid').innerHTML = html;
+}
+
+function showQuestion(idx) {
+  if (idx < 0 || idx >= questions.length) return;
+
+  currentIdx = idx;
+  qStartTime = Date.now();
+  const q = questions[idx];
+
+  document.getElementById('sectionTag').textContent = q.section;
+  document.getElementById('progressText').textContent =
+    `Question ${idx+1} of ${questions.length}`;
+
+  const saved = answers[q.id];
+  const html = `
+    <div class="section-divider">${q.section}</div>
+    <div class="question-stem">${idx+1}. ${q.stem}</div>
+    <div class="options-list">
+      ${q.options.map((opt, oi) => {
+        const letters = ['A','B','C','D'];
+        const isSel = saved && saved.answer_given === oi;
+        return `
+          <label class="option-row ${isSel ? 'selected' : ''}" onclick="selectOption(${q.id}, ${oi}, this)">
+            <input type="radio" name="q${q.id}" value="${oi}" ${isSel ? 'checked' : ''}>
+            <span class="option-letter">${letters[oi]}</span>
+            <span>${opt}</span>
+          </label>`;
+      }).join('')}
+    </div>
+    <div class="nav-bar">
+      ${idx < questions.length - 1
+        ? `<button class="btn btn-primary" onclick="nextQuestion()">Next question →</button>`
+        : `<button class="btn btn-primary" onclick="openModal()">Submit Assessment</button>`
+      }
+    </div>
+  `;
+  document.getElementById('questionArea').innerHTML = html;
+  
+  // Restart per-question timer
+  questionTimeLeft = secondsPerQuestion;
+  startQuestionTimer();
+  updateCell(idx);
+}
+
+function selectOption(qId, optIdx, labelEl) {
+  document.querySelectorAll(`[name="q${qId}"]`).forEach(r => {
+    r.closest('.option-row').classList.remove('selected');
+  });
+  labelEl.classList.add('selected');
+  
+  const prevTime = answers[qId] ? (answers[qId].time_spent_secs || 0) : 0;
+  answers[qId] = {
+    question_id: qId,
+    answer_given: optIdx,
+    was_timeout: false,
+    time_spent_secs: prevTime,
+  };
+  updateCell(currentIdx);
+}
+
+function startQuestionTimer() {
+  if (questionTimerInterval) clearInterval(questionTimerInterval);
+  
+  const disp = document.getElementById('timerDisplay');
+  disp.textContent = questionTimeLeft;
+  disp.classList.remove('warn', 'danger');
+
+  questionTimerInterval = setInterval(() => {
+    questionTimeLeft--;
+    disp.textContent = questionTimeLeft;
+
+    if (questionTimeLeft <= 10) {
+      disp.classList.add('warn');
+    }
+    if (questionTimeLeft <= 3) {
+      disp.classList.remove('warn');
+      disp.classList.add('danger');
+    }
+
+    if (questionTimeLeft <= 0) {
+      clearInterval(questionTimerInterval);
+      autoAdvanceOnTimeout();
+    }
+  }, 1000);
+}
+
+function autoAdvanceOnTimeout() {
+  const q = questions[currentIdx];
+  const spent = Math.round((Date.now() - qStartTime) / 1000);
+
+  const saved = answers[q.id];
+  answers[q.id] = {
+    question_id: q.id,
+    answer_given: saved ? saved.answer_given : null,
+    was_timeout: true,
+    time_spent_secs: (saved ? (saved.time_spent_secs || 0) : 0) + spent
+  };
+
+  // Auto advance silently without showing an alert popup
+
+  if (currentIdx < questions.length - 1) {
+    showQuestion(currentIdx + 1);
+  } else {
+    doSubmit();
+  }
+}
+
+function nextQuestion() {
+  if (questionTimerInterval) clearInterval(questionTimerInterval);
+
+  const q = questions[currentIdx];
+  const spent = Math.round((Date.now() - qStartTime) / 1000);
+
+  const saved = answers[q.id];
+  answers[q.id] = {
+    question_id: q.id,
+    answer_given: saved ? saved.answer_given : null,
+    was_timeout: false,
+    time_spent_secs: (saved ? (saved.time_spent_secs || 0) : 0) + spent
+  };
+
+  if (currentIdx < questions.length - 1) {
+    showQuestion(currentIdx + 1);
+  } else {
+    openModal();
+  }
+}
+
+function updateCell(idx) {
+  document.querySelectorAll('.q-cell').forEach((el, i) => {
+    el.classList.remove('current','answered','unanswered');
+    const q = questions[i];
+    if (i === currentIdx) el.classList.add('current');
+    else if (answers[q?.id] !== undefined) el.classList.add('answered');
+    else el.classList.add('unanswered');
+  });
+}
+
+function openModal() { document.getElementById('submitModal').classList.add('open'); }
+function closeModal() { document.getElementById('submitModal').classList.remove('open'); }
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) tabSwitches++;
+});
+
+async function doSubmit() {
+  closeModal();
+  if (questionTimerInterval) clearInterval(questionTimerInterval);
+
+  // Record final question time
+  if (qStartTime !== null) {
+    const spent = Math.round((Date.now() - qStartTime) / 1000);
+    const q = questions[currentIdx];
+    if (q) {
+      if (!answers[q.id]) {
+        answers[q.id] = { question_id: q.id, answer_given: null, was_timeout: false, time_spent_secs: 0 };
+      }
+      answers[q.id].time_spent_secs = (answers[q.id].time_spent_secs || 0) + spent;
+    }
+  }
+
+  // Backfill any remaining un-navigated questions as timed out
+  questions.forEach(q => {
+    if (!answers[q.id]) {
+      answers[q.id] = { question_id: q.id, answer_given: null, was_timeout: true, time_spent_secs: 0 };
+    }
+  });
+
+  const answersArr = Object.values(answers);
+  const timeTaken = Math.round((Date.now() - globalStartTimeStamp) / 1000);
+
+  try {
+    const resp = await fetch('/api/assessment/submit', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        score_id: scoreId,
+        answers: answersArr,
+        tab_switches: tabSwitches,
+        time_taken_secs: timeTaken,
+      }),
+    });
+    const data = await resp.json();
+
+    document.getElementById('examBody').style.display = 'none';
+    const overlay = document.getElementById('resultsOverlay');
+    overlay.classList.add('open');
+
+    if (resp.ok) {
+      document.getElementById('scoreBig').textContent = data.score_percent + '%';
+      const badge = document.getElementById('passBadge');
+      badge.textContent = data.pass_fail === 'PASS' ? '✓ PASSED' : '✕ NOT PASSED';
+      badge.className = `pass-badge ${data.pass_fail === 'PASS' ? 'pass' : 'fail'}`;
+      document.getElementById('resultMsg').textContent =
+        data.pass_fail === 'PASS'
+          ? 'Congratulations! You may now schedule your interview.'
+          : 'Your result did not meet the required pass mark. Thank you for participating.';
+    } else {
+      document.getElementById('scoreBig').textContent = '—';
+      document.getElementById('passBadge').textContent = data.error || 'Error';
+    }
+  } catch(e) {
+    document.getElementById('examBody').style.display = 'none';
+    document.getElementById('resultsOverlay').classList.add('open');
+    document.getElementById('scoreBig').textContent = '—';
+    document.getElementById('passBadge').textContent = 'Network Error';
+    document.getElementById('resultMsg').textContent =
+      'Your answers could not be submitted. Please contact HR immediately.';
+  }
+}
+
+// Entry point
+checkAssessmentState();
+</script>
+{% endblock %}

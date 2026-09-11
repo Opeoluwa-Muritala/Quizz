@@ -1,0 +1,13 @@
+{% extends "shared/base.html" %}
+{% block title %}Unmatched applications · {{ brand.name }}{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/jobs.css') }}">{% endblock %}
+{% block content %}
+<div class="page-shell">
+  <a class="back-link" href="{{ url_for('job_postings.admin_jobs') }}">← Job postings</a>
+  <header class="page-heading compact"><div><p class="eyebrow">Migration review</p><h1>Unmatched applications</h1><p>{{ total }} historical record{{ '' if total == 1 else 's' }} could not be linked without guessing.</p></div></header>
+  <div class="table-card"><table><thead><tr><th>Candidate</th><th>Email</th><th>Legacy role</th><th>Stage</th></tr></thead><tbody>
+    {% for candidate in candidates %}<tr><td>{{ candidate.full_name }}</td><td>{{ candidate.email }}</td><td>{{ candidate.role or '—' }}</td><td>{{ candidate.stage }}</td></tr>
+    {% else %}<tr><td colspan="4">Every historical application is linked.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+{% endblock %}

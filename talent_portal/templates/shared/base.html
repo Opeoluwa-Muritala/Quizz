@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en" data-brand="{{ brand.key }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <meta name="theme-color" content="{{ brand.dark }}">
+    <meta name="description" content="{{ brand.portal_title }}. Apply, track your progress, and prepare for your next step.">
+    <title>{% block title %}{{ brand.portal_title }}{% endblock %}</title>
+    <link rel="icon" href="{{ url_for('static', filename=brand.icon) }}">
+    <link rel="manifest" href="{{ url_for('webmanifest') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='aptus-v5') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/portal.css', v='aptus-v5') }}">
+    {% block extra_head %}{% endblock %}
+    <style>
+        :root {
+            --color-primary: #241E4E;
+            --color-accent: #0FA3A3;
+            --color-highlight: #F2A93B;
+            --color-bg: #F7F7F5;
+            --color-text: #1E1E24;
+            --color-success: #2E9E6B;
+            --color-error: #C24545;
+            --radius-sm: 6px;
+            --radius-md: 12px;
+            --shadow-card: 0 1px 2px rgba(30, 30, 36, 0.08);
+            --shadow-raised: 0 8px 24px rgba(30, 30, 36, 0.16);
+            --brand-primary: {{ brand.primary }};
+            --brand-accent: {{ brand.accent }};
+            --brand-dark: {{ brand.dark }};
+            --brand-tint: {{ brand.tint }};
+        }
+    </style>
+</head>
+{% set admin_page = request.path.startswith('/admin') %}
+{% set assessment_page = request.path == '/assessment' %}
+<body class="portal-ui {{ 'workspace-ui' if admin_page else 'candidate-ui' }} {{ 'assessment-ui' if assessment_page else '' }}">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    {% if admin_page %}
+    <!-- Section 3: Admin Top Bar (Fixed 64px, Sticky, Background --color-primary) -->
+    <header class="admin-topbar">
+        <a class="admin-topbar__brand" href="/admin" aria-label="{{ brand.name }} admin home">
+            <img src="{{ url_for('static', filename=brand.logo) }}" alt="" width="28" height="28">
+            <strong>{{ brand.name }}</strong>
+        </a>
+        <span class="admin-topbar__section">
+            {% if request.path == '/admin' %}Dashboard
+            {% elif request.path.startswith('/admin/recruitment') %}Pipeline
+            {% elif request.path.startswith('/admin/jobs') %}Job Postings
+            {% elif request.path.startswith('/admin/assessments') %}Assessments
+            {% else %}Hiring Workspace{% endif %}
+        </span>
+        <div class="admin-topbar__spacer"></div>
+        <div class="admin-topbar__search">
+            <i class="ti ti-search" aria-hidden="true"></i>
+            <input type="text" placeholder="Search candidates, jobs..." aria-label="Global admin search">
+        </div>
+        <button class="admin-topbar__action" type="button" aria-label="Notifications" title="Notifications">
+            <i class="ti ti-bell"></i>
+        </button>
+        <a class="admin-topbar__profile" href="/admin/login" aria-label="Admin account">
+            <i class="ti ti-user"></i>
+            <span>Admin</span>
+        </a>
+    </header>
+
+    <!-- Section 4: Admin Sidebar (260px expanded / 72px collapsed) & Main Workspace -->
+    <div class="admin-layout" id="adminLayout">
+        <aside class="admin-sidebar" aria-label="Admin navigation">
+            <nav class="admin-sidebar__nav">
+                <a class="admin-sidebar__row {% if request.path == '/admin' %}active{% endif %}" href="/admin">
+                    <i class="ti ti-layout-dashboard"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a class="admin-sidebar__row {% if request.path.startswith('/admin/recruitment') %}active{% endif %}" href="/admin/recruitment">
+                    <i class="ti ti-git-commit"></i>
+                    <span>Pipeline</span>
+                </a>
+                <a class="admin-sidebar__row {% if request.path.startswith('/admin/jobs') %}active{% endif %}" href="/admin/jobs">
+                    <i class="ti ti-briefcase"></i>
+                    <span>Job Postings</span>
+                </a>
+                <a class="admin-sidebar__row {% if request.path.startswith('/admin/assessments') %}active{% endif %}" href="/admin/assessments">
+                    <i class="ti ti-certificate"></i>
+                    <span>Assessments</span>
+                </a>
+                
+                <div class="admin-sidebar__divider"></div>
+
+                <a class="admin-sidebar__row" href="/admin/assessments">
+                    <i class="ti ti-settings"></i>
+                    <span>Settings</span>
+                </a>
+                <a class="admin-sidebar__row" href="/admin/login">
+                    <i class="ti ti-logout"></i>
+                    <span>Sign Out</span>
+                </a>
+            </nav>
+            <button class="admin-sidebar__toggle" type="button" onclick="toggleAdminSidebar()" aria-label="Toggle sidebar collapse">
+                <i class="ti ti-layout-sidebar"></i>
+                <span>Collapse</span>
+            </button>
+        </aside>
+        <main class="admin-workspace" id="main-content" tabindex="-1">
+    {% else %}
+    <!-- Candidate Top Bar (Fixed 64px, Sticky, Background --color-primary) -->
+    <header class="portal-header">
+        <a class="portal-brand" href="{{ url_for('index') }}" aria-label="{{ brand.name }} home">
+            <img src="{{ url_for('static', filename=brand.logo) }}" alt="" width="32" height="32">
+            <span>{{ brand.name }}<small>Recruitment and assessment</small></span>
+        </a>
+        <nav class="portal-nav" aria-label="Main navigation">
+            {% if not assessment_page %}
+            <a href="/" {% if request.path == '/' %}aria-current="page"{% endif %}>Overview</a>
+            <a href="/login" {% if request.path == '/login' %}aria-current="page"{% endif %}>My application</a>
+            <a href="/jobs" class="nav-outline" {% if request.path.startswith('/jobs') or request.path == '/apply' %}aria-current="page"{% endif %}>Open roles</a>
+            {% else %}<span class="assessment-mode">Assessment in progress</span>{% endif %}
+        </nav>
+    </header>
+    <main class="app-container" id="main-content" tabindex="-1">
+    {% endif %}
+
+        {% block content %}{% endblock %}
+
+    {% if admin_page %}
+        </main>
+    </div>
+    {% else %}
+    </main>
+    {% if not assessment_page %}
+    <footer class="portal-footer">
+        <span>{{ brand.company_name }} - {{ brand.tagline }}</span>
+        <a href="mailto:{{ brand.support_email }}">Contact recruitment</a>
+    </footer>
+    {% endif %}
+    {% endif %}
+
+    <script id="portal-brand-data" type="application/json">{{ {'name': brand.name, 'companyName': brand.company_name} | tojson }}</script>
+    <script>
+        function toggleAdminSidebar() {
+            var layout = document.getElementById('adminLayout');
+            if (!layout) return;
+            layout.classList.toggle('sidebar-collapsed');
+            try {
+                localStorage.setItem('admin_sidebar_collapsed', layout.classList.contains('sidebar-collapsed'));
+            } catch (e) {}
+        }
+        (function() {
+            try {
+                if (localStorage.getItem('admin_sidebar_collapsed') === 'true') {
+                    var layout = document.getElementById('adminLayout');
+                    if (layout) layout.classList.add('sidebar-collapsed');
+                }
+            } catch (e) {}
+        })();
+    </script>
+    <script src="{{ url_for('static', filename='js/portal.js', v='aptus-v4') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js', v='aptus-v4') }}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
