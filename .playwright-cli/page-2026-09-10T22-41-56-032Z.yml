@@ -1,0 +1,41 @@
+- generic [ref=e1]:
+  - link "Skip to content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - banner [ref=e3]:
+    - link "Aptus home" [ref=e4] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e5]:
+        - text: Aptus
+        - generic [ref=e6]: Hiring workspace
+    - navigation "Main navigation" [ref=e7]:
+      - link "Assessments" [ref=e8] [cursor=pointer]:
+        - /url: /admin
+      - link "Recruitment" [ref=e9] [cursor=pointer]:
+        - /url: /admin/recruitment
+      - link "Jobs" [ref=e10] [cursor=pointer]:
+        - /url: /admin/jobs
+      - link "Candidate portal" [ref=e11] [cursor=pointer]:
+        - /url: /
+        - text: Candidate portal ↗
+  - main [ref=e12]:
+    - generic [ref=e14]:
+      - generic [ref=e15]: ADMIN DASHBOARD
+      - heading "Admin Authentication" [level=1] [ref=e17]
+      - paragraph [ref=e18]: Enter your administrator access token to manage settings and questions.
+      - generic [ref=e19]:
+        - generic [ref=e20]:
+          - generic [ref=e21]: Username
+          - textbox "Username" [ref=e22]:
+            - /placeholder: Enter username
+            - text: admin
+        - generic [ref=e23]:
+          - generic [ref=e24]: Password
+          - textbox "Password" [ref=e25]:
+            - /placeholder: Enter password
+            - text: admin123
+        - button "Access Dashboard" [active] [ref=e26] [cursor=pointer]
+  - contentinfo [ref=e27]:
+    - generic [ref=e28]: Aptus · Hiring workspace
+    - link "Contact recruitment" [ref=e29] [cursor=pointer]:
+      - /url: mailto:careers@example.com
+      - text: Contact recruitment ↗

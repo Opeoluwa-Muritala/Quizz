@@ -1,0 +1,162 @@
+{% extends "shared/base.html" %}
+
+{% block title %}Sign In - {{ brand.portal_title }}{% endblock %}
+
+{% block content %}
+<div class="apply-wrap candidate-page mfb-page" style="max-width: 480px; margin: 48px auto;">
+  <div class="card" style="padding: 32px;">
+    <h1 style="font-family: var(--font-heading); font-size: 24px; line-height: 32px; font-weight: 700; color: var(--color-primary); margin: 0 0 8px; text-align: center;">
+      Check application status
+    </h1>
+    <p style="color: #61646D; margin: 0 0 24px; font-size: 14px; line-height: 20px; text-align: center;">
+      Enter your registered email to receive a secure login verification passcode.
+    </p>
+
+    <div id="login-error-msg" class="field-error" style="display: none; margin-bottom: 16px;"></div>
+    <div id="login-success-msg" style="display: none; background: #EAF5EF; border: 1px solid var(--color-success); border-radius: var(--radius-sm, 6px); padding: 12px 16px; margin-bottom: 16px; color: var(--color-success); font-size: 13px; line-height: 18px;"></div>
+
+    <!-- Step 1: Request OTP -->
+    <form id="request-otp-form">
+      <div class="form-group" style="margin-bottom: 24px;">
+        <label for="email" style="display: block; color: var(--color-primary); font-size: 14px; font-weight: 600; margin-bottom: 8px;">
+          Email address
+        </label>
+        <input class="form-control" id="email" type="email" autocomplete="email" placeholder="you@example.com" required style="width: 100%; height: 40px; border: 1px solid #D8D8D4; border-radius: var(--radius-sm, 6px); padding: 0 12px; color: var(--color-text); font-family: var(--font-body); font-size: 14px;">
+      </div>
+      <button class="portal-button" type="submit" style="width: 100%; height: 40px; border: none; border-radius: var(--radius-sm, 6px); background: var(--color-accent); color: #ffffff; font-family: var(--font-body); font-size: 14px; font-weight: 600; cursor: pointer;">
+        Send verification passcode
+      </button>
+    </form>
+
+    <!-- Step 2: Verify OTP (hidden initially) -->
+    <form id="verify-otp-form" style="display: none;">
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label style="display: block; color: var(--color-primary); font-size: 14px; font-weight: 600; margin-bottom: 8px;">
+          Email address
+        </label>
+        <div id="display-email" style="font-weight: 600; color: var(--color-primary); font-size: 14px; margin-bottom: 12px;"></div>
+      </div>
+      <div class="form-group" style="margin-bottom: 24px;">
+        <label for="otp" style="display: block; color: var(--color-primary); font-size: 14px; font-weight: 600; margin-bottom: 8px;">
+          6-digit verification passcode
+        </label>
+        <input class="form-control" id="otp" type="text" pattern="[0-9]{6}" maxlength="6" placeholder="123456" required style="width: 100%; height: 40px; border: 1px solid #D8D8D4; border-radius: var(--radius-sm, 6px); padding: 0 12px; color: var(--color-text); font-family: var(--font-body); text-align: center; letter-spacing: 6px; font-size: 18px; font-weight: 700;">
+      </div>
+      <button class="portal-button" type="submit" style="width: 100%; height: 40px; border: none; border-radius: var(--radius-sm, 6px); background: var(--color-accent); color: #ffffff; font-family: var(--font-body); font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 12px;">
+        Verify and sign in
+      </button>
+      <button type="button" id="btn-back-to-email" class="button-secondary" style="width: 100%; height: 40px; justify-content: center; display: inline-flex; align-items: center;">
+        Back
+      </button>
+    </form>
+
+    <div style="margin-top: 24px; text-align: center; font-size: 14px; color: #61646D; border-top: 1px solid #D8D8D4; padding-top: 24px;">
+      New candidate? <a href="{{ url_for('recruitment.apply') }}" style="color: var(--color-accent); font-weight: 600; text-decoration: none;">Apply here</a>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const requestForm = document.getElementById("request-otp-form");
+    const verifyForm = document.getElementById("verify-otp-form");
+    const emailInput = document.getElementById("email");
+    const otpInput = document.getElementById("otp");
+    const displayEmail = document.getElementById("display-email");
+    const errorEl = document.getElementById("login-error-msg");
+    const successEl = document.getElementById("login-success-msg");
+    const backBtn = document.getElementById("btn-back-to-email");
+
+    let currentEmail = "";
+
+    function csrfMeta() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.getAttribute('content') : '';
+    }
+
+    function showError(msg) {
+        errorEl.textContent = msg;
+        errorEl.style.display = "block";
+    }
+
+    function showSuccess(msg) {
+        successEl.textContent = msg;
+        successEl.style.display = "block";
+    }
+
+    function clearMessages() {
+        errorEl.style.display = "none";
+        successEl.style.display = "none";
+    }
+
+    requestForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        clearMessages();
+        const email = emailInput.value.trim().toLowerCase();
+        if (!email) return;
+
+        try {
+            const res = await fetch("{{ url_for('recruitment.request_otp') }}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": csrfMeta()
+                },
+                body: JSON.stringify({ email })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showError(data.error || "Failed to request code.");
+                return;
+            }
+
+            currentEmail = email;
+            displayEmail.textContent = email;
+            requestForm.style.display = "none";
+            verifyForm.style.display = "block";
+            showSuccess("Verification code sent! Please check your email (and spam folder).");
+            otpInput.focus();
+        } catch (err) {
+            showError("Network error. Please try again.");
+        }
+    });
+
+    verifyForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        clearMessages();
+        const otp = otpInput.value.trim();
+        if (!otp || otp.length !== 6) {
+            showError("Please enter a valid 6-digit code.");
+            return;
+        }
+
+        try {
+            const res = await fetch("{{ url_for('recruitment.verify_otp') }}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": csrfMeta()
+                },
+                body: JSON.stringify({ email: currentEmail, otp })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showError(data.error || "Verification failed.");
+                return;
+            }
+
+            // Redirect as specified by backend
+            window.location.href = data.redirect || "/dashboard";
+        } catch (err) {
+            showError("Network error. Please try again.");
+        }
+    });
+
+    backBtn.addEventListener("click", () => {
+        clearMessages();
+        verifyForm.style.display = "none";
+        requestForm.style.display = "block";
+    });
+});
+</script>
+{% endblock %}
