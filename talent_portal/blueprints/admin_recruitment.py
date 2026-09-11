@@ -11,6 +11,7 @@ import cloudinary.utils
 import csv
 import io
 import json
+from zoneinfo import ZoneInfo
 
 from flask import Blueprint, request, jsonify, session, Response, redirect
 
@@ -940,8 +941,7 @@ def list_slots():
     if delta.days > 62:
         return jsonify({"error": "Date range cannot exceed 62 days"}), 400
 
-    import pytz
-    lagos_tz = pytz.timezone('Africa/Lagos')
+    lagos_tz = ZoneInfo('Africa/Lagos')
     start_dt = lagos_tz.localize(datetime.datetime.combine(start_d, datetime.time.min))
     end_dt = lagos_tz.localize(datetime.datetime.combine(end_d, datetime.time.max))
 
@@ -1480,8 +1480,7 @@ def slots_summary():
     if delta.days > 62:
         return jsonify({"error": "Date range cannot exceed 62 days"}), 400
 
-    import pytz
-    lagos_tz = pytz.timezone('Africa/Lagos')
+    lagos_tz = ZoneInfo('Africa/Lagos')
     start_dt = lagos_tz.localize(datetime.datetime.combine(start_d, datetime.time.min))
     end_dt = lagos_tz.localize(datetime.datetime.combine(end_d, datetime.time.max))
 
@@ -1562,8 +1561,7 @@ def export_slots():
     if delta.days > 62:
         return jsonify({"error": "Date range cannot exceed 62 days"}), 400
 
-    import pytz
-    lagos_tz = pytz.timezone('Africa/Lagos')
+    lagos_tz = ZoneInfo('Africa/Lagos')
     start_dt = lagos_tz.localize(datetime.datetime.combine(start_d, datetime.time.min))
     end_dt = lagos_tz.localize(datetime.datetime.combine(end_d, datetime.time.max))
 
