@@ -339,6 +339,7 @@
 <script src="{{ url_for('static', filename='js/admin_recruitment.js', v='20260712-5') }}"></script>
 <script>
 const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+const initialRecruitmentCandidates = {{ initial_candidates|tojson }};
 
 function formatStageText(stage) {
   if (!stage) return '—';
@@ -422,7 +423,8 @@ async function loadCandidates(page) {
   if (stage) url += `&stage=${encodeURIComponent(stage)}`;
   if (flagged) url += `&flagged=${flagged}`;
 
-  const data = await apiGet(url);
+  const useInitial = page === 1 && !stage && !flagged && initialRecruitmentCandidates;
+  const data = useInitial ? initialRecruitmentCandidates : await apiGet(url);
   if (!data) { wrap.innerHTML = '<p class="data-error">Candidate data did not respond within 30 seconds. Check the database connection, then <button class="btn btn-sm btn-secondary" type="button" onclick="loadCandidates(1)">Retry</button>.</p>'; return; }
 
   if (!data.candidates.length) { wrap.innerHTML = '<p style="color:#888">No candidates found.</p>'; return; }

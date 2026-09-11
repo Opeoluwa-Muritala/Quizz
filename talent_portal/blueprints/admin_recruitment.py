@@ -13,7 +13,7 @@ import io
 import json
 from zoneinfo import ZoneInfo
 
-from flask import Blueprint, request, jsonify, session, Response, redirect
+from flask import Blueprint, request, jsonify, session, Response, redirect, render_template, url_for
 
 from talent_portal.db import DBConnection
 from talent_portal.services.notifications import send_notification_async, resend_notification
@@ -2253,10 +2253,15 @@ def assign_or_reset_quiz(cand_id):
 
 @admin_rec.route("/admin/recruitment")
 def admin_recruitment_page():
-    from flask import render_template, session, redirect, url_for
     if not session.get("admin"):
         return redirect(url_for("admin_login"))
     err = _require_admin()
     if err:
         return redirect(url_for("admin_login"))
-    return render_template("admin/admin_recruitment.html")
+    # Match the job-postings screen: load the first candidate page on the
+    # server so the recruitment landing state is immediately renderable.
+    initial_candidates = None
+    response = list_candidates()
+    if getattr(response, "status_code", 500) == 200:
+        initial_candidates = response.get_json()
+    return render_template("admin/admin_recruitment.html", initial_candidates=initial_candidates)
