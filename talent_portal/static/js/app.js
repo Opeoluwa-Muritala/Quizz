@@ -97,7 +97,9 @@ async function apiRequest(url, method = "GET", body = null) {
         headers["X-CSRF-Token"] = csrfToken;
     }
     
-    const options = { method, headers };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    const options = { method, headers, credentials: "same-origin", signal: controller.signal };
     if (body) {
         if (body instanceof FormData) {
             options.body = body;
@@ -112,10 +114,18 @@ async function apiRequest(url, method = "GET", body = null) {
             const response = await fetch(url, options);
             if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'Request failed');
             return response.json();
-        });
+        }).finally(() => clearTimeout(timeout));
     }
     if (method !== "GET" && url.startsWith('/api/admin/')) adminPrefetchCache.clear();
-    const response = await fetch(url, options);
+    let response;
+    try {
+        response = await fetch(url, options);
+    } catch (error) {
+        clearTimeout(timeout);
+        console.error(`Admin request failed: ${method} ${url}`, error);
+        throw new Error(error.name === 'AbortError' ? 'The server took too long to respond. Try again.' : 'The request could not be completed.');
+    }
+    clearTimeout(timeout);
     if (response.status === 401) {
         if (window.location.pathname.startsWith('/admin') || url.includes('/api/admin/')) {
             window.location.href = '/admin/login';
@@ -124,6 +134,7 @@ async function apiRequest(url, method = "GET", body = null) {
     }
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        console.error(`Admin request failed: ${response.status} ${method} ${url}`, errorData);
         throw new Error(errorData.error || `HTTP error ${response.status}`);
     }
     return response.json();
