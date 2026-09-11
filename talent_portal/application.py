@@ -1871,8 +1871,10 @@ def _bootstrap():
         app.register_blueprint(recruitment)
         app.register_blueprint(admin_rec)
         app.register_blueprint(job_postings)
-    except Exception as e:
-        print(f"[blueprint registration] Error: {e}")
+    except Exception:
+        # Do not hide route-registration failures: a partially registered app
+        # makes admin screens appear to hang while their APIs are missing.
+        app.logger.exception("[blueprint registration] Error")
 
 
 
