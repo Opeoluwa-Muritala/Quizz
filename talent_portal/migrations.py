@@ -25,6 +25,7 @@ def init_recruitment_db():
                     ADD COLUMN IF NOT EXISTS referrer_name TEXT;
             """)
             cur.execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS interview_round TEXT;")
+            cur.execute("ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS attempt_limit INTEGER NOT NULL DEFAULT 1 CHECK (attempt_limit BETWEEN 1 AND 10);")
             cur.execute("SELECT id FROM candidates WHERE ref_token IS NULL;")
             rows_to_update = cur.fetchall()
             if rows_to_update:
@@ -207,6 +208,14 @@ def init_recruitment_db():
                 INSERT INTO notification_settings(notification_type, mode) VALUES
                     ('rejected','auto'), ('offered','auto'), ('interview_booked','auto'), ('interview_rescheduled','explicit')
                 ON CONFLICT(notification_type) DO NOTHING;
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS admin_action_log (
+                    id SERIAL PRIMARY KEY, action TEXT NOT NULL, entity_type TEXT NOT NULL,
+                    entity_id INTEGER, actor TEXT NOT NULL DEFAULT 'admin', reason TEXT NOT NULL DEFAULT '',
+                    metadata JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_admin_action_log_entity ON admin_action_log(entity_type, entity_id, created_at DESC);
             """)
 
             # ── stage_config ────────────────────────────────────────────

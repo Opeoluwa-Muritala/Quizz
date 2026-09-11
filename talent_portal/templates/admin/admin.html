@@ -50,10 +50,7 @@
     </div>
 
     <nav class="admin-tabs">
-        <button type="button" class="tab-btn active" data-tab="settings">
-            <i class="ti ti-settings"></i><span class="tab-text">Exam Settings</span>
-        </button>
-        <button type="button" class="tab-btn" data-tab="cohorts">
+        <button type="button" class="tab-btn active" data-tab="cohorts">
             <i class="ti ti-users-group"></i><span class="tab-text">Cohorts & Tests</span>
         </button>
         <button type="button" class="tab-btn" data-tab="questions">
@@ -62,103 +59,13 @@
         <button type="button" class="tab-btn" data-tab="candidates">
             <i class="ti ti-users"></i><span class="tab-text">Candidates & Results</span>
         </button>
-        <button type="button" class="tab-btn" data-tab="whitelist">
-            <i class="ti ti-shield-check"></i><span class="tab-text">Whitelist</span>
-        </button>
     </nav>
 
     <!-- Tab Contents -->
     <div class="admin-tab-content">
 
-        <!-- Panel 1: Exam Settings -->
-        <section id="tab-settings" class="tab-panel active">
-            <div class="card settings-card">
-                <h2>Exam Global Settings</h2>
-                <p class="step-subtext">Configure live rules and operational limits of the aptitude test.</p>
-
-                <form id="settings-form">
-                    <div class="toggle-list">
-                        <div class="toggle-row-unified">
-                            <span class="toggle-label-unified">Exam Portal Status</span>
-                            <div style="display:flex;align-items:center;">
-                                <label class="switch-container">
-                                    <input type="checkbox" id="setting-exam-open" {% if settings and settings.exam_open %}checked{% endif %}>
-                                    <span class="switch-slider"></span>
-                                </label>
-                                <span id="setting-status-chip" class="status-chip {% if settings and settings.exam_open %}on{% else %}off{% endif %}">
-                                    {% if settings and settings.exam_open %}Open{% else %}Closed{% endif %}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="divider-line"></div>
-
-                    <div class="form-group control-group">
-                        <label for="setting-seconds-per-q" class="input-label-unified">Seconds per Question</label>
-                        <div class="input-suffix-wrapper">
-                            <input type="number" id="setting-seconds-per-q" min="10" max="300" placeholder="e.g. 60" required value="{% if settings %}{{ settings.seconds_per_question }}{% endif %}">
-                            <span class="input-suffix-text">sec</span>
-                        </div>
-                        <div id="error-seconds-per-q" class="input-error-msg">Please enter a valid number of seconds (10 - 300).</div>
-                    </div>
-
-                    <div class="form-group control-group">
-                        <label for="setting-pass-mark" class="input-label-unified">Pass Mark</label>
-                        <div class="input-suffix-wrapper">
-                            <input type="number" id="setting-pass-mark" min="0" max="100" step="0.5" placeholder="e.g. 50" required value="{% if settings %}{{ settings.pass_mark_percent }}{% endif %}">
-                            <span class="input-suffix-text">%</span>
-                        </div>
-                        <div id="error-pass-mark" class="input-error-msg">Please enter a valid percentage (0 - 100).</div>
-                    </div>
-
-                    <div class="settings-action-row">
-                        <button type="submit" id="btn-save-settings" class="btn btn-primary">Save settings</button>
-                        <span id="settings-last-updated" class="settings-timestamp-unified">Last updated: {% if settings and settings.updated_at %}{{ settings.updated_at }}{% else %}-{% endif %}</span>
-                    </div>
-                </form>
-            </div>
-
-            <div class="card settings-card" style="margin-top:24px">
-                <h2>Candidate Verification</h2>
-                <p class="step-subtext">Control whether candidates upload ID and selfie photos or answer a short pre-test form.</p>
-
-                <div class="toggle-row-unified" style="border-bottom: none; margin-bottom: 4px;">
-                    <span class="toggle-label-unified">Require identity verification (ID + selfie)</span>
-                    <div style="display:flex;align-items:center;">
-                        <label class="switch-container">
-                            <input type="checkbox" id="setting-require-identity" {% if not settings or settings.require_identity_verification %}checked{% endif %}>
-                            <span class="switch-slider"></span>
-                        </label>
-                        <span id="identity-status-chip" class="status-chip {% if not settings or settings.require_identity_verification %}on{% else %}off{% endif %}">
-                            {% if not settings or settings.require_identity_verification %}Verification on{% else %}Verification off{% endif %}
-                        </span>
-                    </div>
-                </div>
-                <div style="font-size: 0.78rem; color: var(--mfb-gray-600); font-weight: 600; margin-bottom: 16px;">
-                    Changes apply immediately
-                </div>
-
-                <div id="pretest-fields-panel" class="pretest-panel-unified {% if settings and not settings.require_identity_verification %}expanded{% endif %}">
-                    <h3 class="pretest-section-title">Pre-Test Registration Fields</h3>
-                    <p class="pretest-section-desc">Select which fields the candidate must provide before starting the test. Drag to reorder.</p>
-                    
-                    <div id="pretestFieldsList" class="pretest-list-unified"></div>
-                    
-                    <div class="add-custom-wrapper">
-                        <a href="#" id="link-add-custom-field" class="add-custom-link">+ Add custom field</a>
-                        <div id="custom-field-input-box" class="custom-field-input-box hidden">
-                            <input type="text" id="custom-field-label-input" class="form-control" placeholder="Field Label (e.g. LinkedIn Profile)">
-                            <button type="button" id="btn-confirm-add-custom" class="btn btn-primary btn-sm">Add</button>
-                            <button type="button" id="btn-cancel-add-custom" class="btn btn-ghost btn-sm">Cancel</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Panel 2: Cohorts & Tests -->
-        <section id="tab-cohorts" class="tab-panel">
+        <!-- Panel 1: Cohorts & Tests -->
+        <section id="tab-cohorts" class="tab-panel active">
             <div style="display:grid; grid-template-columns: 280px 1fr; gap: 24px; min-height: 500px; font-family:'DM Sans';">
                 <!-- Sidebar Cohorts List -->
                 <div class="card" style="padding: 16px; border: 1px solid var(--mfb-gray-300); border-radius: 8px;">
@@ -398,74 +305,7 @@
             </div>
         </section>
 
-        <!-- Panel 4: Whitelist -->
-        <section id="tab-whitelist" class="tab-panel">
-            <div class="whitelist-layout">
 
-                <!-- Left: Add panel -->
-                <div class="whitelist-form-side">
-                    <div class="card">
-                        <h2>Whitelist Management</h2>
-                        <p class="step-subtext">Add approved email addresses of candidates allowed to take the exam.</p>
-
-                        <!-- Add single -->
-                        <form id="whitelist-add-form" class="inline-add-form">
-                            <div class="form-group">
-                                <label for="whitelist-email">Email Address</label>
-                                <div class="input-btn-row">
-                                    <input type="email" id="whitelist-email" required placeholder="e.g. candidate@mail.com">
-                                    <button type="submit" class="btn btn-primary">Add</button>
-                                </div>
-                            </div>
-                        </form>
-
-                        <hr class="card-divider">
-
-                        <!-- Bulk Whitelist -->
-                        <div class="form-group">
-                            <label>Bulk CSV Import</label>
-                            <p class="help-text">Upload a text/CSV file containing one email address per line.</p>
-                            <div class="file-uploader-row">
-                                <input type="file" id="whitelist-csv-input" accept=".csv, .txt" class="hidden">
-                                <button type="button" id="btn-trigger-whitelist-csv" class="btn btn-ghost">Choose Whitelist CSV</button>
-                                <span id="whitelist-csv-name" class="file-name-text">No file selected</span>
-                            </div>
-                            <div id="whitelist-preview-text" class="preview-text hidden"></div>
-                            <button type="button" id="btn-import-whitelist-csv" class="btn btn-primary" disabled>Import Whitelist</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Right: List panel -->
-                <div class="whitelist-table-side">
-                    <div class="card whitelist-list-card">
-                        <div class="list-header-row">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <h3>Whitelisted Emails</h3>
-                                <span id="whitelist-count-badge" class="count-badge font-mono">0</span>
-                            </div>
-                            <button type="button" id="btn-clear-whitelist" class="btn btn-ghost" style="border-color: var(--color-danger); color: var(--color-danger); padding: 4px 10px; font-size: 13px;">Clear All</button>
-                        </div>
-
-                        <div class="table-container list-table-container">
-                            <table class="data-table min-table">
-                                <thead>
-                                    <tr>
-                                        <th>Email Address</th>
-                                        <th>Added At</th>
-                                        <th class="action-cell">Remove</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="whitelist-tbody">
-                                    <!-- Dynamic whitelist rows -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-        </section>
 
 
 

@@ -13,8 +13,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='aptus-v5') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/portal.css', v='aptus-v5') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='aptus-v6') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/portal.css', v='aptus-v6') }}">
     {% block extra_head %}{% endblock %}
     <style>
         :root {
@@ -53,6 +53,7 @@
             {% elif request.path.startswith('/admin/recruitment') %}Pipeline
             {% elif request.path.startswith('/admin/jobs') %}Job Postings
             {% elif request.path.startswith('/admin/assessments') %}Assessments
+            {% elif request.path.startswith('/admin/settings') %}Settings
             {% else %}Hiring Workspace{% endif %}
         </span>
         <div class="admin-topbar__spacer"></div>
@@ -92,7 +93,7 @@
                 
                 <div class="admin-sidebar__divider"></div>
 
-                <a class="admin-sidebar__row" href="/admin/assessments">
+                <a class="admin-sidebar__row {% if request.path.startswith('/admin/settings') %}active{% endif %}" href="/admin/settings">
                     <i class="ti ti-settings"></i>
                     <span>Settings</span>
                 </a>

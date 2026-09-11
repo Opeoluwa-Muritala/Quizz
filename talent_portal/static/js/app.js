@@ -2614,7 +2614,19 @@ function initAdminOperations() {
     });
 
     // ── Initial Tab Load ──
-    loadSettingsTab();
+    const activeInitialTab = document.querySelector(".tab-btn.active");
+    const initialTabName = activeInitialTab ? activeInitialTab.dataset.tab : "settings";
+    if (initialTabName === "cohorts" && window.loadCohortsTab) {
+        window.loadCohortsTab();
+    } else if (initialTabName === "settings") {
+        loadSettingsTab();
+    } else if (initialTabName === "questions") {
+        loadQuestionsTab();
+    } else if (initialTabName === "candidates") {
+        loadResultsTab();
+    } else if (initialTabName === "whitelist") {
+        loadWhitelistTab();
+    }
     const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 300));
     idle(async () => {
         // Prefetch sequentially so a Neon/serverless deployment is not hit by

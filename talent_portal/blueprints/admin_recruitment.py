@@ -23,8 +23,20 @@ from talent_portal.services.schedules import generate_schedule_slots
 from talent_portal.services.cache import cached_admin_json
 from talent_portal.services.interview_feedback import validate_feedback, COMPETENCIES, RECOMMENDATIONS
 from talent_portal.services.offers import validate_offer, OFFER_STATUSES
+from talent_portal.branding import load_brand
 
 admin_rec = Blueprint("admin_rec", __name__)
+
+
+def _aptus_scope(alias="c"):
+    """Scope Aptus admin data without changing the shared Mainstreet data."""
+    if load_brand().key != "aptus":
+        return "TRUE", []
+    return (
+        f"({alias}.email ILIKE %s OR {alias}.job_id IN "
+        "(SELECT id FROM job_postings WHERE legacy_role_key ILIKE %s))",
+        ["%@aptus.example", "aptus-%"],
+    )
 
 # Imported lazily from app.py to avoid circular imports
 def _require_admin():
@@ -68,8 +80,9 @@ def list_candidates():
     per_page = 50
     offset   = (page - 1) * per_page
 
-    where_clauses = []
-    params = []
+    scope_sql, scope_params = _aptus_scope("c")
+    where_clauses = [scope_sql]
+    params = list(scope_params)
     if stage_filter:
         where_clauses.append("c.stage = %s")
         params.append(stage_filter)
@@ -133,6 +146,24 @@ def list_candidates():
         })
 
     return jsonify({"candidates": candidates, "total": total, "page": page, "per_page": per_page})
+
+
+@admin_rec.route("/api/admin/recruitment/reporting")
+def recruitment_reporting():
+    err = _require_admin()
+    if err: return err
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            scope_sql, scope_params = _aptus_scope("c")
+            cur.execute(f"SELECT stage, COUNT(*) FROM candidates c WHERE {scope_sql} GROUP BY stage ORDER BY stage", scope_params)
+            counts = {row[0] or 'unknown': row[1] for row in cur.fetchall()}
+            cur.execute(f"SELECT COUNT(*) FROM candidates c WHERE {scope_sql} AND c.stage IN ('offered','accepted','hired')", scope_params)
+            progressed = cur.fetchone()[0]
+            cur.execute(f"SELECT COUNT(*) FROM candidates c WHERE {scope_sql} AND c.stage='applied'", scope_params)
+            applications = cur.fetchone()[0]
+            cur.execute(f"SELECT AVG(EXTRACT(EPOCH FROM (NOW()-c.stage_updated_at))/86400) FROM candidates c WHERE {scope_sql} AND c.stage_updated_at IS NOT NULL", scope_params)
+            avg_days = cur.fetchone()[0]
+    return jsonify({"stage_counts": counts, "conversion": {"applications": applications, "progressed_to_offer_or_later": progressed}, "average_days_in_current_stage": round(float(avg_days or 0), 2)})
 
 
 @admin_rec.route("/api/admin/recruitment/candidates/<int:cand_id>")
@@ -437,6 +468,9 @@ def set_candidate_stage(cand_id):
                     (candidate_id, from_stage, to_stage, changed_by, reason)
                 VALUES (%s, %s, %s, 'admin', %s);
             """, (cand_id, old_stage, new_stage, reason))
+            cur.execute("""INSERT INTO admin_action_log(action,entity_type,entity_id,reason,metadata)
+                VALUES('stage_change','candidate',%s,%s,%s::jsonb)""",
+                (cand_id, reason, json.dumps({"from_stage": old_stage, "to_stage": new_stage})))
         conn.commit()
 
     if new_stage == 'screening_passed':
@@ -2160,11 +2194,15 @@ def assign_or_reset_quiz(cand_id):
             cohort_id, email, full_name, stage = cand_row
 
             # Check if quiz exists
-            cur.execute("SELECT title, cohort_id FROM quizzes WHERE id = %s;", (quiz_id,))
+            cur.execute("SELECT title, cohort_id, attempt_limit FROM quizzes WHERE id = %s;", (quiz_id,))
             quiz_row = cur.fetchone()
             if not quiz_row:
                 return jsonify({"error": "Quiz not found."}), 404
-            q_title, q_cohort_id = quiz_row
+            q_title, q_cohort_id, attempt_limit = quiz_row
+            cur.execute("SELECT COUNT(*) FROM exam_results WHERE candidate_id=%s AND quiz_id=%s", (cand_id, quiz_id))
+            attempts_used = cur.fetchone()[0]
+            if attempts_used >= attempt_limit:
+                return jsonify({"error": f"Attempt limit reached ({attempt_limit}). Previous attempts are retained."}), 409
 
             # Enforce cohort matching (but default to Cohort 1 if none set)
             effective_cohort = cohort_id
@@ -2182,9 +2220,7 @@ def assign_or_reset_quiz(cand_id):
                 cur.execute("UPDATE candidates SET cohort_id = %s WHERE id = %s;",
                             (effective_cohort, cand_id))
 
-            # Reset logic: delete previous exam_results and scores attempts
-            cur.execute("DELETE FROM exam_results WHERE candidate_id = %s AND quiz_id = %s;", (cand_id, quiz_id))
-            cur.execute("DELETE FROM scores WHERE candidate_id = %s AND quiz_id = %s;", (cand_id, quiz_id))
+            # Retakes are append-only. Existing exam results and scores remain available for audit.
 
             # Assignment (and reassignment) returns the candidate to the
             # dashboard-ready state. They enter assessment_in_progress only

@@ -3,10 +3,17 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from psycopg2.extras import RealDictCursor
 from talent_portal.db import DBConnection
+from talent_portal.branding import load_brand
 
 EMPLOYMENT_TYPES = ('Full-time', 'Part-time', 'Contract', 'Temporary', 'Internship')
 STATUSES = ('draft', 'published', 'closed')
 LOCAL_TZ = ZoneInfo('Africa/Lagos')
+
+
+def _job_scope(alias='j'):
+    if load_brand().key == 'aptus':
+        return f"{alias}.legacy_role_key ILIKE %s", ('aptus-%',)
+    return 'TRUE', ()
 
 
 def validate_job(data):
@@ -56,17 +63,20 @@ def decorate_job(job):
 
 
 def list_open_jobs():
+    scope_sql, scope_params = _job_scope('j')
     with DBConnection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""SELECT * FROM job_postings WHERE status='published'
+            cur.execute(f"""SELECT * FROM job_postings j WHERE status='published'
                 AND (application_deadline IS NULL OR application_deadline > NOW())
-                ORDER BY published_at DESC, id DESC""")
+                AND {scope_sql}
+                ORDER BY published_at DESC, id DESC""", scope_params)
             return [decorate_job(row) for row in cur.fetchall()]
 
 
 def get_job(job_id):
+    scope_sql, scope_params = _job_scope('j')
     with DBConnection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute('SELECT * FROM job_postings WHERE id=%s', (job_id,))
+            cur.execute(f'SELECT * FROM job_postings j WHERE j.id=%s AND {scope_sql}', (job_id, *scope_params))
             row = cur.fetchone()
             return decorate_job(row) if row else None
