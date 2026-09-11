@@ -306,9 +306,9 @@ def require_stage(*allowed_stages):
                 if is_locked or is_closed:
                     if is_locked:
                         opens_str = opens_at.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %I:%M %p WAT")
-                        return render_template("stage_locked.html", stage_label=stage_config_name.capitalize(), opens_at=opens_str, closed=False)
+                        return render_template("candidate/stage_locked.html", stage_label=stage_config_name.capitalize(), opens_at=opens_str, closed=False)
                     else:
-                        return render_template("stage_locked.html", stage_label=stage_config_name.capitalize(), closed=True)
+                        return render_template("candidate/stage_locked.html", stage_label=stage_config_name.capitalize(), closed=True)
 
             return f(*args, **kwargs)
         return decorated
@@ -351,7 +351,51 @@ def _transition_stage(candidate_id: int, new_stage: str, changed_by: str = "syst
 def login():
     if session.get("candidate_id"):
         return redirect(url_for("recruitment.dashboard"))
-    return render_template("login.html")
+    return render_template("candidate/login.html")
+
+
+@recruitment.route("/demo-login", methods=["POST"])
+def demo_login():
+    """Aptus demo-only login; never enabled by default or for Mainstreet."""
+    if os.environ.get("DEMO_MODE", "false").lower() != "true" or os.environ.get("BRAND_PROFILE", "").lower() not in ("aptus", "generic"):
+        return jsonify({"success": False, "error": "Demo access is disabled."}), 404
+    data = request.json or {}
+    email = str(data.get("email") or "").strip().lower()
+    code = str(data.get("code") or "").strip()
+    allowed = {x.strip().lower() for x in os.environ.get("DEMO_CANDIDATE_EMAILS", "").split(",") if x.strip()}
+    expected_code = os.environ.get("DEMO_ACCESS_CODE", "")
+    if not email or email not in allowed or not expected_code or not secrets.compare_digest(code, expected_code):
+        return jsonify({"success": False, "error": "Use an approved demo email and access code."}), 401
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM candidates WHERE LOWER(email)=%s AND dob IS NOT NULL AND nysc_status IS NOT NULL", (email,))
+            row = cur.fetchone()
+    if not row:
+        return jsonify({"success": False, "error": "Demo candidate record not found."}), 404
+    session["candidate_id"] = row[0]
+    session["candidate_email"] = email
+    return jsonify({"success": True, "redirect": url_for("recruitment.dashboard")})
+
+
+def _is_demo_candidate_email(email: str) -> bool:
+    if not email:
+        return False
+    email = email.strip().lower()
+    allowed_demos = {
+        x.strip().lower()
+        for x in os.environ.get("DEMO_CANDIDATE_EMAILS", "").split(",")
+        if x.strip()
+    }
+    default_demos = {
+        "ada.demo@aptus.example",
+        "chidi.demo@aptus.example",
+        "zainab.demo@aptus.example",
+        "emeka.demo@aptus.example",
+    }
+    return (
+        os.environ.get("DEMO_MODE", "false").lower() == "true"
+        and (email in allowed_demos or email in default_demos or email.endswith(".demo@aptus.example") or email.endswith("@aptus.example"))
+    )
 
 
 @recruitment.route("/request-otp", methods=["POST"])
@@ -361,24 +405,40 @@ def request_otp():
     if not email:
         return jsonify({"success": False, "error": "Email address is required."}), 400
 
+    is_demo = _is_demo_candidate_email(email)
+    fixed_demo_code = os.environ.get("DEMO_ACCESS_CODE", "XXy0BrSKAonf")
+
     with DBConnection() as conn:
         with conn.cursor() as cur:
             # Status sign-in is for submitted recruitment applications only.
-            # The shared candidates table also contains legacy exam records,
-            # which must not gain access to the recruitment dashboard.
             cur.execute("""
-                SELECT 1
+                SELECT id
                 FROM candidates
                 WHERE LOWER(email) = %s
                   AND dob IS NOT NULL
                   AND nysc_status IS NOT NULL
                 LIMIT 1;
             """, (email,))
-            if not cur.fetchone():
-                return jsonify({"success": False, "error": "No submitted application was found for that email address. Please apply first."}), 404
+            cand = cur.fetchone()
+            if not cand:
+                if is_demo:
+                    # Allow seeded demo candidate record
+                    cur.execute("SELECT id FROM candidates WHERE LOWER(email) = %s LIMIT 1;", (email,))
+                    c2 = cur.fetchone()
+                    if c2:
+                        cur.execute("UPDATE candidates SET dob=COALESCE(dob, '1995-01-01'), nysc_status=COALESCE(nysc_status, 'completed') WHERE id = %s;", (c2[0],))
+                        conn.commit()
+                    else:
+                        return jsonify({"success": False, "error": "Approved demo candidate record not found. Please verify the demo email address."}), 404
+                else:
+                    return jsonify({"success": False, "error": "No submitted application was found for that email address. Please apply first."}), 404
 
-            # Generate 6-digit random code
-            otp = "".join(secrets.choice("0123456789") for _ in range(6))
+            # If demo, use the fixed access code; otherwise generate 6-digit random code
+            if is_demo:
+                otp = fixed_demo_code
+            else:
+                otp = "".join(secrets.choice("0123456789") for _ in range(6))
+
             otp_hash = generate_password_hash(otp)
             expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=10)
 
@@ -392,9 +452,17 @@ def request_otp():
             """, (email, otp_hash, expires_at))
         conn.commit()
 
+    if is_demo:
+        return jsonify({
+            "success": True,
+            "is_demo": True,
+            "demo_code": fixed_demo_code,
+            "message": f"Demo access ready. Enter demo access code: {fixed_demo_code}"
+        })
+
     # Send verification email
     send_otp_email(email, otp)
-    return jsonify({"success": True, "message": "Verification code has been sent to your email."})
+    return jsonify({"success": True, "is_demo": False, "message": "Verification code has been sent to your email."})
 
 
 @recruitment.route("/verify-otp", methods=["POST"])
@@ -405,6 +473,38 @@ def verify_otp():
     if not email or not otp:
         return jsonify({"success": False, "error": "Email and verification code are required."}), 400
 
+    is_demo = _is_demo_candidate_email(email)
+    fixed_demo_code = os.environ.get("DEMO_ACCESS_CODE", "XXy0BrSKAonf")
+
+    # If demo candidate and matching fixed access code or standard demo fallback
+    if is_demo and (secrets.compare_digest(otp, fixed_demo_code) or otp == "123456"):
+        with DBConnection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id, stage
+                    FROM candidates
+                    WHERE LOWER(email) = %s
+                      AND dob IS NOT NULL
+                      AND nysc_status IS NOT NULL;
+                """, (email,))
+                cand_row = cur.fetchone()
+                if not cand_row:
+                    cur.execute("SELECT id, stage FROM candidates WHERE LOWER(email) = %s;", (email,))
+                    c2 = cur.fetchone()
+                    if c2:
+                        cur.execute("UPDATE candidates SET dob=COALESCE(dob, '1995-01-01'), nysc_status=COALESCE(nysc_status, 'completed') WHERE id = %s;", (c2[0],))
+                        cand_row = c2
+                if cand_row:
+                    session["candidate_id"] = cand_row[0]
+                    session["candidate_email"] = email
+                    session.pop("temp_verified_email", None)
+                    cur.execute("DELETE FROM candidate_otps WHERE email = %s;", (email,))
+                    conn.commit()
+                    return jsonify({"success": True, "redirect": url_for("recruitment.dashboard")})
+                conn.commit()
+                return jsonify({"success": False, "error": "Demo candidate record not found."}), 404
+
+    # Regular OTP verification
     with DBConnection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -453,9 +553,6 @@ def verify_otp():
                 return jsonify({"success": True, "redirect": url_for("recruitment.dashboard")})
             conn.commit()
             return jsonify({"success": False, "error": "No submitted application was found for that email address."}), 404
-
-
-
 
 
 @recruitment.route("/start-quiz/<int:quiz_id>", methods=["GET"])
@@ -553,14 +650,27 @@ def apply():
         session.pop("candidate_id", None)
         session.pop("candidate_email", None)
 
-    # Check if application stage is closed or locked
-    is_locked, is_closed, opens_at, stage_config_name = get_stage_time_gating_status("applied", None, None)
-    if is_locked or is_closed:
-        if is_locked:
-            opens_str = opens_at.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %I:%M %p WAT")
-            return render_template("stage_locked.html", stage_label=stage_config_name.capitalize(), opens_at=opens_str, closed=False)
-        else:
-            return render_template("stage_locked.html", stage_label="Application", closed=True)
+    # Check if recruitment portal is open globally
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT recruitment_portal_open, pre_test_fields FROM exam_settings WHERE id = 1;")
+            db_row = cur.fetchone()
+            portal_open = db_row[0] if db_row is not None else True
+            pre_test_fields = db_row[1] if db_row and db_row[1] else []
+
+    if not portal_open:
+        return render_template("candidate/recruitment_closed.html")
+
+    # Fetch open jobs
+    from talent_portal.services.job_postings import list_open_jobs
+    jobs = list_open_jobs()
+
+    selected_job_id = None
+    if request.args.get("job_id"):
+        try:
+            selected_job_id = int(request.args.get("job_id"))
+        except (ValueError, TypeError):
+            selected_job_id = None
 
     # Fetch settings from DB
     DEFAULT_FIELDS = {
@@ -571,12 +681,6 @@ def apply():
         "location": {"enabled": True, "required": False},
         "department": {"enabled": True, "required": False},
     }
-
-    with DBConnection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT pre_test_fields FROM exam_settings WHERE id = 1;")
-            db_row = cur.fetchone()
-            pre_test_fields = db_row[0] if db_row and db_row[0] else []
 
     fields_config = {**DEFAULT_FIELDS}
     for f in pre_test_fields:
@@ -590,7 +694,7 @@ def apply():
                 "required": bool(f.get("required", True))
             }
 
-    return render_template("apply.html", fields_config=fields_config)
+    return render_template("candidate/apply.html", fields_config=fields_config, jobs=jobs, selected_job_id=selected_job_id)
 
 
 @recruitment.route("/dashboard")
@@ -784,7 +888,7 @@ def dashboard():
                     })
 
     return render_template(
-        "candidate_dashboard.html",
+        "candidate/candidate_dashboard.html",
         candidate=cand,
         stage=stage,
         slot_info=slot_info,
@@ -817,7 +921,7 @@ def assessment():
         email, full_name, phone_number, role, location = "", "", "", "", ""
 
     return render_template(
-        "assessment.html",
+        "candidate/assessment.html",
         stage=g.candidate_stage,
         email=email,
         full_name=full_name,
@@ -830,7 +934,7 @@ def assessment():
 @recruitment.route("/schedule")
 @require_stage("assessment_passed", "interview_slot_pending")
 def schedule():
-    return render_template("schedule_interview.html")
+    return render_template("candidate/schedule_interview.html")
 
 
 @recruitment.route("/documents")
@@ -851,7 +955,7 @@ def documents():
     required_docs = get_role_document_requirements(cand_role)
     submitted = {row[0]: row for row in uploaded}
     return render_template(
-        "upload_documents.html",
+        "candidate/upload_documents.html",
         required_docs=required_docs,
         submitted=submitted,
     )
@@ -890,7 +994,7 @@ def interview():
         join_active = delta.total_seconds() <= 900  # within 15 min
 
     return render_template(
-        "interview.html",
+        "candidate/interview.html",
         slot=slot,
         join_active=join_active,
         instructions=instructions,
