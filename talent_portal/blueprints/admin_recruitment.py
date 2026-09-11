@@ -13,7 +13,7 @@ import io
 import json
 from zoneinfo import ZoneInfo
 
-from flask import Blueprint, request, jsonify, session, Response, redirect, render_template, url_for
+from flask import Blueprint, request, jsonify, session, Response, redirect, render_template, url_for, make_response
 
 from talent_portal.db import DBConnection
 from talent_portal.services.notifications import send_notification_async, resend_notification
@@ -2264,4 +2264,13 @@ def admin_recruitment_page():
     response = list_candidates()
     if getattr(response, "status_code", 500) == 200:
         initial_candidates = response.get_json()
-    return render_template("admin/admin_recruitment.html", initial_candidates=initial_candidates)
+    response = make_response(render_template(
+        "admin/admin_recruitment.html",
+        initial_candidates=initial_candidates,
+    ))
+    # The page embeds the current Aptus candidate snapshot and its script
+    # versions are intentionally cache-busted. Prevent an intermediary from
+    # serving an older HTML/JS pairing after a deployment.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
