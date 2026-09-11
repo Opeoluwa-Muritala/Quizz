@@ -400,7 +400,9 @@ function switchTab(name) {
     targetTab.classList.add('active');
   }
   
-  document.getElementById(`panel-${name}`).classList.add('active');
+  const panel = document.getElementById(`panel-${name}`);
+  if (!panel) return;
+  panel.classList.add('active');
   localStorage.setItem("adminRecruitmentActiveTab", name);
 
   if (name === 'candidates') loadCandidates(1);
@@ -424,7 +426,7 @@ async function loadCandidates(page) {
   if (flagged) url += `&flagged=${flagged}`;
 
   const data = await apiGet(url);
-  if (!data) { wrap.innerHTML = 'Error loading candidates.'; return; }
+  if (!data) { wrap.innerHTML = '<p class="data-error">Candidate data did not respond within 10 seconds. Check the database connection, then <button class="btn btn-sm btn-secondary" type="button" onclick="loadCandidates(1)">Retry</button>.</p>'; return; }
 
   if (!data.candidates.length) { wrap.innerHTML = '<p style="color:#888">No candidates found.</p>'; return; }
 
@@ -1993,12 +1995,14 @@ async function resend(logId) {
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 async function apiGet(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const r = await fetch(url);
+    const r = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
     if (r.status === 401) { window.location.href = '/admin/login'; return new Promise(() => {}); }
     return r.ok ? await r.json() : null;
-  }
-  catch(e) { return null; }
+  } catch(e) { clearTimeout(timeout); return null; }
 }
 async function apiPost(url, body, method='POST') {
   try {

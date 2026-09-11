@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="apply-wrap candidate-page mfb-page" style="max-width: 480px; margin: 48px auto;">
-  <div class="card" style="padding: 32px;">
+  <div class="card" style="padding: 32px; border-radius: var(--radius-md, 12px); box-shadow: 0 1px 2px rgba(30,30,36,0.08); background: #ffffff;">
     <h1 style="font-family: var(--font-heading); font-size: 24px; line-height: 32px; font-weight: 700; color: var(--color-primary); margin: 0 0 8px; text-align: center;">
       Check application status
     </h1>
@@ -23,7 +23,7 @@
         </label>
         <input class="form-control" id="email" type="email" autocomplete="email" placeholder="you@example.com" required style="width: 100%; height: 40px; border: 1px solid #D8D8D4; border-radius: var(--radius-sm, 6px); padding: 0 12px; color: var(--color-text); font-family: var(--font-body); font-size: 14px;">
       </div>
-      <button class="portal-button" type="submit" style="width: 100%; height: 40px; border: none; border-radius: var(--radius-sm, 6px); background: var(--color-accent); color: #ffffff; font-family: var(--font-body); font-size: 14px; font-weight: 600; cursor: pointer;">
+      <button class="portal-button" type="submit" id="btn-request-otp" style="width: 100%; height: 40px; border: none; border-radius: var(--radius-sm, 6px); background: var(--color-accent); color: #ffffff; font-family: var(--font-body); font-size: 14px; font-weight: 600; cursor: pointer;">
         Send verification passcode
       </button>
     </form>
@@ -34,18 +34,19 @@
         <label style="display: block; color: var(--color-primary); font-size: 14px; font-weight: 600; margin-bottom: 8px;">
           Email address
         </label>
-        <div id="display-email" style="font-weight: 600; color: var(--color-primary); font-size: 14px; margin-bottom: 12px;"></div>
+        <div id="display-email" style="font-weight: 600; color: var(--color-primary); font-size: 14px; margin-bottom: 12px; word-break: break-all;"></div>
       </div>
       <div class="form-group" style="margin-bottom: 24px;">
         <label for="otp" style="display: block; color: var(--color-primary); font-size: 14px; font-weight: 600; margin-bottom: 8px;">
-          6-digit verification passcode
+          Verification passcode
         </label>
-        <input class="form-control" id="otp" type="text" pattern="[0-9]{6}" maxlength="6" placeholder="123456" required style="width: 100%; height: 40px; border: 1px solid #D8D8D4; border-radius: var(--radius-sm, 6px); padding: 0 12px; color: var(--color-text); font-family: var(--font-body); text-align: center; letter-spacing: 6px; font-size: 18px; font-weight: 700;">
+        <input class="form-control" id="otp" type="text" autocomplete="one-time-code" placeholder="Enter verification code" required style="width: 100%; height: 40px; border: 1px solid #D8D8D4; border-radius: var(--radius-sm, 6px); padding: 0 12px; color: var(--color-text); font-family: var(--font-body); text-align: center; letter-spacing: 3px; font-size: 16px; font-weight: 600;">
+        <div id="demo-code-helper" style="display: none; margin-top: 8px; font-size: 13px; color: var(--color-primary); background: #F0F4F8; padding: 8px 12px; border-radius: var(--radius-sm, 6px);"></div>
       </div>
-      <button class="portal-button" type="submit" style="width: 100%; height: 40px; border: none; border-radius: var(--radius-sm, 6px); background: var(--color-accent); color: #ffffff; font-family: var(--font-body); font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 12px;">
+      <button class="portal-button" type="submit" id="btn-verify-otp" style="width: 100%; height: 40px; border: none; border-radius: var(--radius-sm, 6px); background: var(--color-accent); color: #ffffff; font-family: var(--font-body); font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 12px;">
         Verify and sign in
       </button>
-      <button type="button" id="btn-back-to-email" class="button-secondary" style="width: 100%; height: 40px; justify-content: center; display: inline-flex; align-items: center;">
+      <button type="button" id="btn-back-to-email" class="button-secondary" style="width: 100%; height: 40px; border: 1px solid var(--color-primary); background: transparent; color: var(--color-primary); border-radius: var(--radius-sm, 6px); font-family: var(--font-body); font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;">
         Back
       </button>
     </form>
@@ -66,6 +67,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const errorEl = document.getElementById("login-error-msg");
     const successEl = document.getElementById("login-success-msg");
     const backBtn = document.getElementById("btn-back-to-email");
+    const btnRequestOtp = document.getElementById("btn-request-otp");
+    const btnVerifyOtp = document.getElementById("btn-verify-otp");
+    const demoHelper = document.getElementById("demo-code-helper");
 
     let currentEmail = "";
 
@@ -95,6 +99,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const email = emailInput.value.trim().toLowerCase();
         if (!email) return;
 
+        btnRequestOtp.disabled = true;
+        btnRequestOtp.textContent = "Sending passcode...";
+
         try {
             const res = await fetch("{{ url_for('recruitment.request_otp') }}", {
                 method: "POST",
@@ -105,8 +112,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 body: JSON.stringify({ email })
             });
             const data = await res.json();
-            if (!res.ok) {
+            if (!res.ok || !data.success) {
                 showError(data.error || "Failed to request code.");
+                btnRequestOtp.disabled = false;
+                btnRequestOtp.textContent = "Send verification passcode";
                 return;
             }
 
@@ -114,10 +123,23 @@ document.addEventListener("DOMContentLoaded", () => {
             displayEmail.textContent = email;
             requestForm.style.display = "none";
             verifyForm.style.display = "block";
-            showSuccess("Verification code sent! Please check your email (and spam folder).");
+
+            if (data.is_demo && data.demo_code) {
+                demoHelper.innerHTML = 'Demo account detected. Access code: <strong>' + data.demo_code + '</strong>';
+                demoHelper.style.display = 'block';
+                otpInput.value = data.demo_code;
+                showSuccess("Demo access ready. Click 'Verify and sign in' to proceed.");
+            } else {
+                demoHelper.style.display = 'none';
+                otpInput.value = "";
+                showSuccess(data.message || "Verification code sent! Please check your email (and spam folder).");
+            }
             otpInput.focus();
         } catch (err) {
             showError("Network error. Please try again.");
+        } finally {
+            btnRequestOtp.disabled = false;
+            btnRequestOtp.textContent = "Send verification passcode";
         }
     });
 
@@ -125,10 +147,13 @@ document.addEventListener("DOMContentLoaded", () => {
         e.preventDefault();
         clearMessages();
         const otp = otpInput.value.trim();
-        if (!otp || otp.length !== 6) {
-            showError("Please enter a valid 6-digit code.");
+        if (!otp) {
+            showError("Please enter the verification passcode.");
             return;
         }
+
+        btnVerifyOtp.disabled = true;
+        btnVerifyOtp.textContent = "Verifying...";
 
         try {
             const res = await fetch("{{ url_for('recruitment.verify_otp') }}", {
@@ -140,15 +165,19 @@ document.addEventListener("DOMContentLoaded", () => {
                 body: JSON.stringify({ email: currentEmail, otp })
             });
             const data = await res.json();
-            if (!res.ok) {
+            if (!res.ok || !data.success) {
                 showError(data.error || "Verification failed.");
+                btnVerifyOtp.disabled = false;
+                btnVerifyOtp.textContent = "Verify and sign in";
                 return;
             }
 
             // Redirect as specified by backend
-            window.location.href = data.redirect || "/dashboard";
+            window.location.href = data.redirect || "{{ url_for('recruitment.dashboard') }}";
         } catch (err) {
             showError("Network error. Please try again.");
+            btnVerifyOtp.disabled = false;
+            btnVerifyOtp.textContent = "Verify and sign in";
         }
     });
 
@@ -156,6 +185,7 @@ document.addEventListener("DOMContentLoaded", () => {
         clearMessages();
         verifyForm.style.display = "none";
         requestForm.style.display = "block";
+        emailInput.focus();
     });
 });
 </script>

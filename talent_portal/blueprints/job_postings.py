@@ -1,10 +1,13 @@
 """Shared-login admin job management and public job discovery."""
+import secrets
+
 from flask import Blueprint, render_template, request, redirect, url_for, abort, session
 from psycopg2.extras import RealDictCursor
 from talent_portal.db import DBConnection
 from talent_portal.services.job_postings import (
     EMPLOYMENT_TYPES, STATUSES, validate_job, decorate_job, get_job, list_open_jobs, deadline_is_past,
 )
+from talent_portal.branding import load_brand
 
 job_postings = Blueprint('job_postings', __name__)
 
@@ -27,12 +30,18 @@ def admin_jobs():
         abort(400)
     with DBConnection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""SELECT j.*, (SELECT COUNT(*) FROM candidates c WHERE c.job_id=j.id) AS candidate_count
-                FROM job_postings j WHERE (%s='' OR j.status=%s) ORDER BY j.updated_at DESC, j.id DESC""", (status,status))
+            if load_brand().key == 'aptus':
+                scope_sql, scope_params = "j.legacy_role_key ILIKE %s", ('aptus-%',)
+            else:
+                scope_sql, scope_params = "TRUE", ()
+            cur.execute(f"""SELECT j.*, (SELECT COUNT(*) FROM candidates c WHERE c.job_id=j.id) AS candidate_count
+                FROM job_postings j WHERE {scope_sql} AND (%s='' OR j.status=%s)
+                ORDER BY j.updated_at DESC, j.id DESC""", (*scope_params, status, status))
             jobs = [decorate_job(row) for row in cur.fetchall()]
-            cur.execute("SELECT status, COUNT(*) AS count FROM job_postings GROUP BY status")
+            cur.execute(f"SELECT status, COUNT(*) AS count FROM job_postings j WHERE {scope_sql} GROUP BY status", scope_params)
             counts = {row['status']:row['count'] for row in cur.fetchall()}
-            cur.execute("SELECT COUNT(*) AS count FROM candidates WHERE job_id IS NULL")
+            cur.execute("SELECT COUNT(*) AS count FROM candidates WHERE job_id IS NULL" if load_brand().key != 'aptus' else
+                        "SELECT COUNT(*) AS count FROM candidates c WHERE c.job_id IS NULL AND c.email ILIKE %s", () if load_brand().key != 'aptus' else ('%@aptus.example',))
             unmatched = cur.fetchone()['count']
     return render_template('admin/jobs.html', jobs=jobs, counts=counts, status=status,
                            unmatched=unmatched, saved=request.args.get('saved') == '1')
@@ -53,9 +62,14 @@ def create_job():
         return editor(dict(request.form), errors, 400)
     with DBConnection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""INSERT INTO job_postings(title,department,location,employment_type,description,requirements,application_deadline)
-                VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING id""", tuple(data[k] for k in
-                ('title','department','location','employment_type','description','requirements','application_deadline')))
+            values = tuple(data[k] for k in
+                ('title','department','location','employment_type','description','requirements','application_deadline'))
+            if load_brand().key == 'aptus':
+                cur.execute("""INSERT INTO job_postings(title,department,location,employment_type,description,requirements,application_deadline,legacy_role_key)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""", values + (f"aptus-admin-{secrets.token_hex(8)}",))
+            else:
+                cur.execute("""INSERT INTO job_postings(title,department,location,employment_type,description,requirements,application_deadline)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING id""", values)
             job_id = cur.fetchone()[0]
         conn.commit()
     return redirect(url_for('job_postings.edit_job', job_id=job_id, saved=1), code=303)

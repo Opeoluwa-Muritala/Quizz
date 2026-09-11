@@ -21,7 +21,7 @@ load_dotenv()
 from talent_portal.db import DBConnection, close_request_connection  # noqa: E402
 
 app = Flask(__name__)
-from talent_portal.branding import install_branding
+from talent_portal.branding import install_branding, load_brand
 install_branding(app)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
 if not app.secret_key:
@@ -32,11 +32,22 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     TEMPLATES_AUTO_RELOAD=True,
-    SEND_FILE_MAX_AGE_DEFAULT=0
+    SEND_FILE_MAX_AGE_DEFAULT=0,
+    DEMO_MODE=os.environ.get("DEMO_MODE", "false").lower() == "true"
 )
 
 ADMIN_SESSION_TIMEOUT_MINUTES = 30
 MAX_ADMIN_DEVICES = 2
+
+import jinja2
+_template_base = os.path.join(os.path.dirname(__file__), "templates")
+app.jinja_loader = jinja2.ChoiceLoader([
+    jinja2.FileSystemLoader(_template_base),
+    jinja2.FileSystemLoader(os.path.join(_template_base, "candidate")),
+    jinja2.FileSystemLoader(os.path.join(_template_base, "admin")),
+    jinja2.FileSystemLoader(os.path.join(_template_base, "shared")),
+    jinja2.FileSystemLoader(os.path.join(_template_base, "errors")),
+])
 
 # Initialize Cloudinary
 cloudinary.config(
@@ -861,8 +872,18 @@ def admin_dashboard():
         session.pop('admin', None)
         session.pop('admin_session_token', None)
         return redirect(url_for('admin_login'))
+    return render_template('admin/admin.html', authenticated=True)
+
+
+@app.route('/admin/settings')
+def admin_settings():
+    if not session.get('admin') or not session.get('admin_session_token') or not get_current_admin_session_id():
+        session.pop('admin', None)
+        session.pop('admin_session_token', None)
+        return redirect(url_for('admin_login'))
 
     import datetime
+
     def format_datetime_wat(dt):
         if not dt:
             return "-"
@@ -895,7 +916,7 @@ def admin_dashboard():
     except Exception as e:
         app.logger.error(f"Error loading settings: {e}")
 
-    return render_template('admin/admin.html', authenticated=True, settings=settings)
+    return render_template('admin/settings.html', authenticated=True, settings=settings)
 
 
 @app.route('/admin')
@@ -922,11 +943,17 @@ def admin_home():
     try:
         with DBConnection() as conn:
             with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT COALESCE(stage, 'screening') as stg, COUNT(*)
-                    FROM candidates
+                candidate_scope = "TRUE"
+                candidate_params = ()
+                if load_brand().key == "aptus":
+                    candidate_scope = "(c.email ILIKE %s OR c.job_id IN (SELECT id FROM job_postings WHERE legacy_role_key ILIKE %s))"
+                    candidate_params = ("%@aptus.example", "aptus-%")
+                cur.execute(f"""
+                    SELECT COALESCE(c.stage, 'screening') as stg, COUNT(*)
+                    FROM candidates c
+                    WHERE {candidate_scope}
                     GROUP BY stg;
-                """)
+                """, candidate_params)
                 rows = cur.fetchall()
                 if rows:
                     funnel['screening'] = 0
@@ -950,12 +977,13 @@ def admin_home():
                             funnel['decision'] += count
                     funnel['awaiting_review'] = funnel['screening'] + funnel['documents']
 
-                cur.execute("""
-                    SELECT id, full_name, email, role, stage, created_at
-                    FROM candidates
+                cur.execute(f"""
+                    SELECT c.id, c.full_name, c.email, c.role, c.stage, c.created_at
+                    FROM candidates c
+                    WHERE {candidate_scope}
                     ORDER BY id DESC
                     LIMIT 5;
-                """)
+                """, candidate_params)
                 for r in cur.fetchall():
                     recent_candidates.append({
                         'id': r[0],
@@ -966,14 +994,19 @@ def admin_home():
                         'date': r[5].strftime('%b %d') if r[5] else 'Today'
                     })
 
-                cur.execute("""
+                job_scope = "TRUE"
+                job_params = ()
+                if load_brand().key == "aptus":
+                    job_scope = "j.legacy_role_key ILIKE %s"
+                    job_params = ("aptus-%",)
+                cur.execute(f"""
                     SELECT id, title, department, status,
                            (SELECT COUNT(*) FROM candidates c WHERE c.role = j.title) as cand_count
                     FROM job_postings j
-                    WHERE status = 'published'
+                    WHERE status = 'published' AND {job_scope}
                     ORDER BY id DESC
                     LIMIT 3;
-                """)
+                """, job_params)
                 for r in cur.fetchall():
                     active_jobs.append({
                         'id': r[0],
@@ -1021,9 +1054,26 @@ def admin_login():
     if not env_hash:
         fallback_pass = os.environ.get("ADMIN_TOKEN", "admin123")
         env_hash = generate_password_hash(fallback_pass)
-        
-    username_ok = hmac.compare_digest(username.lower().encode('utf-8'), expected_username.lower().encode('utf-8'))
-    password_ok = check_password_hash(env_hash, password)
+
+    credentials = [(expected_username, env_hash)]
+    # A separate demo credential is available only for the Aptus deployment.
+    # It shares the existing admin authorization boundary and is never enabled
+    # implicitly for Mainstreet.
+    if os.environ.get("BRAND_PROFILE", "mainstreet").strip().lower() in ("aptus", "generic"):
+        demo_username = os.environ.get("DEMO_ADMIN_USERNAME", "demo")
+        demo_hash = os.environ.get("DEMO_ADMIN_PASSWORD_HASH")
+        if not demo_hash and os.environ.get("DEMO_ADMIN_TOKEN"):
+            demo_hash = generate_password_hash(os.environ["DEMO_ADMIN_TOKEN"])
+        if demo_hash:
+            credentials.append((demo_username, demo_hash))
+
+    username_ok = False
+    password_ok = False
+    for configured_username, configured_hash in credentials:
+        if hmac.compare_digest(username.lower().encode('utf-8'), configured_username.lower().encode('utf-8')):
+            username_ok = True
+            password_ok = check_password_hash(configured_hash, password)
+            break
     
     if not (username_ok and password_ok):
         record_admin_login_attempt(ip_address, False)
@@ -1086,7 +1136,7 @@ def admin_logout():
 
 # Settings CRUD
 @app.route('/api/admin/settings', methods=['GET', 'POST'])
-def admin_settings():
+def admin_settings_api():
     auth_err = require_admin()
     if auth_err: return auth_err
     
@@ -2159,6 +2209,9 @@ def handle_403(e):
 
 @app.errorhandler(500)
 def handle_500(e):
+    import traceback
+    print("=== HTTP 500 ERROR ===")
+    traceback.print_exc()
     if request.path.startswith('/api/'):
         return jsonify({"error": "Internal server error"}), 500
     return render_template("errors/500.html"), 500
