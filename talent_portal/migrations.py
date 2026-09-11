@@ -1,0 +1,459 @@
+"""
+Recruitment pipeline database migrations.
+Run once at app startup via init_recruitment_db().
+"""
+from talent_portal.db import DBConnection
+
+
+def init_recruitment_db():
+    with DBConnection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                ALTER TABLE candidates
+                    ADD COLUMN IF NOT EXISTS dob DATE,
+                    ADD COLUMN IF NOT EXISTS nysc_status TEXT,
+                    ADD COLUMN IF NOT EXISTS cv_url TEXT,
+                    ADD COLUMN IF NOT EXISTS stage TEXT DEFAULT 'applied',
+                    ADD COLUMN IF NOT EXISTS stage_updated_at TIMESTAMPTZ DEFAULT NOW(),
+                    ADD COLUMN IF NOT EXISTS eligibility_flag BOOLEAN DEFAULT FALSE,
+                    ADD COLUMN IF NOT EXISTS eligibility_flag_reason TEXT,
+                    ADD COLUMN IF NOT EXISTS ref_token TEXT,
+                    ADD COLUMN IF NOT EXISTS house_address TEXT,
+                    ADD COLUMN IF NOT EXISTS age_bracket_confirmed BOOLEAN,
+                    ADD COLUMN IF NOT EXISTS application_source TEXT DEFAULT 'public',
+                    ADD COLUMN IF NOT EXISTS referral_code TEXT,
+                    ADD COLUMN IF NOT EXISTS referrer_name TEXT;
+            """)
+            cur.execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS interview_round TEXT;")
+            cur.execute("SELECT id FROM candidates WHERE ref_token IS NULL;")
+            rows_to_update = cur.fetchall()
+            if rows_to_update:
+                import secrets
+                for (cid,) in rows_to_update:
+                    token = secrets.token_hex(6) # 12 character unique token
+                    cur.execute("UPDATE candidates SET ref_token = %s WHERE id = %s;", (token, cid))
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_candidates_ref_token ON candidates (ref_token);")
+
+
+            # ── scores – one row per assessment attempt ─────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS scores (
+                    id               SERIAL PRIMARY KEY,
+                    candidate_id     INTEGER REFERENCES candidates(id),
+                    stage_label      TEXT NOT NULL DEFAULT 'assessment_round_1',
+                    score            NUMERIC(5,2),
+                    score_fraction   TEXT,
+                    pass_fail        TEXT,
+                    taken_at         TIMESTAMPTZ,
+                    started_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    duration_seconds INTEGER,
+                    tab_switches     INTEGER DEFAULT 0,
+                    breakdown_json   JSONB,
+                    time_taken_secs  INTEGER,
+                    question_order   JSONB
+                );
+            """)
+            cur.execute("""
+                ALTER TABLE scores
+                    ADD COLUMN IF NOT EXISTS quiz_id INTEGER REFERENCES quizzes(id) ON DELETE CASCADE;
+            """)
+            cur.execute("SELECT id FROM quizzes ORDER BY id LIMIT 1;")
+            default_quiz = cur.fetchone()
+            if default_quiz:
+                cur.execute("UPDATE scores SET quiz_id = %s WHERE quiz_id IS NULL;", (default_quiz[0],))
+
+            # ── candidate_documents ─────────────────────────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS candidate_documents (
+                    id            SERIAL PRIMARY KEY,
+                    candidate_id  INTEGER REFERENCES candidates(id),
+                    doc_type      TEXT NOT NULL,
+                    url           TEXT,
+                    public_id     TEXT,
+                    uploaded_at   TIMESTAMPTZ DEFAULT NOW(),
+                    verified      BOOLEAN DEFAULT FALSE,
+                    upload_status TEXT DEFAULT 'pending',
+                    rejection_note TEXT,
+                    rejected_at   TIMESTAMPTZ
+                );
+            """)
+            cur.execute("""
+                ALTER TABLE candidate_documents
+                    ADD COLUMN IF NOT EXISTS rejection_note TEXT,
+                    ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
+            """)
+            cur.execute("""
+                DELETE FROM candidate_documents a
+                USING candidate_documents b
+                WHERE a.candidate_id = b.candidate_id
+                  AND a.doc_type = b.doc_type
+                  AND a.id < b.id;
+            """)
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_candidate_documents_candidate_doc_type
+                ON candidate_documents (candidate_id, doc_type);
+            """)
+
+            # ── interviewers ────────────────────────────────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS interviewers (
+                    id                 SERIAL PRIMARY KEY,
+                    name               TEXT NOT NULL,
+                    email              TEXT NOT NULL UNIQUE,
+                    active             BOOLEAN DEFAULT TRUE,
+                    meeting_provider   TEXT DEFAULT 'google_meet',
+                    google_calendar_id TEXT,
+                    zoom_user_id       TEXT,
+                    created_at         TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+
+            # ── availability_rules ──────────────────────────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS availability_rules (
+                    id                      SERIAL PRIMARY KEY,
+                    interviewer_id          INTEGER REFERENCES interviewers(id),
+                    rule_type               TEXT DEFAULT 'recurring',
+                    day_of_week             INTEGER,
+                    date_from               DATE,
+                    date_to                 DATE,
+                    start_time              TIME NOT NULL,
+                    end_time                TIME NOT NULL,
+                    slot_duration_minutes   INTEGER NOT NULL DEFAULT 30,
+                    buffer_minutes          INTEGER NOT NULL DEFAULT 10,
+                    booking_lead_time_hours INTEGER NOT NULL DEFAULT 24,
+                    active                  BOOLEAN DEFAULT TRUE,
+                    created_at              TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+
+            # ── generated_slots ─────────────────────────────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS generated_slots (
+                    id                   SERIAL PRIMARY KEY,
+                    availability_rule_id INTEGER REFERENCES availability_rules(id),
+                    interviewer_id       INTEGER REFERENCES interviewers(id),
+                    start_time           TIMESTAMPTZ NOT NULL,
+                    end_time             TIMESTAMPTZ NOT NULL,
+                    is_booked            BOOLEAN DEFAULT FALSE,
+                    is_blocked           BOOLEAN DEFAULT FALSE,
+                    candidate_id         INTEGER REFERENCES candidates(id),
+                    meeting_link         TEXT,
+                    external_event_id    TEXT,
+                    meeting_provider     TEXT,
+                    created_at           TIMESTAMPTZ DEFAULT NOW(),
+                    UNIQUE (availability_rule_id, start_time)
+                );
+            """)
+
+            # ── interview feedback scorecards ─────────────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS interview_feedback (
+                    id              SERIAL PRIMARY KEY,
+                    candidate_id    INTEGER NOT NULL REFERENCES candidates(id),
+                    slot_id         INTEGER REFERENCES generated_slots(id),
+                    ratings         JSONB NOT NULL,
+                    overall_score   NUMERIC(4,2) NOT NULL CHECK (overall_score >= 1 AND overall_score <= 5),
+                    recommendation  TEXT NOT NULL CHECK (recommendation IN ('strong_hire','hire','no_decision','do_not_hire')),
+                    notes           TEXT NOT NULL DEFAULT '',
+                    status          TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','submitted')),
+                    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+            """)
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_interview_feedback_candidate_slot
+                ON interview_feedback (candidate_id, COALESCE(slot_id, 0));
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS offers (
+                    id SERIAL PRIMARY KEY, candidate_id INTEGER NOT NULL REFERENCES candidates(id),
+                    version INTEGER NOT NULL DEFAULT 1, currency CHAR(3) NOT NULL,
+                    base_salary NUMERIC(14,2) NOT NULL, start_date DATE NOT NULL, expiry_date DATE NOT NULL,
+                    terms TEXT NOT NULL DEFAULT '', approval_status TEXT NOT NULL DEFAULT 'draft',
+                    offer_status TEXT NOT NULL DEFAULT 'draft', created_by TEXT NOT NULL DEFAULT 'admin',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE(candidate_id, version),
+                    CHECK (approval_status IN ('draft','pending_approval','approved')),
+                    CHECK (offer_status IN ('draft','sent','accepted','declined','negotiating','withdrawn'))
+                );
+                CREATE TABLE IF NOT EXISTS offer_versions (
+                    id SERIAL PRIMARY KEY, offer_id INTEGER NOT NULL REFERENCES offers(id), version INTEGER NOT NULL,
+                    snapshot JSONB NOT NULL, changed_by TEXT NOT NULL DEFAULT 'admin', changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE(offer_id, version)
+                );
+                CREATE INDEX IF NOT EXISTS idx_offers_candidate_status ON offers(candidate_id, offer_status);
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS onboarding_handoffs (
+                    id SERIAL PRIMARY KEY, candidate_id INTEGER NOT NULL UNIQUE REFERENCES candidates(id),
+                    start_date DATE, owner TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending',
+                    notes TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    CHECK (status IN ('pending','in_progress','complete'))
+                );
+                CREATE TABLE IF NOT EXISTS onboarding_tasks (
+                    id SERIAL PRIMARY KEY, handoff_id INTEGER NOT NULL REFERENCES onboarding_handoffs(id) ON DELETE CASCADE,
+                    label TEXT NOT NULL, complete BOOLEAN NOT NULL DEFAULT FALSE, completed_at TIMESTAMPTZ,
+                    UNIQUE(handoff_id, label)
+                );
+            """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS notification_settings (
+                    notification_type TEXT PRIMARY KEY,
+                    mode TEXT NOT NULL DEFAULT 'auto' CHECK (mode IN ('auto','explicit')),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+                INSERT INTO notification_settings(notification_type, mode) VALUES
+                    ('rejected','auto'), ('offered','auto'), ('interview_booked','auto'), ('interview_rescheduled','explicit')
+                ON CONFLICT(notification_type) DO NOTHING;
+            """)
+
+            # ── stage_config ────────────────────────────────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS stage_config (
+                    id                       SERIAL PRIMARY KEY,
+                    cycle_id                 INTEGER DEFAULT 1,
+                    stage_name               TEXT NOT NULL,
+                    opens_at                 TIMESTAMPTZ,
+                    closes_at                TIMESTAMPTZ,
+                    duration_minutes         INTEGER,
+                    relative_deadline_hours  INTEGER,
+                    pass_mark                NUMERIC(5,2) DEFAULT 50.0,
+                    min_age                  INTEGER DEFAULT 18,
+                    max_age                  INTEGER DEFAULT 35,
+                    accepted_nysc_statuses   TEXT[] DEFAULT ARRAY['completed','exempted'],
+                    screening_mode           TEXT DEFAULT 'soft',
+                    created_at               TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at               TIMESTAMPTZ DEFAULT NOW(),
+                    UNIQUE (cycle_id, stage_name)
+                );
+            """)
+
+            # ── email_log ───────────────────────────────────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS email_log (
+                    id              SERIAL PRIMARY KEY,
+                    candidate_id    INTEGER REFERENCES candidates(id),
+                    stage           TEXT,
+                    event_type      TEXT NOT NULL,
+                    recipient_email TEXT,
+                    sent_at         TIMESTAMPTZ DEFAULT NOW(),
+                    status          TEXT DEFAULT 'sent',
+                    error_message   TEXT,
+                    template_used   TEXT
+                );
+            """)
+
+            # ── recruitment_cycles ──────────────────────────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS recruitment_cycles (
+                    id         SERIAL PRIMARY KEY,
+                    name       TEXT NOT NULL,
+                    active     BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+
+            # ── candidate_stage_history ─────────────────────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS candidate_stage_history (
+                    id           SERIAL PRIMARY KEY,
+                    candidate_id INTEGER REFERENCES candidates(id),
+                    from_stage   TEXT,
+                    to_stage     TEXT NOT NULL,
+                    changed_at   TIMESTAMPTZ DEFAULT NOW(),
+                    changed_by   TEXT DEFAULT 'system',
+                    reason       TEXT
+                );
+            """)
+
+            # ── upload_jobs – tracks async background uploads ───────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS upload_jobs (
+                    id           TEXT PRIMARY KEY,
+                    candidate_id INTEGER REFERENCES candidates(id),
+                    doc_type     TEXT,
+                    target_field TEXT,
+                    status       TEXT DEFAULT 'pending',
+                    url          TEXT,
+                    public_id    TEXT,
+                    error        TEXT,
+                    created_at   TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at   TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+
+            # ── role_document_requirements – 5 configurable employment docs per role ──
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS role_document_requirements (
+                    id               SERIAL PRIMARY KEY,
+                    role             TEXT NOT NULL,
+                    document_type    TEXT NOT NULL,
+                    label            TEXT NOT NULL,
+                    accepted_formats TEXT[] NOT NULL DEFAULT ARRAY['PDF','DOC','DOCX','JPG','PNG'],
+                    required         BOOLEAN NOT NULL DEFAULT TRUE,
+                    position         INTEGER NOT NULL,
+                    created_at       TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at       TIMESTAMPTZ DEFAULT NOW(),
+                    UNIQUE (role, document_type)
+                );
+            """)
+
+            # ── slot_interviewers – panel members for each slot ─────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS slot_interviewers (
+                    slot_id       INTEGER REFERENCES generated_slots(id) ON DELETE CASCADE,
+                    interviewer_id INTEGER REFERENCES interviewers(id) ON DELETE CASCADE,
+                    added_at      TIMESTAMPTZ DEFAULT NOW(),
+                    PRIMARY KEY (slot_id, interviewer_id)
+                );
+            """)
+
+            # Named schedule builder. The legacy availability tables stay in place so
+            # existing slots (especially booked ones) remain valid.
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS interview_schedules (
+                    id SERIAL PRIMARY KEY, title TEXT NOT NULL, role TEXT NOT NULL,
+                    interview_round TEXT NOT NULL,
+                    schedule_type TEXT NOT NULL DEFAULT 'range'
+                        CHECK (schedule_type IN ('range', 'recurring')),
+                    start_date DATE, end_date DATE,
+                    active_days INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
+                    availability_windows JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    duration_minutes INTEGER NOT NULL DEFAULT 30,
+                    buffer_minutes INTEGER NOT NULL DEFAULT 10,
+                    booking_lead_time_hours INTEGER NOT NULL DEFAULT 24,
+                    daily_booking_cap INTEGER, interviewer_booking_cap INTEGER,
+                    booking_mode TEXT NOT NULL DEFAULT 'single'
+                        CHECK (booking_mode IN ('single', 'collective', 'round_robin')),
+                    published BOOLEAN NOT NULL DEFAULT FALSE, generated_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS schedule_interviewers (
+                    schedule_id INTEGER REFERENCES interview_schedules(id) ON DELETE CASCADE,
+                    interviewer_id INTEGER REFERENCES interviewers(id) ON DELETE RESTRICT,
+                    position INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (schedule_id, interviewer_id)
+                );
+            """)
+            cur.execute("""
+                ALTER TABLE generated_slots
+                    ADD COLUMN IF NOT EXISTS schedule_id INTEGER REFERENCES interview_schedules(id),
+                    ADD COLUMN IF NOT EXISTS interview_round TEXT,
+                    ADD COLUMN IF NOT EXISTS booking_mode TEXT,
+                    ADD COLUMN IF NOT EXISTS booking_lead_time_hours INTEGER,
+                    ADD COLUMN IF NOT EXISTS daily_booking_cap INTEGER;
+            """)
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_generated_schedule_start ON generated_slots(schedule_id, start_time) WHERE schedule_id IS NOT NULL;")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_schedules_role_round_active ON interview_schedules(role, interview_round, published);")
+
+            # ── add interview_instructions column if missing ────────────
+            cur.execute("""
+                ALTER TABLE stage_config
+                ADD COLUMN IF NOT EXISTS interview_instructions TEXT;
+            """)
+
+            # ── add title column to generated_slots if missing ──────────
+            cur.execute("""
+                ALTER TABLE generated_slots
+                ADD COLUMN IF NOT EXISTS title TEXT;
+            """)
+
+            # ── create index for generated_slots optimization ──────────
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_generated_slots_interviewer_time
+                ON generated_slots (interviewer_id, start_time, end_time);
+            """)
+
+            # ── add color column to interviewers if missing ─────────────
+            cur.execute("""
+                ALTER TABLE interviewers
+                ADD COLUMN IF NOT EXISTS color TEXT;
+            """)
+            cur.execute("SELECT id FROM interviewers WHERE color IS NULL ORDER BY id;")
+            null_rows = cur.fetchall()
+            colors_palette = ['#89268B', '#1E7A45', '#B8790A', '#2B6CB0', '#319795', '#D53F8C', '#4A5568']
+            for idx, r in enumerate(null_rows):
+                cur.execute(
+                    "UPDATE interviewers SET color = %s WHERE id = %s;",
+                    (colors_palette[idx % len(colors_palette)], r[0])
+                )
+
+
+            # ── seed default recruitment cycle ──────────────────────────
+            cur.execute("SELECT COUNT(*) FROM recruitment_cycles;")
+            if cur.fetchone()[0] == 0:
+                cur.execute("""
+                    INSERT INTO recruitment_cycles (name, active)
+                    VALUES ('Executive Trainee 2026', TRUE);
+                """)
+
+            # ── seed default stage_config rows ──────────────────────────
+            cur.execute("SELECT COUNT(*) FROM stage_config;")
+            if cur.fetchone()[0] == 0:
+                defaults = [
+                    # stage_name, duration_minutes, relative_deadline_hours, pass_mark, min_age, max_age
+                    ("application",      None, None, None, 18, 35),
+                    ("screening",        None, None, None, 18, 35),
+                    ("assessment",       60,   72,   50.0, 18, 35),
+                    ("interview",        None, 72,   None, 18, 35),
+                    ("documents",        None, 72,   None, 18, 35),
+                    ("final_decision",   None, None, None, 18, 35),
+                ]
+                for row in defaults:
+                    cur.execute("""
+                        INSERT INTO stage_config
+                            (cycle_id, stage_name, duration_minutes, relative_deadline_hours,
+                             pass_mark, min_age, max_age)
+                        VALUES (1, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (cycle_id, stage_name) DO NOTHING;
+                    """, row)
+
+            cur.execute("SELECT COUNT(*) FROM role_document_requirements WHERE document_type = 'waec_cert';")
+            if cur.fetchone()[0] == 0:
+                cur.execute("DELETE FROM role_document_requirements;")
+                default_roles = [
+                    "Loan Officer", "Operations", "IT&S", "Audit", "Credit Risk",
+                    "HR", "Recovery", "General"
+                ]
+                default_docs = [
+                    ("cv", "CV / Resume", 1),
+                    ("waec_cert", "WAEC Certificate", 2),
+                    ("nysc_cert", "NYSC Certificate", 3),
+                    ("university_cert", "University Certificate", 4),
+                    ("professional_cert", "Professional Certificate", 5),
+                    ("birth_cert", "Birth Certificate", 6),
+                ]
+                for role in default_roles:
+                    for doc_type, label, position in default_docs:
+                        cur.execute("""
+                            INSERT INTO role_document_requirements
+                                (role, document_type, label, accepted_formats, required, position)
+                            VALUES (%s, %s, %s, ARRAY['PDF','JPG','PNG'], TRUE, %s)
+                            ON CONFLICT (role, document_type) DO NOTHING;
+                        """, (role, doc_type, label, position))
+
+            # Read-path indexes used by candidate pages and paginated admin APIs.
+            for statement in (
+                "CREATE INDEX IF NOT EXISTS idx_candidates_created ON candidates(created_at DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_candidates_stage_created ON candidates(stage, created_at DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_candidates_role_round_stage ON candidates(role, interview_round, stage)",
+                "CREATE INDEX IF NOT EXISTS idx_stage_history_candidate_changed ON candidate_stage_history(candidate_id, changed_at DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_stage_history_candidate_to ON candidate_stage_history(candidate_id, to_stage, changed_at DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_candidate_documents_candidate ON candidate_documents(candidate_id, uploaded_at DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_upload_jobs_candidate_target ON upload_jobs(candidate_id, target_field, updated_at DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_scores_candidate_taken ON scores(candidate_id, taken_at DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_slots_candidate_booked_start ON generated_slots(candidate_id, start_time DESC) WHERE is_booked = TRUE",
+                "CREATE INDEX IF NOT EXISTS idx_slots_schedule_start ON generated_slots(schedule_id, start_time) WHERE schedule_id IS NOT NULL",
+                "CREATE INDEX IF NOT EXISTS idx_stage_config_name_cycle ON stage_config(stage_name, cycle_id DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_admin_sessions_token_active ON admin_sessions(session_token) WHERE active = TRUE",
+                "CREATE INDEX IF NOT EXISTS idx_email_log_sent ON email_log(sent_at DESC)",
+            ):
+                cur.execute(statement)
+
+            # Employment-document requirements are shared by every role.
+            cur.execute("DELETE FROM role_document_requirements WHERE role <> 'General';")
+
+        conn.commit()

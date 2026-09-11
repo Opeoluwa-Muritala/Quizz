@@ -1,0 +1,24 @@
+.gateway-wrap { max-width: 800px; margin: 80px auto; padding: 0 16px; }
+  .gateway-header { text-align: center; margin-bottom: 48px; }
+  .gateway-header .logo { height: 48px; margin-bottom: 20px; }
+  .gateway-header h1 { font-family: var(--font-heading); font-size: 32px; font-weight: 700; color: var(--mfb-ink); margin: 0 0 8px; }
+  .gateway-header p { color: var(--mfb-gray-600); font-size: 16px; margin: 0; }
+  
+  .gateway-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .gateway-card { background: var(--mfb-white); border: 1px solid var(--mfb-gray-300); border-radius: 12px; padding: 32px; display: flex; flex-direction: column; box-shadow: var(--mfb-shadow-soft); transition: transform 0.2s, box-shadow 0.2s; }
+  .gateway-card:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08); border-color: var(--mfb-purple); }
+  
+  .gateway-card .icon-box { width: 48px; height: 48px; border-radius: 8px; background: var(--mfb-purple-tint); color: var(--mfb-purple); display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 20px; }
+  .gateway-card h2 { font-family: var(--font-body); font-size: 20px; font-weight: 700; color: var(--mfb-ink); margin: 0 0 12px; }
+  .gateway-card p { font-size: 14px; line-height: 20px; color: var(--mfb-gray-600); margin: 0 0 24px; flex: 1; }
+  
+  .gateway-btn { display: inline-flex; align-items: center; justify-content: center; width: 100%; border-radius: 8px; font-weight: 700; padding: 14px; text-decoration: none; font-size: 14px; transition: background 0.2s; }
+  .gateway-btn-primary { background: var(--mfb-purple); color: var(--mfb-white); }
+  .gateway-btn-primary:hover { background: var(--mfb-purple-dark); }
+  .gateway-btn-outline { border: 2px solid var(--mfb-purple); color: var(--mfb-purple); background: transparent; }
+  .gateway-btn-outline:hover { background: var(--mfb-purple-tint); }
+
+  @media(max-width:640px) {
+    .gateway-wrap { margin: 40px auto; }
+    .gateway-grid { grid-template-columns: 1fr; gap: 16px; }
+  }

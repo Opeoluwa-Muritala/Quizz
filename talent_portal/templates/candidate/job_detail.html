@@ -1,0 +1,62 @@
+{% extends "shared/base.html" %}
+
+{% block title %}{{ job.title }} - {{ brand.name }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/jobs.css', v='aptus-v4') }}">
+{% endblock %}
+
+{% block content %}
+<div class="job-detail-container">
+  <div class="job-detail-nav">
+    <a class="button-tertiary back-action" href="{{ url_for('job_postings.public_jobs') }}">
+      <i class="ti ti-arrow-left" style="font-size:16px;" aria-hidden="true"></i> Back to open positions
+    </a>
+  </div>
+
+  {% if preview %}
+  <div class="notice" role="status" style="background: rgba(15, 163, 163, 0.1); border-left: 3px solid var(--color-accent); margin-bottom: 24px;">
+    Admin preview mode: status is {{ job.display_status|capitalize }}
+  </div>
+  {% endif %}
+
+  <header class="job-detail-header card">
+    <div class="job-header-main">
+      <span class="tag-chip tag-dept">{{ job.department }}</span>
+      <h1>{{ job.title }}</h1>
+      <div class="job-header-meta">
+        <span><i class="ti ti-map-pin" aria-hidden="true"></i> {{ job.location }}</span>
+        <span><i class="ti ti-briefcase" aria-hidden="true"></i> {{ job.employment_type }}</span>
+        <span><i class="ti ti-clock" aria-hidden="true"></i> Deadline: {{ job.deadline_label }}</span>
+      </div>
+    </div>
+    {% if job.accepting and not preview %}
+    <div class="job-header-cta">
+      <a class="portal-button" href="{{ url_for('recruitment.apply', job_id=job.id) }}">Apply for this position</a>
+    </div>
+    {% endif %}
+  </header>
+
+  <div class="job-detail-content-grid">
+    <section class="job-content-card card">
+      <h2>About the position</h2>
+      <div class="job-prose-body preserve-lines">{{ job.description }}</div>
+    </section>
+
+    <section class="job-content-card card">
+      <h2>Requirements and qualifications</h2>
+      <div class="job-prose-body preserve-lines">{{ job.requirements }}</div>
+    </section>
+  </div>
+
+  {% if job.accepting and not preview %}
+  <div class="job-detail-footer-bar">
+    <div>
+      <strong>Ready to take the next step?</strong>
+      <p>Submit your application and background details for review.</p>
+    </div>
+    <a class="portal-button" href="{{ url_for('recruitment.apply', job_id=job.id) }}">Apply for this position</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

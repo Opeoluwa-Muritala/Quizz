@@ -1,0 +1,300 @@
+/* ── Aptus Admin Dashboard (Section 5 Compliant) ──────────── */
+.admin-dashboard {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* ── Hero Metric (Section 5: Visual priority, supporting secondary) ── */
+.dashboard-hero {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 32px;
+  background: #ffffff;
+  border: 1px solid var(--mfb-gray-300);
+  border-radius: var(--radius-md);
+  padding: 32px;
+  box-shadow: var(--shadow-card);
+}
+.hero-label {
+  display: inline-block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-weight: 700;
+  color: var(--color-accent);
+  margin-bottom: 8px;
+}
+.hero-number-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.hero-number {
+  font-family: var(--font-heading);
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-primary);
+}
+.hero-text {
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.hero-description {
+  font-size: 14px;
+  color: var(--mfb-gray-600);
+  line-height: 1.6;
+  max-width: 520px;
+  margin-bottom: 24px;
+}
+.hero-action .portal-button {
+  height: 40px;
+  padding: 0 20px;
+}
+
+.dashboard-hero__supporting {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  border-left: 1px solid var(--mfb-gray-300);
+  padding-left: 32px;
+  justify-content: center;
+}
+.supporting-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.supporting-stat__number {
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+.supporting-stat__label {
+  font-size: 14px;
+  color: var(--mfb-gray-600);
+}
+
+/* ── Pipeline Funnel View (Characteristic Primary ATS View) ── */
+.funnel-card {
+  padding: 24px 32px 32px;
+  background: #ffffff;
+  border: 1px solid var(--mfb-gray-300);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+.funnel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.funnel-header h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin: 0;
+}
+.funnel-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+  align-items: flex-end;
+  min-height: 120px;
+  padding-top: 16px;
+  border-bottom: 1px solid var(--mfb-gray-300);
+  padding-bottom: 16px;
+}
+.funnel-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  justify-content: flex-end;
+}
+.funnel-stage__bar {
+  background: rgba(15, 163, 163, 0.15);
+  border-top: 3px solid var(--color-accent);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  min-height: 16px;
+  transition: height 250ms ease-out;
+}
+.funnel-stage__content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.funnel-stage__count {
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+.funnel-stage__name {
+  font-size: 12px;
+  color: var(--mfb-gray-600);
+  font-weight: 500;
+}
+
+/* ── 3 Characteristic Cards ── */
+.dashboard-cards-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr;
+  gap: 24px;
+}
+.dashboard-card {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 280px;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.card-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin: 0;
+}
+
+/* Table per Section 10: 48px row height, sticky header */
+.table-container {
+  overflow-x: auto;
+}
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.admin-table th {
+  height: 40px;
+  padding: 0 12px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mfb-gray-600);
+  background: var(--color-bg);
+  position: sticky;
+  top: 0;
+  border-bottom: 1px solid var(--mfb-gray-300);
+}
+.admin-table td {
+  height: 48px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--mfb-gray-300);
+  color: var(--color-text);
+  vertical-align: middle;
+}
+.admin-table tr:last-child td {
+  border-bottom: none;
+}
+.sub-meta {
+  display: block;
+  font-size: 12px;
+  color: var(--mfb-gray-600);
+}
+
+/* Status Chips (Text + shape/color together) */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+}
+.stage-chip {
+  background: rgba(15, 163, 163, 0.1);
+  color: #087F7F;
+  border: 1px solid rgba(15, 163, 163, 0.3);
+}
+.chip-neutral {
+  background: rgba(36, 30, 78, 0.06);
+  color: var(--color-primary);
+}
+.chip-success {
+  background: #EAF5EF;
+  color: var(--color-success);
+  border: 1px solid rgba(46, 158, 107, 0.3);
+}
+
+/* Table Row Action Button (32px compact) */
+.table-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 150ms ease-out;
+}
+.table-action-btn:hover {
+  background: rgba(36, 30, 78, 0.06);
+}
+
+/* Mini item lists for secondary cards */
+.mini-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 8px 0 24px;
+}
+.mini-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--mfb-gray-300);
+}
+.mini-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.mini-item strong {
+  display: block;
+  font-size: 14px;
+  color: var(--color-text);
+}
+.card-footer-action {
+  margin-top: auto;
+}
+.card-footer-action .button-secondary {
+  width: 100%;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-hero { grid-template-columns: 1fr; }
+  .dashboard-hero__supporting {
+    border-left: none;
+    border-top: 1px solid var(--mfb-gray-300);
+    padding-left: 0;
+    padding-top: 24px;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .dashboard-cards-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+  .funnel-grid { grid-template-columns: 1fr; gap: 8px; min-height: auto; }
+  .funnel-stage__bar { display: none; }
+  .dashboard-hero__supporting { grid-template-columns: 1fr; }
+}

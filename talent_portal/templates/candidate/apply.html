@@ -1,0 +1,276 @@
+{% extends "shared/base.html" %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/apply.css') }}">
+{% endblock %}
+
+{% block title %}Job Application - {{ brand.portal_title }}{% endblock %}
+
+{% block content %}
+<div class="apply-wrap candidate-page mfb-page">
+  <div class="mfb-stage-rail" aria-label="Application stage">
+    <div class="mfb-stage-step current"><div class="mfb-stage-dot"></div><span>Applied</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Screening</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Assessment</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Interview</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Documents</span></div>
+    <div class="mfb-stage-step"><div class="mfb-stage-dot"></div><span>Decision</span></div>
+  </div>
+
+  <div class="apply-card">
+    <h1>Your application</h1>
+    <div class="cohort-badge">{{ brand.program_name }}</div>
+    <p class="sub">Submit your details to register for {{ brand.program_name }}.</p>
+
+    <div class="existing-banner" id="existingBanner">
+      An account with this email already exists.
+      <a href="/dashboard">Go to your dashboard</a>
+    </div>
+
+    <div class="apply-section">
+      <h3>Personal details</h3>
+      <div class="form-group">
+        <label for="fullName">Full name <span class="req">*</span></label>
+        <input class="form-control" id="fullName" type="text" autocomplete="name" placeholder="e.g. Adaeze Okonkwo" data-required="true">
+        <div class="field-error" id="fullNameError">Full name is required.</div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="email">Email address <span class="req">*</span></label>
+          <input class="form-control" id="email" type="email" autocomplete="email" placeholder="you@example.com" data-required="true">
+          <div class="field-error" id="emailError">Enter a valid email address.</div>
+        </div>
+        <div class="form-group">
+          <label for="phone">Phone number <span class="req">*</span></label>
+          <input class="form-control" id="phone" type="tel" autocomplete="tel" placeholder="+234 800 000 0000" data-required="true">
+          <div class="field-error" id="phoneError">Phone number is required.</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="houseAddress">House address <span class="req">*</span></label>
+        <input class="form-control" id="houseAddress" type="text" autocomplete="street-address" placeholder="Enter your residential address" data-required="true">
+        <div class="field-error" id="houseAddressError">House address is required.</div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="dob">Date of birth <span class="req">*</span></label>
+          <input class="form-control" id="dob" type="date" data-required="true">
+          <div class="field-error" id="dobError">Date of birth is required.</div>
+        </div>
+        <div class="form-group">
+          <label for="nyscStatus">NYSC status <span class="req">*</span></label>
+          <select class="form-control" id="nyscStatus" data-required="true">
+            <option value="">Select</option>
+            <option value="completed">Completed</option>
+            <option value="exempted">Exempted</option>
+            <option value="serving">Currently serving</option>
+            <option value="not_started">Not started</option>
+          </select>
+          <div class="field-error" id="nyscStatusError">NYSC status is required.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="apply-section">
+      <h3>Job</h3>
+      <div class="form-group">
+        <label for="jobId">Position <span class="req">*</span></label>
+        <select class="form-control" id="jobId" data-required="true">
+          <option value="">Select an open position</option>
+          {% for job in jobs %}
+          <option value="{{ job.id }}" {% if selected_job_id == job.id %}selected{% endif %}>
+            {{ job.title }}, {{ job.location }}
+          </option>
+          {% endfor %}
+        </select>
+        <div class="field-error" id="jobIdError">Select an open position.</div>
+        {% if not jobs %}<p class="help-text">There are no open positions right now. Check back soon.</p>{% endif %}
+      </div>
+    </div>
+
+    <div class="apply-section">
+      <h3>CV</h3>
+      <div class="form-group">
+        <label for="cvFile">Upload CV or resume <span class="req">*</span></label>
+        <p style="font-size:13px;color:#61646D;margin:0 0 10px">PDF, JPG, or PNG. Images up to 5 MB are compressed; final upload limit is 3 MB.</p>
+        <div class="cv-drop" id="cvDrop">
+          <input type="file" id="cvFile" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onchange="handleCvSelect(this)">
+          <div class="icon"><i class="ti ti-file-upload"></i></div>
+          <p>Drag and drop, or click to browse</p>
+          <div class="cv-name" id="cvName" style="display:none"></div>
+        </div>
+        <div id="cvLocalPreview" style="display:none;margin-top:12px;border:1px solid #D8D8D4;border-radius:12px;overflow:hidden;background:#F7F7F5"></div>
+        <div class="field-error" id="cvError">Upload your CV before submitting.</div>
+      </div>
+      <button class="btn-submit" id="submitBtn" onclick="submitApplication()">Submit application</button>
+      <p class="next-step">You'll receive an email once your application has been reviewed.</p>
+    </div>
+
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let cvFileData = null;
+
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+function clearError() {
+  document.getElementById('errorMsg').style.display = 'none';
+}
+
+function setFieldError(id, show) {
+  const el = document.getElementById(`${id}Error`);
+  if (el) el.style.display = show ? 'block' : 'none';
+}
+
+function validateField(id) {
+  const el = document.getElementById(id);
+  if (!el) return true;
+  let valid = true;
+  if (el.dataset.required === 'true') valid = Boolean(el.value.trim());
+  if (id === 'email' && el.value.trim()) valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(el.value.trim());
+  setFieldError(id, !valid);
+  return valid;
+}
+
+document.querySelectorAll('[data-required="true"]').forEach(el => {
+  el.addEventListener('blur', () => validateField(el.id));
+  el.addEventListener('change', () => validateField(el.id));
+});
+
+function validateForm() {
+  const fieldsOk = ['fullName', 'email', 'phone', 'houseAddress', 'dob', 'nyscStatus', 'jobId'].every(validateField);
+  const cvOk = Boolean(cvFileData);
+  setFieldError('cv', !cvOk);
+  return fieldsOk && cvOk;
+}
+
+function handleCvSelect(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    showError('CV files must be 5 MB or smaller before compression.');
+    input.value = '';
+    return;
+  }
+  if (file.type === 'application/pdf' && file.size > 3 * 1024 * 1024) {
+    showError('PDF CVs must be 3 MB or smaller.');
+    input.value = '';
+    return;
+  }
+  cvFileData = file;
+  document.getElementById('cvName').textContent = file.name;
+  document.getElementById('cvName').style.display = 'block';
+  document.getElementById('cvDrop').querySelector('p').style.display = 'none';
+  setFieldError('cv', false);
+  const preview = document.getElementById('cvLocalPreview');
+  const url = URL.createObjectURL(file);
+  preview.innerHTML = '';
+  const media = file.type === 'application/pdf' ? document.createElement('object') : document.createElement('img');
+  if (file.type === 'application/pdf') { media.data = url; media.type = 'application/pdf'; }
+  else { media.src = url; media.alt = 'Selected CV preview'; media.style.objectFit = 'contain'; }
+  Object.assign(media.style, {width:'100%', height:'55vh', border:'0', display:'block'});
+  preview.appendChild(media);
+  preview.style.display = 'block';
+}
+
+const drop = document.getElementById('cvDrop');
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => {
+  e.preventDefault(); drop.classList.remove('over');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    document.getElementById('cvFile').files = dt.files;
+    handleCvSelect(document.getElementById('cvFile'));
+  }
+});
+
+function uploadStore() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open({{ brand.storage_key | tojson }}, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('pending-cv');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function savePendingCvUpload(file, config) {
+  const db = await uploadStore();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction('pending-cv', 'readwrite');
+    transaction.objectStore('pending-cv').put({ file, config }, config.job_id);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+  db.close();
+}
+
+async function submitApplication() {
+  clearError();
+  if (!validateForm()) {
+    showError('Please complete the required fields before submitting.');
+    return;
+  }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+
+  const formData = new FormData();
+  formData.append('full_name', document.getElementById('fullName').value.trim());
+  formData.append('email', document.getElementById('email').value.trim().toLowerCase());
+  formData.append('phone_number', document.getElementById('phone').value.trim());
+  formData.append('house_address', document.getElementById('houseAddress').value.trim());
+  formData.append('dob', document.getElementById('dob').value);
+  formData.append('nysc_status', document.getElementById('nyscStatus').value);
+  formData.append('job_id', document.getElementById('jobId').value);
+  formData.append('direct_cv_upload', cvFileData ? 'true' : 'false');
+
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+  try {
+    const resp = await fetch('/api/apply', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken },
+      body: formData,
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      if (resp.status === 400 && data.error && data.error.includes('already exists')) {
+        document.getElementById('existingBanner').style.display = 'block';
+      } else {
+        showError(data.error || 'Submission failed. Please try again.');
+      }
+      btn.disabled = false;
+      btn.textContent = 'Submit application';
+      return;
+    }
+
+    if (data.direct_upload && cvFileData) {
+      try {
+        await savePendingCvUpload(cvFileData, data.direct_upload);
+      } catch (storageError) {
+        showError('Your application was saved, but this browser could not queue the CV upload. Please contact support.');
+        return;
+      }
+    }
+    window.location.href = '/dashboard';
+  } catch (e) {
+    showError('Network error. Please check your connection and try again.');
+    btn.disabled = false;
+    btn.textContent = 'Submit application';
+  }
+}
+</script>
+{% endblock %}

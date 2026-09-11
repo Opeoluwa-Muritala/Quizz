@@ -1,0 +1,668 @@
+{% extends 'shared/base.html' %}
+
+{% block title %}Admin - {{ brand.portal_title }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/admin.css') }}">
+
+{% endblock %}
+
+{% block content %}
+{% if not authenticated %}
+<!-- Admin Login Gate -->
+<div class="admin-login-container">
+    <div class="card login-card">
+        <div class="logo-container">
+            <img src="{{ url_for('static', filename=brand.logo) }}" alt="{{ brand.company_name }} Logo" class="bank-logo-img" width="40" height="40">
+            <div class="bank-wordmark">{{ brand.name }}</div>
+            <div class="bank-submark">Admin dashboard</div>
+        </div>
+
+        <h1 class="step-heading">Admin Authentication</h1>
+        <p class="step-subtext">Enter your administrator access token to manage settings and questions.</p>
+
+        <div id="login-error" class="alert alert-danger hidden"></div>
+
+        <form id="admin-login-form">
+            <div class="form-group" style="margin-bottom:16px;">
+                <label for="admin-username">Username</label>
+                <input type="text" id="admin-username" required placeholder="Enter username" style="width:100%; padding:10px; border:1px solid var(--mfb-gray-300); border-radius:6px; font-family:'DM Sans';">
+            </div>
+            <div class="form-group" style="margin-bottom:20px;">
+                <label for="admin-password">Password</label>
+                <input type="password" id="admin-password" required placeholder="Enter password" style="width:100%; padding:10px; border:1px solid var(--mfb-gray-300); border-radius:6px; font-family:'DM Sans';">
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">Access Dashboard</button>
+        </form>
+    </div>
+</div>
+
+{% else %}
+<!-- Full Admin Dashboard -->
+<div class="admin-dashboard-container">
+    <!-- Workspace Header -->
+    <div class="workspace-page-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+        <div>
+            <h1 style="font-family:var(--font-heading);font-size:24px;color:var(--color-primary);margin:0 0 4px;">Assessment Workspace</h1>
+            <p style="margin:0;font-size:14px;color:#61646D;">Manage test configurations, cohort schedules, question banks, and candidate evaluations.</p>
+        </div>
+        <button type="button" id="btn-admin-logout" style="display:none;"></button>
+    </div>
+
+    <nav class="admin-tabs">
+        <button type="button" class="tab-btn active" data-tab="settings">
+            <i class="ti ti-settings"></i><span class="tab-text">Exam Settings</span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="cohorts">
+            <i class="ti ti-users-group"></i><span class="tab-text">Cohorts & Tests</span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="questions">
+            <i class="ti ti-help"></i><span class="tab-text">Question Editor</span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="candidates">
+            <i class="ti ti-users"></i><span class="tab-text">Candidates & Results</span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="whitelist">
+            <i class="ti ti-shield-check"></i><span class="tab-text">Whitelist</span>
+        </button>
+    </nav>
+
+    <!-- Tab Contents -->
+    <div class="admin-tab-content">
+
+        <!-- Panel 1: Exam Settings -->
+        <section id="tab-settings" class="tab-panel active">
+            <div class="card settings-card">
+                <h2>Exam Global Settings</h2>
+                <p class="step-subtext">Configure live rules and operational limits of the aptitude test.</p>
+
+                <form id="settings-form">
+                    <div class="toggle-list">
+                        <div class="toggle-row-unified">
+                            <span class="toggle-label-unified">Exam Portal Status</span>
+                            <div style="display:flex;align-items:center;">
+                                <label class="switch-container">
+                                    <input type="checkbox" id="setting-exam-open" {% if settings and settings.exam_open %}checked{% endif %}>
+                                    <span class="switch-slider"></span>
+                                </label>
+                                <span id="setting-status-chip" class="status-chip {% if settings and settings.exam_open %}on{% else %}off{% endif %}">
+                                    {% if settings and settings.exam_open %}Open{% else %}Closed{% endif %}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="divider-line"></div>
+
+                    <div class="form-group control-group">
+                        <label for="setting-seconds-per-q" class="input-label-unified">Seconds per Question</label>
+                        <div class="input-suffix-wrapper">
+                            <input type="number" id="setting-seconds-per-q" min="10" max="300" placeholder="e.g. 60" required value="{% if settings %}{{ settings.seconds_per_question }}{% endif %}">
+                            <span class="input-suffix-text">sec</span>
+                        </div>
+                        <div id="error-seconds-per-q" class="input-error-msg">Please enter a valid number of seconds (10 - 300).</div>
+                    </div>
+
+                    <div class="form-group control-group">
+                        <label for="setting-pass-mark" class="input-label-unified">Pass Mark</label>
+                        <div class="input-suffix-wrapper">
+                            <input type="number" id="setting-pass-mark" min="0" max="100" step="0.5" placeholder="e.g. 50" required value="{% if settings %}{{ settings.pass_mark_percent }}{% endif %}">
+                            <span class="input-suffix-text">%</span>
+                        </div>
+                        <div id="error-pass-mark" class="input-error-msg">Please enter a valid percentage (0 - 100).</div>
+                    </div>
+
+                    <div class="settings-action-row">
+                        <button type="submit" id="btn-save-settings" class="btn btn-primary">Save settings</button>
+                        <span id="settings-last-updated" class="settings-timestamp-unified">Last updated: {% if settings and settings.updated_at %}{{ settings.updated_at }}{% else %}-{% endif %}</span>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card settings-card" style="margin-top:24px">
+                <h2>Candidate Verification</h2>
+                <p class="step-subtext">Control whether candidates upload ID and selfie photos or answer a short pre-test form.</p>
+
+                <div class="toggle-row-unified" style="border-bottom: none; margin-bottom: 4px;">
+                    <span class="toggle-label-unified">Require identity verification (ID + selfie)</span>
+                    <div style="display:flex;align-items:center;">
+                        <label class="switch-container">
+                            <input type="checkbox" id="setting-require-identity" {% if not settings or settings.require_identity_verification %}checked{% endif %}>
+                            <span class="switch-slider"></span>
+                        </label>
+                        <span id="identity-status-chip" class="status-chip {% if not settings or settings.require_identity_verification %}on{% else %}off{% endif %}">
+                            {% if not settings or settings.require_identity_verification %}Verification on{% else %}Verification off{% endif %}
+                        </span>
+                    </div>
+                </div>
+                <div style="font-size: 0.78rem; color: var(--mfb-gray-600); font-weight: 600; margin-bottom: 16px;">
+                    Changes apply immediately
+                </div>
+
+                <div id="pretest-fields-panel" class="pretest-panel-unified {% if settings and not settings.require_identity_verification %}expanded{% endif %}">
+                    <h3 class="pretest-section-title">Pre-Test Registration Fields</h3>
+                    <p class="pretest-section-desc">Select which fields the candidate must provide before starting the test. Drag to reorder.</p>
+                    
+                    <div id="pretestFieldsList" class="pretest-list-unified"></div>
+                    
+                    <div class="add-custom-wrapper">
+                        <a href="#" id="link-add-custom-field" class="add-custom-link">+ Add custom field</a>
+                        <div id="custom-field-input-box" class="custom-field-input-box hidden">
+                            <input type="text" id="custom-field-label-input" class="form-control" placeholder="Field Label (e.g. LinkedIn Profile)">
+                            <button type="button" id="btn-confirm-add-custom" class="btn btn-primary btn-sm">Add</button>
+                            <button type="button" id="btn-cancel-add-custom" class="btn btn-ghost btn-sm">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Panel 2: Cohorts & Tests -->
+        <section id="tab-cohorts" class="tab-panel">
+            <div style="display:grid; grid-template-columns: 280px 1fr; gap: 24px; min-height: 500px; font-family:'DM Sans';">
+                <!-- Sidebar Cohorts List -->
+                <div class="card" style="padding: 16px; border: 1px solid var(--mfb-gray-300); border-radius: 8px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+                        <h3 style="margin:0; font-size:16px; font-weight:700; color:var(--mfb-ink);">Cohorts</h3>
+                        <button type="button" id="btn-create-cohort" class="btn btn-primary btn-sm" style="padding:4px 8px; font-size:11px;">+ Create</button>
+                    </div>
+                    <div id="cohorts-sidebar-list" style="display:flex; flex-direction:column; gap:8px;">
+                        <div style="color:var(--mfb-gray-600); font-style:italic; font-size:13px; text-align:center; padding:20px 0;">Loading cohorts...</div>
+                    </div>
+                </div>
+
+                <!-- Detail Panel -->
+                <div class="card" id="cohort-detail-card" style="padding: 24px; border: 1px solid var(--mfb-gray-300); border-radius: 8px; display:none;">
+                    <!-- Cohort Name / Header -->
+                    <div style="display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--mfb-gray-300); padding-bottom:16px; margin-bottom:20px;">
+                        <div style="flex:1; display:flex; align-items:center; gap:12px;">
+                            <input type="text" id="input-cohort-name" style="font-size:20px; font-weight:700; color:var(--mfb-ink); border:none; background:transparent; border-bottom:2px dashed transparent; outline:none; padding:2px 4px; width:250px; font-family:'DM Sans';" readonly>
+                            <button type="button" id="btn-rename-cohort" class="btn btn-ghost btn-sm" style="padding:4px 8px;"><i class="ti ti-edit"></i> Edit Name</button>
+                            <button type="button" id="btn-save-cohort-name" class="btn btn-primary btn-sm hidden" style="padding:4px 8px;">Save</button>
+                        </div>
+                        <button type="button" id="btn-delete-cohort" class="btn btn-ghost btn-sm" style="color:var(--mfb-error); padding:4px 8px;"><i class="ti ti-trash"></i> Delete Cohort</button>
+                    </div>
+
+                    <!-- Sub Tab Toggles -->
+                    <div style="display:flex; gap:16px; border-bottom:1px solid var(--mfb-gray-300); margin-bottom:20px;">
+                        <button type="button" class="cohort-subtab-btn active" data-subtab="candidates" style="background:none; border:none; padding:8px 4px; font-weight:700; color:var(--mfb-purple); border-bottom:2px solid var(--mfb-purple); cursor:pointer; font-size:14px; font-family:'DM Sans';">Candidates</button>
+                        <button type="button" class="cohort-subtab-btn" data-subtab="tests" style="background:none; border:none; padding:8px 4px; font-weight:600; color:var(--mfb-gray-600); border-bottom:2px solid transparent; cursor:pointer; font-size:14px; font-family:'DM Sans';">Tests/Assessments</button>
+                    </div>
+
+                    <!-- Pane 1: Candidates -->
+                    <div class="cohort-pane active" id="pane-cohort-candidates">
+                        <div style="display:grid; grid-template-columns:1fr 300px; gap:24px;">
+                            <!-- Whitelisted Candidates Table -->
+                            <div>
+                                <h4 style="margin:0 0 12px 0; font-size:14px; font-weight:700;">Whitelisted Candidates</h4>
+                                <div style="overflow-x:auto;">
+                                    <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px;">
+                                        <thead>
+                                            <tr style="border-bottom:2px solid var(--mfb-gray-300);">
+                                                <th style="padding:8px 4px;">Name</th>
+                                                <th style="padding:8px 4px;">Email</th>
+                                                <th style="padding:8px 4px; text-align:right;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="cohort-candidates-table-body">
+                                            <!-- Loaded dynamically -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            
+                            <!-- Sidebar Forms -->
+                            <div style="border-left:1px solid var(--mfb-gray-300); padding-left:20px; display:flex; flex-direction:column; gap:20px;">
+                                <!-- Single candidate add -->
+                                <div>
+                                    <h5 style="margin:0 0 8px 0; font-size:12px; text-transform:uppercase; color:var(--mfb-gray-600); font-weight:700;">Add Whitelist Candidate</h5>
+                                    <form id="form-cohort-add-candidate" style="display:flex; flex-direction:column; gap:8px;">
+                                        <input type="text" id="add-cand-name" placeholder="Full Name" required style="width:100%; padding:8px; border:1px solid var(--mfb-gray-300); border-radius:6px; font-size:13px;">
+                                        <input type="email" id="add-cand-email" placeholder="Email Address" required style="width:100%; padding:8px; border:1px solid var(--mfb-gray-300); border-radius:6px; font-size:13px;">
+                                        <button type="submit" class="btn btn-primary btn-sm">Add Candidate</button>
+                                    </form>
+                                </div>
+                                <!-- Bulk Candidates upload -->
+                                <div style="border-top:1px solid var(--mfb-gray-300); padding-top:16px;">
+                                    <h5 style="margin:0 0 8px 0; font-size:12px; text-transform:uppercase; color:var(--mfb-gray-600); font-weight:700;">Bulk Upload</h5>
+                                    <p style="margin:0 0 8px 0; font-size:11px; color:var(--mfb-gray-600); line-height:14px;">Enter "Name, Email" or "Email" one per line:</p>
+                                    <textarea id="bulk-cand-text" rows="5" placeholder="John Doe, john@example.com&#10;jane@example.com" style="width:100%; padding:8px; border:1px solid var(--mfb-gray-300); border-radius:6px; font-size:12px; resize:vertical; font-family:monospace;"></textarea>
+                                    <button type="button" id="btn-bulk-add-candidates" class="btn btn-ghost btn-sm" style="width:100%; margin-top:8px; border:1px solid var(--mfb-purple); color:var(--mfb-purple);">Process Bulk Upload</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pane 2: Tests/Assessments -->
+                    <div class="cohort-pane" id="pane-cohort-tests" style="display:none;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+                            <h4 style="margin:0; font-size:14px; font-weight:700;">Cohort Tests / Assessments</h4>
+                            <button type="button" id="btn-add-cohort-test" class="btn btn-primary btn-sm">+ Create Test</button>
+                        </div>
+                        <div id="cohort-tests-container" style="display:flex; flex-direction:column; gap:16px;">
+                            <!-- Loaded dynamically -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Placeholder when no cohort selected -->
+                <div class="card" id="cohort-placeholder-card" style="padding: 40px; border: 1px solid var(--mfb-gray-300); border-radius: 8px; display:flex; align-items:center; justify-content:center; flex-direction:column; color:var(--mfb-gray-600); text-align:center;">
+                    <i class="ti ti-users-group" style="font-size:48px; color:var(--mfb-gray-300); margin-bottom:12px;"></i>
+                    <p style="margin:0; font-size:14px;">Select a cohort from the sidebar or create a new one to manage candidates and assessments.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Panel 3: Question Editor -->
+        <section id="tab-questions" class="tab-panel">
+            <div class="questions-editor-layout">
+
+                <!-- Left: Question List -->
+                <div class="questions-list-pane">
+                    <div class="pane-header">
+                        <h2>Question Bank</h2>
+                        <p class="step-subtext">Manage questions. Drag rows to reorder.</p>
+                    </div>
+
+                    <div class="question-filter-container">
+                        <div class="segmented-control">
+                            <label class="segment">
+                                <input type="radio" name="question-type-filter" value="all" checked>
+                                <span>All Questions</span>
+                            </label>
+                            <label class="segment">
+                                <input type="radio" name="question-type-filter" value="default">
+                                <span>Default</span>
+                            </label>
+                            <label class="segment">
+                                <input type="radio" name="question-type-filter" value="uploaded">
+                                <span>Uploaded</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="questions-sections-container">
+                        <div class="section-group">
+                            <h3 class="group-header">NUMERICAL REASONING</h3>
+                            <div class="questions-list" id="admin-questions-numerical"></div>
+                            <button type="button" class="btn btn-ghost btn-full btn-add-q" data-section="Numerical">+ Add Numerical Question</button>
+                        </div>
+
+                        <div class="section-group">
+                            <h3 class="group-header">VERBAL REASONING</h3>
+                            <div class="questions-list" id="admin-questions-verbal"></div>
+                            <button type="button" class="btn btn-ghost btn-full btn-add-q" data-section="Verbal">+ Add Verbal Question</button>
+                        </div>
+
+                        <div class="section-group">
+                            <h3 class="group-header">LOGICAL REASONING</h3>
+                            <div class="questions-list" id="admin-questions-logical"></div>
+                            <button type="button" class="btn btn-ghost btn-full btn-add-q" data-section="Logical">+ Add Logical Question</button>
+                        </div>
+                    </div>
+
+                    <!-- Bulk Import Section -->
+                    <div class="bulk-import-card card">
+                        <div class="bulk-header" id="bulk-toggle">
+                            <h3>Bulk Question Import</h3>
+                            <span class="toggle-icon">&plus;</span>
+                        </div>
+                        <div class="bulk-body hidden" id="bulk-body-content">
+                            <!-- JSON Paste -->
+                            <div class="form-group">
+                                <label for="bulk-json-paste">JSON Array Paste</label>
+                                <textarea id="bulk-json-paste" rows="4" placeholder='[{"section":"Logical","stem":"Example?","options":["A","B","C","D"],"answer":0}]'></textarea>
+                                <button type="button" id="btn-import-json" class="btn btn-ghost">Import JSON</button>
+                            </div>
+
+                            <hr class="card-divider">
+
+                            <!-- CSV Upload -->
+                            <div class="form-group">
+                                <label>CSV File Upload</label>
+                                <div class="file-uploader-row">
+                                    <input type="file" id="csv-file-input" accept=".csv" class="hidden">
+                                    <button type="button" id="btn-trigger-csv" class="btn btn-ghost">Choose CSV File</button>
+                                    <span id="csv-file-name" class="file-name-text">No file selected</span>
+                                </div>
+                                <p class="help-text">Columns: section, stem, option_a, option_b, option_c, option_d, answer</p>
+                                <div id="csv-preview-text" class="preview-text hidden"></div>
+                                <button type="button" id="btn-import-csv" class="btn btn-primary" disabled>Import CSV Questions</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- Panel 3: Candidates & Results -->
+        <section id="tab-candidates" class="tab-panel">
+            <div class="candidates-results-layout">
+
+                <!-- Summary Statistics -->
+                <div class="summary-stats-grid" aria-label="Results summary">
+                    <div class="card stat-mini-card">
+                        <span class="stat-mini-label">Total Candidates</span>
+                        <span id="results-stat-total" class="stat-mini-value font-mono">0</span>
+                    </div>
+                    <div class="card stat-mini-card">
+                        <span class="stat-mini-label">Passed Candidates</span>
+                        <span id="results-stat-passed" class="stat-mini-value font-mono green-text">0</span>
+                    </div>
+                    <div class="card stat-mini-card">
+                        <span class="stat-mini-label">Failed Candidates</span>
+                        <span id="results-stat-failed" class="stat-mini-value font-mono red-text">0</span>
+                    </div>
+                    <div class="card stat-mini-card">
+                        <span class="stat-mini-label">Average Score</span>
+                        <span id="results-stat-avg" class="stat-mini-value font-mono">0.00%</span>
+                    </div>
+                </div>
+
+                <div class="results-toolbar">
+                    <div>
+                        <h2>Candidate results</h2>
+                        <p>Assessment attempts and verification records.</p>
+                    </div>
+                    <div class="results-toolbar-actions">
+                        <a href="/api/admin/export-csv" id="btn-export-csv" class="btn btn-ghost">Export CSV</a>
+                        <button type="button" id="btn-clear-results" class="btn btn-ghost" style="border-color: var(--color-danger); color: var(--color-danger);">Reset results</button>
+                    </div>
+                </div>
+
+                <!-- Results Table -->
+                <div class="table-container">
+                    <table class="data-table" id="results-table">
+                        <thead>
+                            <tr>
+                                <th class="sortable" data-sort="name">Candidate <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort="score">Assessment <span class="sort-icon"></span></th>
+                                <th>Stage</th>
+                                <th class="sortable active" data-sort="submitted_at">Submitted <span class="sort-icon desc"></span></th>
+                                <th>Verification</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-tbody">
+                            <!-- Dynamic rows -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="pagination-row">
+                    <button type="button" id="btn-prev-page" class="btn btn-ghost">&larr; Previous</button>
+                    <span id="page-indicator" class="page-indicator font-mono">Page 1</span>
+                    <button type="button" id="btn-next-page" class="btn btn-ghost">Next &rarr;</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Panel 4: Whitelist -->
+        <section id="tab-whitelist" class="tab-panel">
+            <div class="whitelist-layout">
+
+                <!-- Left: Add panel -->
+                <div class="whitelist-form-side">
+                    <div class="card">
+                        <h2>Whitelist Management</h2>
+                        <p class="step-subtext">Add approved email addresses of candidates allowed to take the exam.</p>
+
+                        <!-- Add single -->
+                        <form id="whitelist-add-form" class="inline-add-form">
+                            <div class="form-group">
+                                <label for="whitelist-email">Email Address</label>
+                                <div class="input-btn-row">
+                                    <input type="email" id="whitelist-email" required placeholder="e.g. candidate@mail.com">
+                                    <button type="submit" class="btn btn-primary">Add</button>
+                                </div>
+                            </div>
+                        </form>
+
+                        <hr class="card-divider">
+
+                        <!-- Bulk Whitelist -->
+                        <div class="form-group">
+                            <label>Bulk CSV Import</label>
+                            <p class="help-text">Upload a text/CSV file containing one email address per line.</p>
+                            <div class="file-uploader-row">
+                                <input type="file" id="whitelist-csv-input" accept=".csv, .txt" class="hidden">
+                                <button type="button" id="btn-trigger-whitelist-csv" class="btn btn-ghost">Choose Whitelist CSV</button>
+                                <span id="whitelist-csv-name" class="file-name-text">No file selected</span>
+                            </div>
+                            <div id="whitelist-preview-text" class="preview-text hidden"></div>
+                            <button type="button" id="btn-import-whitelist-csv" class="btn btn-primary" disabled>Import Whitelist</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: List panel -->
+                <div class="whitelist-table-side">
+                    <div class="card whitelist-list-card">
+                        <div class="list-header-row">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <h3>Whitelisted Emails</h3>
+                                <span id="whitelist-count-badge" class="count-badge font-mono">0</span>
+                            </div>
+                            <button type="button" id="btn-clear-whitelist" class="btn btn-ghost" style="border-color: var(--color-danger); color: var(--color-danger); padding: 4px 10px; font-size: 13px;">Clear All</button>
+                        </div>
+
+                        <div class="table-container list-table-container">
+                            <table class="data-table min-table">
+                                <thead>
+                                    <tr>
+                                        <th>Email Address</th>
+                                        <th>Added At</th>
+                                        <th class="action-cell">Remove</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="whitelist-tbody">
+                                    <!-- Dynamic whitelist rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+
+
+    </div>
+</div>
+
+<!-- Question Editor Modal Popup -->
+<div id="question-editor-modal" class="modal-overlay hidden">
+    <div class="card modal-card" style="padding: 24px;">
+        <div class="modal-header">
+            <h2 id="editor-title">Add Question</h2>
+            <div class="modal-header-actions">
+                <button type="button" id="btn-delete-question" class="btn-icon btn-icon-danger hidden" title="Delete Question">
+                    <i class="ti ti-trash"></i>
+                </button>
+                <button type="button" id="btn-close-question-modal" class="btn-icon" title="Close">
+                    <i class="ti ti-x"></i>
+                </button>
+            </div>
+        </div>
+
+        <form id="question-editor-form" style="padding: 0 4px;">
+            <input type="hidden" id="editor-q-id">
+            <input type="hidden" id="editor-q-position">
+
+            <div class="form-group">
+                <label>Section</label>
+                <div class="segmented-control">
+                    <label class="segment">
+                        <input type="radio" name="editor-section" value="Numerical" checked>
+                        <span>Numerical</span>
+                    </label>
+                    <label class="segment">
+                        <input type="radio" name="editor-section" value="Verbal">
+                        <span>Verbal</span>
+                    </label>
+                    <label class="segment">
+                        <input type="radio" name="editor-section" value="Logical">
+                        <span>Logical</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="editor-stem">Question Stem (HTML allowed)</label>
+                <textarea id="editor-stem" rows="4" required placeholder="Write question stem here..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="editor-opt-a">Option A</label>
+                <input type="text" id="editor-opt-a" required placeholder="Enter option A">
+            </div>
+
+            <div class="form-group">
+                <label for="editor-opt-b">Option B</label>
+                <input type="text" id="editor-opt-b" required placeholder="Enter option B">
+            </div>
+
+            <div class="form-group">
+                <label for="editor-opt-c">Option C</label>
+                <input type="text" id="editor-opt-c" required placeholder="Enter option C">
+            </div>
+
+            <div class="form-group">
+                <label for="editor-opt-d">Option D</label>
+                <input type="text" id="editor-opt-d" required placeholder="Enter option D">
+            </div>
+
+            <div class="form-group">
+                <label>Correct Answer</label>
+                <div class="answer-radios-row">
+                    <label class="radio-option">
+                        <input type="radio" name="editor-answer" value="0" checked>
+                        <span>A</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="editor-answer" value="1">
+                        <span>B</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="editor-answer" value="2">
+                        <span>C</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="editor-answer" value="3">
+                        <span>D</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group toggle-group">
+                <span class="toggle-label">Active (Include in Live Exam)</span>
+                <label class="switch-container">
+                    <input type="checkbox" id="editor-active" checked>
+                    <span class="switch-slider"></span>
+                </label>
+            </div>
+
+            <div class="button-group">
+                <button type="submit" class="btn btn-primary">Save question</button>
+                <button type="button" id="btn-cancel-edit" class="btn btn-ghost">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Custom Confirmation Modal Overlay -->
+<div id="confirm-modal" class="modal-overlay hidden" style="z-index: 3000;">
+    <div class="card modal-card" style="max-width: 400px; padding: 24px; text-align: center;">
+        <div style="font-size: 40px; color: var(--color-danger); margin-bottom: 16px;">
+            <i class="ti ti-alert-triangle"></i>
+        </div>
+        <h3 id="confirm-title" style="margin-bottom: 8px; font-size: 18px; color: var(--color-text-primary);">Confirm Action</h3>
+        <p id="confirm-message" style="font-size: 14px; color: var(--color-text-secondary); margin-bottom: 24px; line-height: 1.5;">Are you sure you want to proceed?</p>
+        <div class="btn-row">
+            <button type="button" id="btn-confirm-yes" class="btn btn-primary btn-half">Proceed</button>
+            <button type="button" id="btn-confirm-no" class="btn btn-ghost btn-half">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Image Lightbox Modal Overlay -->
+<div id="lightbox-modal" class="lightbox-modal hidden">
+    <div class="lightbox-content">
+        <img id="lightbox-img" src="" alt="Enlarged Document View">
+        <p class="lightbox-caption">Click outside the image to close.</p>
+    </div>
+</div>
+
+    <!-- Modal: Question Selector Mapping -->
+    <div id="modal-question-mapper" class="modal-backdrop hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; z-index:9999;">
+        <div class="card" style="width:600px; max-height:85vh; padding:24px; border:1px solid var(--mfb-gray-300); border-radius:8px; display:flex; flex-direction:column; gap:16px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--mfb-gray-300); padding-bottom:12px;">
+                <h3 style="margin:0; font-size:16px; font-weight:700;" id="question-mapper-title">Manage Test Questions</h3>
+                <button type="button" id="btn-close-question-mapper" style="background:none; border:none; font-size:18px; cursor:pointer; color:var(--mfb-gray-600);">&times;</button>
+            </div>
+            
+            <p style="margin:0; font-size:12px; color:var(--mfb-gray-600);">Check the questions from the general question bank you wish to assign to this assessment quiz.</p>
+            
+            <div style="flex:1; overflow-y:auto; border:1px solid var(--mfb-gray-300); border-radius:6px; padding:12px; display:flex; flex-direction:column; gap:8px;" id="mapper-questions-list">
+                <!-- Dynamically populated checklist -->
+            </div>
+            
+            <div style="display:flex; justify-content:flex-end; gap:12px; border-top:1px solid var(--mfb-gray-300); padding-top:12px;">
+                <button type="button" id="btn-cancel-mapper" class="btn btn-ghost btn-sm">Cancel</button>
+                <button type="button" id="btn-save-mapper" class="btn btn-primary btn-sm">Save Questions Mapping</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Test Creator/Editor -->
+    <div id="modal-test-editor" class="modal-backdrop hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; z-index:9999;">
+        <div class="card" style="width:450px; padding:24px; border:1px solid var(--mfb-gray-300); border-radius:8px; display:flex; flex-direction:column; gap:16px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--mfb-gray-300); padding-bottom:12px;">
+                <h3 style="margin:0; font-size:16px; font-weight:700;" id="test-editor-title">Create New Test</h3>
+                <button type="button" id="btn-close-test-editor" style="background:none; border:none; font-size:18px; cursor:pointer; color:var(--mfb-gray-600);">&times;</button>
+            </div>
+            <form id="form-test-editor" style="display:flex; flex-direction:column; gap:12px;">
+                <input type="hidden" id="edit-test-id">
+                <div class="form-group">
+                    <label for="edit-test-title" style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Test Title</label>
+                    <input type="text" id="edit-test-title" required placeholder="e.g. Quantitative Test" style="width:100%; padding:8px; border:1px solid var(--mfb-gray-300); border-radius:6px; font-size:13px;">
+                </div>
+                <div class="form-group">
+                    <label for="edit-test-duration" style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Duration (Minutes)</label>
+                    <input type="number" id="edit-test-duration" required min="1" placeholder="e.g. 60" style="width:100%; padding:8px; border:1px solid var(--mfb-gray-300); border-radius:6px; font-size:13px;">
+                </div>
+                <div class="form-group">
+                    <label for="edit-test-passmark" style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Pass Mark (%)</label>
+                    <input type="number" id="edit-test-passmark" required min="1" max="100" placeholder="e.g. 50" style="width:100%; padding:8px; border:1px solid var(--mfb-gray-300); border-radius:6px; font-size:13px;">
+                </div>
+                <div class="form-group">
+                    <label for="edit-test-opens" style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Opens At (Optional)</label>
+                    <input type="datetime-local" id="edit-test-opens" style="width:100%; padding:8px; border:1px solid var(--mfb-gray-300); border-radius:6px; font-size:13px;">
+                </div>
+                <div class="form-group">
+                    <label for="edit-test-closes" style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Closes At (Optional)</label>
+                    <input type="datetime-local" id="edit-test-closes" style="width:100%; padding:8px; border:1px solid var(--mfb-gray-300); border-radius:6px; font-size:13px;">
+                </div>
+                <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" id="edit-test-active">
+                    <label for="edit-test-active" style="font-size:13px; font-weight:600; margin:0;">Active (Visible to Candidates)</label>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:12px; border-top:1px solid var(--mfb-gray-300); padding-top:12px; margin-top:8px;">
+                    <button type="button" id="btn-cancel-test-editor" class="btn btn-ghost btn-sm">Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-sm">Save Test</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+{% endif %}
+
+<!-- Client-side Toasts Container -->
+<div id="toast-container" class="toast-container"></div>
+
+{% endblock %}
+
+{% block extra_js %}
+{% endblock %}

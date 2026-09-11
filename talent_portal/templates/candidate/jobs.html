@@ -1,0 +1,50 @@
+{% extends "shared/base.html" %}
+
+{% block title %}Open Positions - {{ brand.name }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/jobs.css', v='aptus-v4') }}">
+{% endblock %}
+
+{% block content %}
+<div class="jobs-page-container">
+  <header class="jobs-hero-header">
+    <h1>Open opportunities</h1>
+    <p>Explore current openings and apply through a clear, transparent recruitment process.</p>
+  </header>
+
+  <section class="jobs-listing-section" aria-label="Available jobs list">
+    <div class="jobs-meta-bar">
+      <span class="jobs-count-badge">{{ jobs|length }} available position{{ '' if jobs|length == 1 else 's' }}</span>
+    </div>
+
+    <div class="public-job-grid">
+      {% for job in jobs %}
+      <article class="public-job-card card">
+        <div class="job-card-tags">
+          <span class="tag-chip tag-dept">{{ job.department }}</span>
+          <span class="tag-chip tag-type">{{ job.employment_type }}</span>
+        </div>
+        <h2>{{ job.title }}</h2>
+        <div class="job-card-details">
+          <span><i class="ti ti-map-pin" aria-hidden="true"></i> {{ job.location }}</span>
+          <span><i class="ti ti-clock" aria-hidden="true"></i> {{ job.deadline_label }}</span>
+        </div>
+        <div class="job-card-footer">
+          <a class="button-secondary" href="{{ url_for('job_postings.public_job', job_id=job.id) }}">View role details</a>
+        </div>
+      </article>
+      {% else %}
+      <div class="empty-state card">
+        <i class="ti ti-briefcase-off" style="font-size: 20px; color: var(--color-primary); margin-bottom: 8px; display: inline-block;" aria-hidden="true"></i>
+        <h2>No open positions currently available</h2>
+        <p>New roles will be posted when application windows open. Return to your dashboard if you have already applied.</p>
+        <div style="margin-top: 16px;">
+          <a href="{{ url_for('recruitment.login') }}" class="portal-button">Sign in to application</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

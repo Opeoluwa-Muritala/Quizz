@@ -1,0 +1,257 @@
+/* Aptus Interview Scheduling Styles */
+
+.sched-wrap {
+  max-width: 960px;
+  margin: 32px auto;
+  padding: 0 16px 80px;
+}
+
+.sched-wrap h1 {
+  font-family: var(--font-heading);
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin: 0 0 8px;
+}
+
+.sched-wrap .sub {
+  color: #61646D;
+  font-size: 14px;
+  line-height: 20px;
+  margin: 0 0 32px;
+}
+
+.sched-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+/* Calendar Card */
+.cal-card {
+  background: #ffffff;
+  border: 1px solid #D8D8D4;
+  border-radius: var(--radius-md, 12px);
+  padding: 24px;
+  box-shadow: var(--shadow-card, 0 1px 2px rgba(30, 30, 36, 0.08));
+}
+
+.cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.cal-nav button {
+  background: none;
+  border: 1px solid #D8D8D4;
+  border-radius: var(--radius-sm, 6px);
+  height: 32px;
+  width: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--color-primary);
+  transition: background 150ms ease-out;
+}
+
+.cal-nav button:hover {
+  background: rgba(36, 30, 78, 0.06);
+}
+
+.cal-nav h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin: 0;
+  font-family: var(--font-heading);
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.cal-day-hdr {
+  text-align: center;
+  font-size: 12px;
+  color: #61646D;
+  font-weight: 600;
+  padding: 8px 0;
+}
+
+.cal-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 14px;
+  cursor: default;
+  color: #A0A09C;
+}
+
+.cal-day.has-slots {
+  background: #EEF8F8;
+  color: var(--color-accent);
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 150ms ease-out;
+}
+
+.cal-day.has-slots:hover {
+  background: #d6f0f0;
+}
+
+.cal-day.selected {
+  background: var(--color-accent) !important;
+  color: #ffffff !important;
+}
+
+.cal-day.today {
+  border: 2px solid var(--color-accent);
+}
+
+.cal-loading {
+  text-align: center;
+  padding: 32px;
+  color: #61646D;
+  font-size: 14px;
+}
+
+/* Slot List Card */
+.slots-card {
+  background: #ffffff;
+  border: 1px solid #D8D8D4;
+  border-radius: var(--radius-md, 12px);
+  padding: 24px;
+  box-shadow: var(--shadow-card, 0 1px 2px rgba(30, 30, 36, 0.08));
+}
+
+.slots-card h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin: 0 0 24px;
+  font-family: var(--font-heading);
+}
+
+.slot-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 16px;
+  border: 1px solid #D8D8D4;
+  border-radius: var(--radius-sm, 6px);
+  background: #ffffff;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--color-text);
+  margin-bottom: 8px;
+  transition: border-color 150ms ease-out, background 150ms ease-out;
+  box-sizing: border-box;
+}
+
+.slot-btn:hover {
+  border-color: var(--color-accent);
+  background: #EEF8F8;
+}
+
+.slot-btn.selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: #ffffff;
+}
+
+.slot-btn.booked {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.slot-time {
+  font-weight: 600;
+  display: block;
+}
+
+.slot-interviewer {
+  font-size: 12px;
+  opacity: 0.8;
+  margin-top: 2px;
+}
+
+.confirm-area {
+  margin-top: 24px;
+}
+
+.confirm-btn {
+  width: 100%;
+  height: 40px;
+  background: var(--color-accent);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-body);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms ease-out;
+}
+
+.confirm-btn:hover {
+  background: #0c8282;
+}
+
+.confirm-btn:disabled {
+  background: #D8D8D4;
+  color: #61646D;
+  cursor: not-allowed;
+}
+
+.empty-slots {
+  color: #61646D;
+  font-size: 14px;
+  padding: 24px 0;
+  text-align: center;
+}
+
+.success-card {
+  background: #EAF5EF;
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-md, 12px);
+  padding: 32px;
+  text-align: center;
+  display: none;
+}
+
+.success-card h2 {
+  color: var(--color-success);
+  font-family: var(--font-heading);
+  font-size: 20px;
+  margin: 12px 0 8px;
+}
+
+.error-msg {
+  background: #FBEEEE;
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm, 6px);
+  padding: 12px 16px;
+  color: var(--color-error);
+  font-size: 13px;
+  line-height: 18px;
+  margin-top: 16px;
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .sched-layout {
+    grid-template-columns: 1fr;
+  }
+}

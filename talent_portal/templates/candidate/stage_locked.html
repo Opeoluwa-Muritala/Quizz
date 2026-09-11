@@ -1,0 +1,34 @@
+{% extends "shared/base.html" %}
+
+{% block title %}Stage Status - {{ brand.portal_title }}{% endblock %}
+
+{% block content %}
+<div style="width: min(640px, calc(100% - 32px)); margin: 96px auto; padding: 0;">
+  <div class="card" style="padding: 40px; border-radius: var(--radius-md); border: 1px solid var(--mfb-gray-300); background: #ffffff; box-shadow: var(--shadow-card); text-align: left;">
+    <div style="width: 40px; height: 40px; border-radius: var(--radius-sm); background: rgba(36, 30, 78, 0.06); display: flex; align-items: center; justify-content: center; margin-bottom: 24px;">
+      {% if closed %}
+      <i class="ti ti-lock" style="font-size: 20px; color: var(--color-primary);" aria-hidden="true"></i>
+      {% else %}
+      <i class="ti ti-clock" style="font-size: 20px; color: var(--color-accent);" aria-hidden="true"></i>
+      {% endif %}
+    </div>
+    
+    <h1 style="color: var(--color-primary); font-family: var(--font-heading); font-size: 24px; font-weight: 700; margin: 0 0 12px; letter-spacing: -0.02em;">
+      {{ stage_label }} stage {% if closed %}closed{% else %}not yet open{% endif %}
+    </h1>
+    
+    <p style="color: var(--color-text); font-family: var(--font-body); font-size: 16px; line-height: 1.6; margin: 0 0 32px; max-width: 520px;">
+      {% if closed %}
+        The operational window for this stage has concluded. Contact the talent acquisition team if you require assistance with your submission.
+      {% else %}
+        This stage is not open yet. It is scheduled to become accessible on <strong>{{ opens_at }}</strong>.
+      {% endif %}
+    </p>
+
+    <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+      <a href="{{ url_for('recruitment.dashboard') }}" class="portal-button">Go to dashboard</a>
+      <a href="mailto:{{ brand.support_email }}" class="button-secondary">Contact recruitment</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

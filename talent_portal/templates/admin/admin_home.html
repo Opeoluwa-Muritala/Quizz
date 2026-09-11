@@ -1,0 +1,196 @@
+{% extends 'shared/base.html' %}
+
+{% block title %}Dashboard - {{ brand.name }} Hiring Workspace{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/admin_home.css', v='aptus-v4') }}">
+{% endblock %}
+
+{% block content %}
+<div class="admin-dashboard">
+
+    <!-- Section 5: Hero Moment (Single Prominent Metric with Supporting Stats) -->
+    <section class="dashboard-hero" aria-labelledby="hero-stat-label">
+        <div class="dashboard-hero__main">
+            <span class="hero-label" id="hero-stat-label">Action required</span>
+            <div class="hero-number-wrap">
+                <span class="hero-number">{{ funnel.awaiting_review }}</span>
+                <span class="hero-text">candidates awaiting review</span>
+            </div>
+            <p class="hero-description">
+                Applications and verified submissions require team decision across active pipelines.
+            </p>
+            <div class="hero-action">
+                <a href="{{ url_for('admin_rec.admin_recruitment_page') }}" class="portal-button">Review candidates</a>
+            </div>
+        </div>
+        <div class="dashboard-hero__supporting">
+            <div class="supporting-stat">
+                <span class="supporting-stat__number">{{ funnel.active_jobs }}</span>
+                <span class="supporting-stat__label">Active job postings</span>
+            </div>
+            <div class="supporting-stat">
+                <span class="supporting-stat__number">{{ funnel.interview }}</span>
+                <span class="supporting-stat__label">In interview stage</span>
+            </div>
+            <div class="supporting-stat">
+                <span class="supporting-stat__number">{{ funnel.total }}</span>
+                <span class="supporting-stat__label">Total applicants</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 5: Pipeline Funnel View (Characteristic Primary View) -->
+    <section class="funnel-card card" aria-labelledby="funnel-title">
+        <div class="funnel-header">
+            <h2 id="funnel-title">Recruitment pipeline funnel</h2>
+            <a href="{{ url_for('admin_rec.admin_recruitment_page') }}" class="button-tertiary">Open pipeline</a>
+        </div>
+        <div class="funnel-grid">
+            <div class="funnel-stage">
+                <div class="funnel-stage__bar" style="height: 100%;"></div>
+                <div class="funnel-stage__content">
+                    <span class="funnel-stage__count">{{ funnel.screening }}</span>
+                    <span class="funnel-stage__name">1. Screening</span>
+                </div>
+            </div>
+            <div class="funnel-stage">
+                <div class="funnel-stage__bar" style="height: 75%;"></div>
+                <div class="funnel-stage__content">
+                    <span class="funnel-stage__count">{{ funnel.assessment }}</span>
+                    <span class="funnel-stage__name">2. Assessment</span>
+                </div>
+            </div>
+            <div class="funnel-stage">
+                <div class="funnel-stage__bar" style="height: 50%;"></div>
+                <div class="funnel-stage__content">
+                    <span class="funnel-stage__count">{{ funnel.interview }}</span>
+                    <span class="funnel-stage__name">3. Interview</span>
+                </div>
+            </div>
+            <div class="funnel-stage">
+                <div class="funnel-stage__bar" style="height: 35%;"></div>
+                <div class="funnel-stage__content">
+                    <span class="funnel-stage__count">{{ funnel.documents }}</span>
+                    <span class="funnel-stage__name">4. Verification</span>
+                </div>
+            </div>
+            <div class="funnel-stage">
+                <div class="funnel-stage__bar" style="height: 20%;"></div>
+                <div class="funnel-stage__content">
+                    <span class="funnel-stage__count">{{ funnel.decision }}</span>
+                    <span class="funnel-stage__name">5. Offer</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Max 3 Dashboard Cards below Hero & Funnel -->
+    <div class="dashboard-cards-grid">
+
+        <!-- Card 1: Active Candidates Table -->
+        <article class="card dashboard-card candidates-card" aria-labelledby="card-candidates-title">
+            <div class="card-header">
+                <h3 id="card-candidates-title">Recent candidate activity</h3>
+                <a href="{{ url_for('admin_rec.admin_recruitment_page') }}" class="button-tertiary">View all</a>
+            </div>
+            {% if recent_candidates %}
+            <div class="table-container">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Candidate</th>
+                            <th>Role</th>
+                            <th>Current stage</th>
+                            <th class="action-col">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in recent_candidates %}
+                        <tr>
+                            <td>
+                                <strong>{{ c.name }}</strong>
+                                <span class="sub-meta">{{ c.email }}</span>
+                            </td>
+                            <td>{{ c.role }}</td>
+                            <td>
+                                <span class="status-chip stage-chip">{{ c.stage }}</span>
+                            </td>
+                            <td class="action-col">
+                                <a href="{{ url_for('admin_rec.admin_recruitment_page') }}" class="table-action-btn">Review</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <i class="ti ti-users" style="font-size:20px;color:var(--color-primary);margin-bottom:8px;display:block;" aria-hidden="true"></i>
+                <p>No new candidate submissions awaiting review.</p>
+                <a href="{{ url_for('job_postings.admin_jobs') }}" class="button-secondary">Manage job postings</a>
+            </div>
+            {% endif %}
+        </article>
+
+        <!-- Card 2: Active Job Openings -->
+        <article class="card dashboard-card jobs-card" aria-labelledby="card-jobs-title">
+            <div class="card-header">
+                <h3 id="card-jobs-title">Published openings</h3>
+                <a href="{{ url_for('job_postings.admin_jobs') }}" class="button-tertiary">Manage roles</a>
+            </div>
+            <div class="mini-list">
+                {% for j in active_jobs %}
+                <div class="mini-item">
+                    <div class="mini-item__main">
+                        <strong>{{ j.title }}</strong>
+                        <span class="sub-meta">{{ j.department }}</span>
+                    </div>
+                    <span class="status-chip chip-neutral">{{ j.candidates }} applicants</span>
+                </div>
+                {% else %}
+                <div class="mini-item">
+                    <div class="mini-item__main">
+                        <strong>Executive Trainee Program</strong>
+                        <span class="sub-meta">Banking Operations</span>
+                    </div>
+                    <span class="status-chip chip-neutral">Active</span>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="card-footer-action">
+                <a href="{{ url_for('job_postings.create_job') }}" class="button-secondary">Create job</a>
+            </div>
+        </article>
+
+        <!-- Card 3: Interview Operations -->
+        <article class="card dashboard-card interviews-card" aria-labelledby="card-interviews-title">
+            <div class="card-header">
+                <h3 id="card-interviews-title">Interview operations</h3>
+                <a href="{{ url_for('admin_rec.admin_recruitment_page') }}" class="button-tertiary">Calendar</a>
+            </div>
+            <div class="mini-list">
+                <div class="mini-item">
+                    <div class="mini-item__main">
+                        <strong>Upcoming interview slots</strong>
+                        <span class="sub-meta">Synchronized with Google Meet and Zoom</span>
+                    </div>
+                    <span class="status-chip chip-success">Ready</span>
+                </div>
+                <div class="mini-item">
+                    <div class="mini-item__main">
+                        <strong>Evaluation criteria</strong>
+                        <span class="sub-meta">Scored panels and interviewer feedback</span>
+                    </div>
+                    <span class="status-chip chip-neutral">Standard</span>
+                </div>
+            </div>
+            <div class="card-footer-action">
+                <a href="{{ url_for('admin_rec.admin_recruitment_page') }}" class="button-secondary">Open calendar</a>
+            </div>
+        </article>
+
+    </div>
+
+</div>
+{% endblock %}

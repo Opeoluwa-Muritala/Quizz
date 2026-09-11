@@ -1,0 +1,305 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Aptus Career Homepage Styles
+   Follows strict build-time contract in AGENTS.md
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.career-home {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* Hero Section */
+.career-hero {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 48px;
+  align-items: center;
+  padding: 64px 0 96px;
+}
+
+.hero-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.hero-copy .eyebrow {
+  margin: 0 0 16px;
+  font-family: var(--font-body, 'DM Sans', sans-serif);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+}
+
+.hero-copy h1 {
+  margin: 0 0 16px;
+  font-family: var(--font-heading, 'Manrope', sans-serif);
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-primary);
+  max-width: 560px;
+}
+
+.hero-description {
+  margin: 0 0 32px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--color-text);
+  max-width: 520px;
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.hero-actions .portal-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 24px;
+  background: var(--color-accent);
+  color: #ffffff;
+  font-family: var(--font-body, 'DM Sans', sans-serif);
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: var(--radius-sm, 6px);
+  text-decoration: none;
+  border: none;
+  transition: background 150ms ease-out;
+}
+
+.hero-actions .portal-button:hover,
+.hero-actions .portal-button:focus-visible {
+  background: #0D8F8F;
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.hero-actions .text-link {
+  display: inline-flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-accent);
+  text-decoration: none;
+  transition: color 150ms ease-out;
+}
+
+.hero-actions .text-link:hover,
+.hero-actions .text-link:focus-visible {
+  text-decoration: underline;
+  color: #0D8F8F;
+}
+
+/* Journey Panel (the single permitted numbered sequence) */
+.journey-panel {
+  background: #ffffff;
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid #E5E5E2;
+  box-shadow: var(--shadow-card);
+  padding: 32px;
+}
+
+.journey-heading {
+  margin-bottom: 8px;
+}
+
+.journey-heading span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.journey-panel h2 {
+  margin: 0 0 24px;
+  font-family: var(--font-heading, 'Manrope', sans-serif);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.journey-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.journey-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.journey-number {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm, 6px);
+  background: rgba(15, 163, 163, 0.1);
+  color: var(--color-accent);
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.journey-list h3 {
+  margin: 0 0 4px;
+  font-family: var(--font-heading, 'Manrope', sans-serif);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.journey-list p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #61646D;
+}
+
+.journey-bottom {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #F0F0EE;
+  font-size: 12px;
+  color: #8C8E95;
+}
+
+/* Feature/Proof Grid */
+.home-proof {
+  display: grid;
+  grid-template-columns: 1.2fr repeat(3, 1fr);
+  gap: 24px;
+  padding: 96px 0;
+}
+
+.home-proof__lead h2 {
+  margin: 0;
+  font-family: var(--font-heading, 'Manrope', sans-serif);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--color-primary);
+  max-width: 240px;
+}
+
+.home-proof__item {
+  background: #ffffff;
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid #E5E5E2;
+  box-shadow: var(--shadow-card);
+  padding: 24px;
+}
+
+.home-proof__item strong {
+  display: block;
+  margin: 12px 0 8px;
+  font-family: var(--font-heading, 'Manrope', sans-serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.home-proof__item p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #61646D;
+}
+
+/* Support Section */
+.career-support {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 24px;
+  padding: 0 0 96px;
+}
+
+.career-support h2 {
+  margin: 0;
+  font-family: var(--font-heading, 'Manrope', sans-serif);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--color-primary);
+}
+
+.support-item {
+  background: #ffffff;
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid #E5E5E2;
+  box-shadow: var(--shadow-card);
+  padding: 24px;
+}
+
+.support-item h3 {
+  margin: 0 0 8px;
+  font-family: var(--font-heading, 'Manrope', sans-serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.support-item p {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #61646D;
+}
+
+.support-item .text-link {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.support-item .text-link:hover {
+  text-decoration: underline;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .career-hero {
+    grid-template-columns: 1fr;
+    gap: 40px;
+    padding: 48px 0 64px;
+  }
+  .home-proof {
+    grid-template-columns: 1fr 1fr;
+    padding: 64px 0;
+  }
+  .career-support {
+    grid-template-columns: 1fr 1fr;
+    padding: 0 0 64px;
+  }
+}
+
+@media (max-width: 768px) {
+  .hero-copy h1 {
+    font-size: 32px;
+  }
+  .home-proof {
+    grid-template-columns: 1fr;
+    padding: 48px 0;
+  }
+  .career-support {
+    grid-template-columns: 1fr;
+    padding: 0 0 48px;
+  }
+}
