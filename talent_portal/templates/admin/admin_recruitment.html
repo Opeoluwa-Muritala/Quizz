@@ -17,11 +17,11 @@
   </div>
 
   <div class="rec-tabs">
-    <div class="rec-tab active" onclick="switchTab('candidates')">Candidates</div>
-    <div class="rec-tab" onclick="switchTab('interviewers')">Interviewers</div>
-    <div class="rec-tab" onclick="switchTab('slots')">Slots</div>
-    <div class="rec-tab" onclick="switchTab('config')">Stage Config</div>
-    <div class="rec-tab" onclick="switchTab('emaillog')">Email Log</div>
+    <button type="button" class="rec-tab active" data-rec-tab="candidates">Candidates</button>
+    <button type="button" class="rec-tab" data-rec-tab="interviewers">Interviewers</button>
+    <button type="button" class="rec-tab" data-rec-tab="slots">Slots</button>
+    <button type="button" class="rec-tab" data-rec-tab="config">Stage Config</button>
+    <button type="button" class="rec-tab" data-rec-tab="emaillog">Email Log</button>
   </div>
 
   <!-- Candidates tab -->
@@ -392,10 +392,7 @@ function switchTab(name) {
   document.querySelectorAll('.rec-tab').forEach((t) => t.classList.remove('active'));
   document.querySelectorAll('.rec-panel').forEach(p => p.classList.remove('active'));
   
-  const targetTab = Array.from(document.querySelectorAll('.rec-tab')).find(t => {
-    const attr = t.getAttribute('onclick');
-    return attr && attr.includes(`'${name}'`);
-  });
+  const targetTab = document.querySelector(`.rec-tab[data-rec-tab="${name}"]`);
   if (targetTab) {
     targetTab.classList.add('active');
   }
@@ -459,6 +456,10 @@ async function loadCandidates(page) {
     <button onclick="loadCandidates(${page+1})" ${page*data.per_page>=data.total?'disabled':''}>Next ›</button>
   `;
 }
+window.switchTab = switchTab;
+document.querySelectorAll('.rec-tab[data-rec-tab]').forEach((tab) => {
+  tab.addEventListener('click', () => switchTab(tab.dataset.recTab));
+});
 
 function stagePillClass(stage) {
   if (['screening_passed','assessment_passed','offered','documents_submitted'].includes(stage)) return 'pill-pass';
@@ -1998,10 +1999,15 @@ async function apiGet(url) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const r = await fetch(url, { signal: controller.signal });
+    const r = await fetch(url, { credentials: 'same-origin', signal: controller.signal });
     clearTimeout(timeout);
     if (r.status === 401) { window.location.href = '/admin/login'; return new Promise(() => {}); }
-    return r.ok ? await r.json() : null;
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      console.error(`Recruitment request failed (${r.status})`, url, body);
+      return null;
+    }
+    return await r.json();
   } catch(e) { clearTimeout(timeout); return null; }
 }
 async function apiPost(url, body, method='POST') {
