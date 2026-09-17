@@ -6,6 +6,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .coverage
+.coverage.*
 coverage.xml
 htmlcov/
 
@@ -16,8 +17,6 @@ env/
 ENV/
 
 # Environment and local secrets
-.env
-.env.*
 !.env.example
 *.pem
 *.key
@@ -49,6 +48,9 @@ dist/
 *.egg-info/
 pip-wheel-metadata/
 
+# Generated local output (including development PostgreSQL data)
+/output/
+
 # Node/frontend dependencies and build output, if used
 node_modules/
 npm-debug.log*
@@ -58,8 +60,16 @@ pnpm-debug.log*
 .parcel-cache/
 .vite/
 
+# Browser automation artifacts and local authentication state
+/.playwright-cli/
+/playwright/.auth/
+/playwright-report/
+/test-results/
+
+# Local deployment metadata
+/.vercel/
+
 # IDE/editor settings
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -73,3 +83,4 @@ desktop.ini
 # Local tool/cache folders
 .antigravitycli/
 .claude/
+config.bat
